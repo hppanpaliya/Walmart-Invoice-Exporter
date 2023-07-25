@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Walmart CSV Invoice",
+  "version": "1.1",
+  "description": "Download Walmart order details in CSV format",
+  "permissions": ["activeTab", "tabs"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "images/icon16.png",
+      "48": "images/icon48.png",
+      "128": "images/icon128.png",
+      "256": "images/icon256.png",
+      "512": "images/icon512.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.walmart.com/orders/*"],
+      "js": ["content.js", "xlsx.js"]
+    }
+  ],
+  "icons": {
+    "16": "images/icon16.png",
+    "48": "images/icon48.png",
+    "128": "images/icon128.png"
+  },
+  "default_locale": "en"
+}
