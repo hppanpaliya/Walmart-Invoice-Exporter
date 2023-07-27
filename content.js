@@ -14,7 +14,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     for (var i = 0; i < productNames.length; i++) {
       var productName = productNames[i].innerText;
       var productPrice = productPrices[i].innerText;
-      var deliveryStatus = unavailableProducts.includes(productName) ? "Not Delivered" : "Delivered";
+      var deliveryStatus = unavailableProducts.includes(productName) ? "Delivered" : "Not Delivered";
 
       data.push([productName, productPrice, deliveryStatus]); // Add rows to data array
     }
@@ -23,10 +23,27 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
       .querySelector(".f6.f-subheadline-m.mid-gray.dark-gray-m.lh-copy.v-mid.mt2.mt0-m.print-bill-bar-id")
       .innerText.split(" ")[1];
 
+    var orderDate = document
+      .querySelector(".w_kV33.w_LD4J.w_mvVb.f3.f-subheadline-m.di-m.dark-gray-m.print-bill-date.lh-copy")
+      .innerText.split(" ")
+      .slice(0, 3)
+      .join(" ");
+
+    var orderTotal = document.querySelector(".bill-order-total-payment h2:last-child").innerText;
+
+    data.push([]);
+    data.push([]);
+
+    data.push(["Order Total", orderTotal]);
+    data.push(["Order Number", orderNumber]);
+    data.push(["Order Date", orderDate]);
+
     /* XLSX version */
     var ws = XLSX.utils.aoa_to_sheet(data);
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+    // fit text to cell
+    ws["!cols"] = [{ width: 100 }, { width: 10 }, { width: 10 }];
 
     /* generate an XLSX file */
     XLSX.writeFile(wb, `${orderNumber.toString()}.xlsx`);
