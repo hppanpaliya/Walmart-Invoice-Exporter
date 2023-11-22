@@ -2,7 +2,7 @@
 
 This is a Chrome extension that allows users to download their Walmart orders in a convenient xlsx format directly from their orders page.
 
-![Screenshot of extension](./screenshot.png)
+<img src="./screenshot.png" alt="Screenshot of extension" height="200">
 
 ## Features
 
