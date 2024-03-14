@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Walmart Spreadsheet Invoice",
-  "version": "1.1",
+  "version": "1.2",
   "description": "Download Walmart order details in xlsx format",
   "permissions": ["activeTab"],
   "action": {
@@ -17,7 +17,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.walmart.com/orders/*"],
-      "js": ["content.js", "xlsx.js"]
+      "js": ["content.js", "exceljs.bare.min.js"]
     }
   ],
   "icons": {
