@@ -9,9 +9,7 @@ document.addEventListener("DOMContentLoaded", function () {
     } else {
       document.getElementById("downloadInvoice").addEventListener("click", function () {
         chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-          chrome.tabs.sendMessage(tabs[0].id, { method: "changeColor" }, function (response) {
-            console.log(response.data);
-          });
+          chrome.tabs.sendMessage(tabs[0].id, { method: "downloadXLSX" }, function (response) {});
         });
       });
     }
