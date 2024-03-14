@@ -1,0 +1,29 @@
+# macOS system files
+.DS_Store
+
+*/.DS_Store
+
+# Chrome extension build files
+/dist/
+/node_modules/
+
+# Chrome extension development files
+*.log
+*.swp
+*.swo
+*.bak
+*.tmp
+*.zip
+
+# IDE and editor files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Dependency lock files
+yarn.lock
+package-lock.json
+
+dev/
+
