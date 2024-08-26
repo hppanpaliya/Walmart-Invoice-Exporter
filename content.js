@@ -19,10 +19,37 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
       productLinks.push(link.href);
     });
 
+    // Function to find the order number
+    function findOrderNumber() {
+      // Trying different selector
+      const selectors = [
+        ".f-subheadline-m.dark-gray-m.print-bill-bar-id",
+        "[data-testid='orderInfoCard'] .dark-gray",
+        ".print-bill-heading .dark-gray",
+      ];
+
+      for (let selector of selectors) {
+        const element = document.querySelector(selector);
+        if (element) {
+          const text = element.textContent;
+          const match = text.match(/Order#\s*(\d+-\d+)/);
+          if (match) {
+            return match[1];
+          }
+        }
+      }
+
+      console.log("Order number not found with current selectors");
+      return null;
+    }
+
     // Select the order number
-    let orderNumber = document
-      .querySelector(".f6.f-subheadline-m.mid-gray.dark-gray-m.lh-copy.v-mid.mt2.mt0-m.print-bill-bar-id")
-      .innerText.split(" ")[1];
+    let orderNumber = findOrderNumber();
+    if (orderNumber) {
+      console.log("Order number:", orderNumber);
+    } else {
+      console.log("Could not find order number");
+    }
     // Select the order date
     let orderDate = document
       .querySelector(".w_kV33.w_LD4J.w_mvVb.f3.f-subheadline-m.di-m.dark-gray-m.print-bill-date.lh-copy")
