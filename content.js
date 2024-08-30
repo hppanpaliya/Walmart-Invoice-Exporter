@@ -49,7 +49,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
         const element = document.querySelector(selector);
         if (element) {
           const text = element.textContent;
-          const match = text.match(/Order#?\s*(\d+-\d+)/);
+          const match = text.match(/#\s*([\d-]+)/);
           if (match) {
             return match[1];
           }
