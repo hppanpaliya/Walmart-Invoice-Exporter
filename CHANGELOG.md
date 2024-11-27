@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0] - November 26, 2024
+
+- **Feature:** Added support for exporting multiple invoices at once.
+- **Update:** Improved invoice downloading.
+
 ## [1.4.1] - August 30, 2024
 
 - **Update:** Improved order number extraction to handle various formats, including in-store purchases.

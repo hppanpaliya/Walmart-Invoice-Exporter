@@ -1,5 +1,33 @@
-chrome.runtime.onMessage.addListener(async function (request, sender, sendResponse) {
-  if (request.method === "downloadXLSX") {
+const OrderNumberRegex = /#\s*([\d-]+)/;
+let allOrderNumbers = new Set();
+let currentPage = 0;
+let isProcessing = false;
+
+// Function to wait for an element to appear
+async function waitForElement(selector, timeout = 30000) {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeout) {
+    const element = document.querySelector(selector);
+    if (element) {
+      return element;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  throw new Error(`Element ${selector} not found after ${timeout}ms`);
+}
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "collectOrderNumbers") {
+    // Handle collection asynchronously
+    handleCollectOrderNumbers().then(sendResponse);
+    return true; // Indicates we'll send response asynchronously
+  } else if (request.action === "clickNextButton") {
+    // Handle next button click asynchronously
+    handleClickNextButton().then(sendResponse);
+    return true;
+  } else if (request.method === "downloadXLSX") {
     // Array to store all order items
     let orderItems = [];
 
@@ -94,7 +122,70 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
     // Send the response back to the caller with the order details
     sendResponse({ data: orderDetails });
   }
+  return true;
 });
+
+async function handleCollectOrderNumbers() {
+  try {
+    // First wait for the Purchase history heading to appear
+    await waitForElement("h1.w_kV33.w_LD4J.w_mvVb");
+
+    const orderNumbers = extractOrderNumbers();
+    const hasNextPage = await checkForNextPage();
+
+    console.log(`Extracted ${orderNumbers.length} order numbers. Has next page: ${hasNextPage}`);
+    return { orderNumbers: orderNumbers, hasNextPage: hasNextPage };
+  } catch (error) {
+    console.error("Error during collection:", error);
+    // Return empty results if we timeout
+    return { orderNumbers: [], hasNextPage: false };
+  }
+}
+
+async function handleClickNextButton() {
+  try {
+    // Wait for the Purchase history heading first
+    await waitForElement("h1.w_kV33.w_LD4J.w_mvVb");
+
+    // Then wait for the next button to be present and clickable
+    const nextButton = await waitForElement('button[data-automation-id="next-pages-button"]:not([disabled])');
+
+    nextButton.click();
+    return { success: true };
+  } catch (error) {
+    console.error("Error clicking next button:", error);
+    return { success: false };
+  }
+}
+
+function extractOrderNumbers() {
+  const orderElements = document.querySelectorAll(
+    "#maincontent > main > section > div.flex.relative-m > div.w-100.di-m.flex-auto > div > section > div > div > div > div.w_udHt.w_CEpt.bg-near-white-primary.pv3.mv0 > span.w_kV33.w_Sl3f.w_mvVb.w_E5rV > h2 > span"
+  );
+  console.log(`Found ${orderElements.length} order elements`);
+  const orderNumbers = [];
+  orderElements.forEach((element) => {
+    const match = element.textContent.trim().match(/#\s*([\d-]+)/);
+    if (match && match[1]) {
+      orderNumbers.push(match[1]);
+    }
+  });
+  return orderNumbers;
+}
+
+async function checkForNextPage() {
+  try {
+    // Wait for the Purchase history heading first
+    await waitForElement("h1.w_kV33.w_LD4J.w_mvVb");
+
+    // Then check for the next button
+    const nextButton = document.querySelector('button[data-automation-id="next-pages-button"]:not([disabled])');
+    return !!nextButton;
+  } catch (error) {
+    console.error("Error checking for next page:", error);
+    return false;
+  }
+}
 
 // Function to convert order details to an XLSX file
 async function convertToXlsx(orderDetails, ExcelJS) {
@@ -153,7 +244,7 @@ async function convertToXlsx(orderDetails, ExcelJS) {
 
   const styleCells = [deliveryCharges, tax, tip, total];
   styleCells.forEach((row) => {
-    row.getCell(2).numFmt = "$#,##0.00";
+    row.getCell(2).numFmt = "$#,##0.00  ";
     row.getCell(2).font = { ...productFontStyle, bold: true };
     row.getCell(1).font = { ...productFontStyle, bold: true };
     row.getCell(2).alignment = { horizontal: "center" };

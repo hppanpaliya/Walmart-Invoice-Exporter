@@ -1,65 +1,86 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Walmart Invoice Exporter</title>
+    <title>Walmart History Exporter</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            width: 400px;
             padding: 15px;
-            background-color: #f8f9fa;
-            color: #333;
-            width: fit-content;
-            height: fit-content;
+            font-family: Arial, sans-serif;
         }
 
-        .container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-
-            text-align: center;
-        }
-
-        h2 {
-            font-size: 2em;
-            margin-bottom: 10px;
-        }
-
-        .lead {
-            font-size: 1.2em;
-            margin-bottom: 20px;
-        }
-
-        button {
-            background-color: #007bff;
-            border: none;
-            color: white;
-            padding: 10px 24px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
+        .controls {
+            margin-bottom: 15px;
+            padding: 10px;
+            border: 1px solid #ddd;
             border-radius: 4px;
         }
 
-        button:hover {
-            background-color: #0056b3;
+        .page-limit {
+            margin: 10px 0;
+        }
+
+        #startCollection,
+        #stopCollection {
+            padding: 8px 16px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        #startCollection {
+            background-color: #0071dc;
+            color: white;
+            border: none;
+        }
+
+        #startCollection:disabled {
+            background-color: #ccc;
+        }
+
+        #stopCollection {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            display: none;
+        }
+
+        #progress {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .checkbox-container {
+            margin: 5px 0;
+        }
+
+        #downloadButton {
+            margin-top: 15px;
+            padding: 8px 16px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
-        <h2>Walmart Invoice Exporter</h2>
-        <p class="lead">Get your order invoice in xlsx format.</p>
-        <button id="downloadInvoice">Download Invoice</button>
+    <h2>Walmart History Exporter</h2>
+    <div class="controls">
+        <div class="page-limit">
+            <label for="pageLimit">Number of pages to crawl (0 = unlimited):</label>
+            <input type="number" id="pageLimit" min="0" value="0" style="width: 60px;">
+        </div>
+        <button id="startCollection">Start Collection</button>
+        <button id="stopCollection">Stop Collection</button>
     </div>
+    <div id="progress"></div>
+    <div id="orderNumbersContainer"></div>
     <script src="popup.js"></script>
 </body>
 
