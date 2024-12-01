@@ -1,9 +1,15 @@
 # Changelog
 
+## [2.1] - December 1, 2024
+
+- **Enhancement:** Improved UI.
+
 ## [2.0] - November 26, 2024
 
-- **Feature:** Added support for exporting multiple invoices at once.
-- **Update:** Improved invoice downloading.
+- **Feature:** Added support for downloading multiple invoices at once.
+- **Feature:** Introduced new order history crawler.
+- **Update:** Improved invoice downloading system.
+- **Enhancement:** Enhanced user interface with progress tracking.
 
 ## [1.4.1] - August 30, 2024
 
