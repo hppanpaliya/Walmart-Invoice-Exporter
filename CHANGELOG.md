@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.2] - December 5, 2024
+
+- **Enhancement:** Walmart orders page link clickable in popup.
+
 ## [2.1] - December 1, 2024
 
 - **Enhancement:** Improved UI.

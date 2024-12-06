@@ -90,7 +90,7 @@ document.addEventListener("DOMContentLoaded", function () {
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
           <p style="color: var(--text); font-size: 16px; margin-bottom: 8px;">Please navigate to</p>
-          <p style="color: var(--primary); font-weight: 500; margin-bottom: 16px;">walmart.com/orders</p>
+          <p style="color: var(--primary); font-weight: 500; margin-bottom: 16px;"><a href="https://walmart.com/orders" target="_blank">walmart.com/orders</a></p>
           <p style="color: var(--text-secondary); font-size: 14px;">to use this extension.</p>
         </div>`;
     }
