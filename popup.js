@@ -36,7 +36,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const orderPath = cleanUrl.split("/orders/")[1];
 
       // Check if there's an order number after /orders/
-      if (orderPath && /^\d{13}$|^\d{15}$|^\d{20}$/.test(orderPath.split("?")[0])) {
+      if (orderPath && /^\d{13}$|^\d{15}$|^\d{20}$|^\d{21}$/.test(orderPath.split("?")[0])) {
         // Individual order page
         const orderNumber = orderPath.split("?")[0];
         console.log("Valid order number:", orderNumber);
@@ -247,7 +247,7 @@ async function downloadSelectedOrders() {
         Downloading order ${i + 1} of ${selectedOrders.length} (#${orderNumber})...
       `;
 
-      orderNumber = orderNumber.length === 20 ? `${orderNumber}?storePurchase=true` : orderNumber;
+      orderNumber = orderNumber.length === 20 | orderNumber.length === 21 ? `${orderNumber}?storePurchase=true` : orderNumber;
 
       // Create or reuse tab
       if (!downloadTab) {
