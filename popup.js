@@ -36,7 +36,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const orderPath = cleanUrl.split("/orders/")[1];
 
       // Check if there's an order number after /orders/
-      if (orderPath && /^\d{13}$|^\d{15}$|^\d{20}$/.test(orderPath.split("?")[0])) {
+      if (orderPath && /^\d{10,}$/.test(orderPath.split("?")[0])) {
         // Individual order page
         const orderNumber = orderPath.split("?")[0];
         console.log("Valid order number:", orderNumber);
@@ -232,6 +232,50 @@ async function downloadSelectedOrders() {
   setButtonLoading(downloadButton, true);
   downloadInProgress = true;
   let downloadTab = null;
+  const failedOrders = [];
+
+  // Helper function to attempt download with specific URL
+  async function attemptDownload(orderNumber, url, attempt) {
+    try {
+      // Create or reuse tab
+      if (!downloadTab) {
+        downloadTab = await new Promise((resolve) => {
+          chrome.tabs.create({ url: url, active: false }, resolve);
+        });
+      } else {
+        await new Promise((resolve) => {
+          chrome.tabs.update(downloadTab.id, { url: url }, resolve);
+        });
+      }
+
+      // Wait for page load and trigger download with timeout
+      await Promise.race([
+        new Promise((resolve, reject) => {
+          function listener(tabId, info) {
+            if (tabId === downloadTab.id && info.status === "complete") {
+              chrome.tabs.onUpdated.removeListener(listener);
+              setTimeout(() => {
+                chrome.tabs.sendMessage(downloadTab.id, { method: "downloadXLSX" }, (response) => {
+                  if (chrome.runtime.lastError) {
+                    reject(new Error(`Failed to download order #${orderNumber}: ${chrome.runtime.lastError.message}`));
+                  } else {
+                    resolve();
+                  }
+                });
+              }, 2000);
+            }
+          }
+          chrome.tabs.onUpdated.addListener(listener);
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout downloading order #${orderNumber}`)), 30000))
+      ]);
+
+      return true; // Download successful
+    } catch (error) {
+      console.error(`Error downloading order #${orderNumber} (attempt ${attempt}):`, error);
+      return false; // Download failed
+    }
+  }
 
   try {
     // Create progress indicator
@@ -241,74 +285,67 @@ async function downloadSelectedOrders() {
     document.getElementById("progress").insertAdjacentElement("afterend", progressDiv);
 
     for (let i = 0; i < selectedOrders.length; i++) {
-      let orderNumber = selectedOrders[i];
+      const orderNumber = selectedOrders[i];
       progressDiv.innerHTML = `
         <span class="loading-spinner" style="border-color: var(--success); border-top-color: transparent;"></span>
         Downloading order ${i + 1} of ${selectedOrders.length} (#${orderNumber})...
       `;
 
-      orderNumber = orderNumber.length === 20 ? `${orderNumber}?storePurchase=true` : orderNumber;
+      let downloadSuccess = false;
+      const isLongOrderNumber = orderNumber.length >= 20;
 
-      // Create or reuse tab
-      if (!downloadTab) {
-        downloadTab = await new Promise((resolve) => {
-          chrome.tabs.create(
-            {
-              url: `https://www.walmart.com/orders/${orderNumber}`,
-              active: false,
-            },
-            resolve
-          );
-        });
-      } else {
-        await new Promise((resolve) => {
-          chrome.tabs.update(
-            downloadTab.id,
-            {
-              url: `https://www.walmart.com/orders/${orderNumber}`,
-            },
-            resolve
-          );
-        });
+      // First attempt with default parameter based on order number length
+      let firstAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? '?storePurchase=true' : ''}`;
+      downloadSuccess = await attemptDownload(orderNumber, firstAttemptUrl, 1);
+
+      // If first attempt fails, try with opposite parameter
+      if (!downloadSuccess) {
+        progressDiv.innerHTML = `
+          <span class="loading-spinner" style="border-color: var(--success); border-top-color: transparent;"></span>
+          Retrying order ${i + 1} of ${selectedOrders.length} (#${orderNumber}) with different parameters...
+        `;
+        
+        let secondAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? '' : '?storePurchase=true'}`;
+        downloadSuccess = await attemptDownload(orderNumber, secondAttemptUrl, 2);
       }
 
-      // Wait for page load and trigger download
-      await new Promise((resolve, reject) => {
-        function listener(tabId, info) {
-          if (tabId === downloadTab.id && info.status === "complete") {
-            chrome.tabs.onUpdated.removeListener(listener);
-            setTimeout(() => {
-              chrome.tabs.sendMessage(downloadTab.id, { method: "downloadXLSX" }, (response) => {
-                if (chrome.runtime.lastError) {
-                  reject(chrome.runtime.lastError);
-                } else {
-                  resolve();
-                }
-              });
-            }, 2000);
-          }
-        }
-        chrome.tabs.onUpdated.addListener(listener);
-      });
+      // If both attempts fail, add to failed orders
+      if (!downloadSuccess) {
+        failedOrders.push(orderNumber);
+      }
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     // Cleanup
     if (downloadTab) {
       chrome.tabs.remove(downloadTab.id);
     }
-    progressDiv.innerHTML = `
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" style="margin-right: 8px;">
-        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-        <polyline points="22 4 12 14.01 9 11.01"></polyline>
-      </svg>
-      All downloads completed!
-    `;
-    setTimeout(() => progressDiv.remove(), 10000);
+
+    // Show completion message with failed orders if any
+    if (failedOrders.length === 0) {
+      progressDiv.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" style="margin-right: 8px;">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+          <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+        All downloads completed successfully!
+      `;
+    } else {
+      progressDiv.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" style="margin-right: 8px;">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        Downloads completed with ${failedOrders.length} failed orders:<br>
+        Failed orders: ${failedOrders.map(order => `#${order}`).join(', ')}
+      `;
+    }
+    setTimeout(() => progressDiv.remove(), failedOrders.length > 0 ? 30000 : 10000);
   } catch (error) {
     console.error("Download error:", error);
-    alert("An error occurred during download. Please try again.");
+    alert("An error occurred during download process. Some orders may have failed.");
     if (downloadTab) {
       chrome.tabs.remove(downloadTab.id);
     }

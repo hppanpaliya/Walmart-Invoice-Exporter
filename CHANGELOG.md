@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.3] - December 19, 2024
+
+- **Fixed:** Resolved an issue with failed invoice downloads for new in-store orders.
+
 ## [2.2] - December 5, 2024
 
 - **Enhancement:** Walmart orders page link clickable in popup.
