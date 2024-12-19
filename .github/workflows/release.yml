@@ -1,0 +1,63 @@
+name: Create Latest Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Read CHANGELOG
+        id: changelog
+        run: |
+          CHANGELOG=$(cat CHANGELOG.md)
+          echo "changelog<<EOF" >> $GITHUB_ENV
+          echo "$CHANGELOG" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Create folder structure and ZIP file
+        run: |
+          # Create temporary directory
+          mkdir -p temp/Walmart-Invoice-Exporter
+          
+          # Copy files to maintain structure
+          cp -r _locales temp/Walmart-Invoice-Exporter/
+          cp -r images temp/Walmart-Invoice-Exporter/
+          cp background.js temp/Walmart-Invoice-Exporter/
+          cp content.js temp/Walmart-Invoice-Exporter/
+          cp exceljs.bare.min.js temp/Walmart-Invoice-Exporter/
+          cp manifest.json temp/Walmart-Invoice-Exporter/
+          cp popup.html temp/Walmart-Invoice-Exporter/
+          cp popup.js temp/Walmart-Invoice-Exporter/
+          
+          # Create ZIP from the temp directory
+          cd temp
+          zip -r ../Walmart-Invoice-Exporter.zip Walmart-Invoice-Exporter
+          cd ..
+          
+          # Clean up
+          rm -rf temp
+
+      - name: Delete existing 'latest' release and tag
+        uses: dev-drprasad/delete-tag-and-release@v1.0
+        with:
+          tag_name: latest
+          delete_release: true
+          github_token: ${{ github.token }}
+
+      - name: Create new release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: Walmart-Invoice-Exporter.zip
+          tag_name: latest
+          name: Latest Release
+          body: ${{ env.changelog }}
+          token: ${{ github.token }}
