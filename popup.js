@@ -36,7 +36,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const orderPath = cleanUrl.split("/orders/")[1];
 
       // Check if there's an order number after /orders/
-      if (orderPath && /^\d{13}$|^\d{15}$|^\d{20,}$/.test(orderPath.split("?")[0])) {
+      if (orderPath && /^\d{10,}$/.test(orderPath.split("?")[0])) {
         // Individual order page
         const orderNumber = orderPath.split("?")[0];
         console.log("Valid order number:", orderNumber);
@@ -234,6 +234,49 @@ async function downloadSelectedOrders() {
   let downloadTab = null;
   const failedOrders = [];
 
+  // Helper function to attempt download with specific URL
+  async function attemptDownload(orderNumber, url, attempt) {
+    try {
+      // Create or reuse tab
+      if (!downloadTab) {
+        downloadTab = await new Promise((resolve) => {
+          chrome.tabs.create({ url: url, active: false }, resolve);
+        });
+      } else {
+        await new Promise((resolve) => {
+          chrome.tabs.update(downloadTab.id, { url: url }, resolve);
+        });
+      }
+
+      // Wait for page load and trigger download with timeout
+      await Promise.race([
+        new Promise((resolve, reject) => {
+          function listener(tabId, info) {
+            if (tabId === downloadTab.id && info.status === "complete") {
+              chrome.tabs.onUpdated.removeListener(listener);
+              setTimeout(() => {
+                chrome.tabs.sendMessage(downloadTab.id, { method: "downloadXLSX" }, (response) => {
+                  if (chrome.runtime.lastError) {
+                    reject(new Error(`Failed to download order #${orderNumber}: ${chrome.runtime.lastError.message}`));
+                  } else {
+                    resolve();
+                  }
+                });
+              }, 2000);
+            }
+          }
+          chrome.tabs.onUpdated.addListener(listener);
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout downloading order #${orderNumber}`)), 30000))
+      ]);
+
+      return true; // Download successful
+    } catch (error) {
+      console.error(`Error downloading order #${orderNumber} (attempt ${attempt}):`, error);
+      return false; // Download failed
+    }
+  }
+
   try {
     // Create progress indicator
     const progressDiv = document.createElement("div");
@@ -242,67 +285,36 @@ async function downloadSelectedOrders() {
     document.getElementById("progress").insertAdjacentElement("afterend", progressDiv);
 
     for (let i = 0; i < selectedOrders.length; i++) {
-      let orderNumber = selectedOrders[i];
+      const orderNumber = selectedOrders[i];
       progressDiv.innerHTML = `
         <span class="loading-spinner" style="border-color: var(--success); border-top-color: transparent;"></span>
         Downloading order ${i + 1} of ${selectedOrders.length} (#${orderNumber})...
       `;
 
-      orderNumber = orderNumber.length >= 20 ? `${orderNumber}?storePurchase=true` : orderNumber;
+      let downloadSuccess = false;
+      const isLongOrderNumber = orderNumber.length >= 20;
 
-      try {
-        // Create or reuse tab
-        if (!downloadTab) {
-          downloadTab = await new Promise((resolve) => {
-            chrome.tabs.create(
-              {
-                url: `https://www.walmart.com/orders/${orderNumber}`,
-                active: false,
-              },
-              resolve
-            );
-          });
-        } else {
-          await new Promise((resolve) => {
-            chrome.tabs.update(
-              downloadTab.id,
-              {
-                url: `https://www.walmart.com/orders/${orderNumber}`,
-              },
-              resolve
-            );
-          });
-        }
+      // First attempt with default parameter based on order number length
+      let firstAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? '?storePurchase=true' : ''}`;
+      downloadSuccess = await attemptDownload(orderNumber, firstAttemptUrl, 1);
 
-        // Wait for page load and trigger download with timeout
-        await Promise.race([
-          new Promise((resolve, reject) => {
-            function listener(tabId, info) {
-              if (tabId === downloadTab.id && info.status === "complete") {
-                chrome.tabs.onUpdated.removeListener(listener);
-                setTimeout(() => {
-                  chrome.tabs.sendMessage(downloadTab.id, { method: "downloadXLSX" }, (response) => {
-                    if (chrome.runtime.lastError) {
-                      reject(new Error(`Failed to download order #${orderNumber}: ${chrome.runtime.lastError.message}`));
-                    } else {
-                      resolve();
-                    }
-                  });
-                }, 2000);
-              }
-            }
-            chrome.tabs.onUpdated.addListener(listener);
-          }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout downloading order #${orderNumber}`)), 30000))
-        ]);
-
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      } catch (error) {
-        console.error(`Error downloading order #${orderNumber}:`, error);
-        failedOrders.push(orderNumber);
-        // Continue with next order instead of stopping
-        continue;
+      // If first attempt fails, try with opposite parameter
+      if (!downloadSuccess) {
+        progressDiv.innerHTML = `
+          <span class="loading-spinner" style="border-color: var(--success); border-top-color: transparent;"></span>
+          Retrying order ${i + 1} of ${selectedOrders.length} (#${orderNumber}) with different parameters...
+        `;
+        
+        let secondAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? '' : '?storePurchase=true'}`;
+        downloadSuccess = await attemptDownload(orderNumber, secondAttemptUrl, 2);
       }
+
+      // If both attempts fail, add to failed orders
+      if (!downloadSuccess) {
+        failedOrders.push(orderNumber);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     // Cleanup
