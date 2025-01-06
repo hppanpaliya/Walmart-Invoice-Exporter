@@ -1,9 +1,14 @@
 # Changelog
 
+## [2.5] - January 5, 2025
+
+- **Enhancement:** Improved performance by blocking image loading in background tabs
+    - Faster page loading during order collection and invoice download
+    - Reduced network usage
+
 ## [2.4] - January 5, 2025
 
-- **Enhancement:** 
-Feature: Added comprehensive FAQ page with troubleshooting guides
+- **Enhancement:** Feature: Added comprehensive FAQ page with troubleshooting guides
     - Step-by-step instructions for single and batch downloads
     - Chrome settings configuration guide for bulk downloads
     - Common issues and solutions
