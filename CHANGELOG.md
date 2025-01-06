@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.4] - January 5, 2025
+
+- **Enhancement:** 
+Feature: Added comprehensive FAQ page with troubleshooting guides
+    - Step-by-step instructions for single and batch downloads
+    - Chrome settings configuration guide for bulk downloads
+    - Common issues and solutions
+    - Guide for merging multiple Excel files
+
 ## [2.3] - December 19, 2024
 
 - **Fixed:** Resolved an issue with failed invoice downloads for new in-store orders.

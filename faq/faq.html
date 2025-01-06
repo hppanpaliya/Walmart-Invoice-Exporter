@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>FAQ - Walmart Invoice Exporter</title>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="./faq.css">
+</head>
+
+<body>
+    <div class="header"
+        style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #e5e7eb;">
+        <svg style="width: 32px; height: 32px;" fill="#1a1a1a" version="1.1" id="Capa_1"
+            xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 29.536 29.536"
+            xml:space="preserve">
+            <g>
+                <path d="M14.768,0C6.611,0,0,6.609,0,14.768c0,8.155,6.611,14.767,14.768,14.767s14.768-6.612,14.768-14.767
+                C29.535,6.609,22.924,0,14.768,0z M14.768,27.126c-6.828,0-12.361-5.532-12.361-12.359c0-6.828,5.533-12.362,12.361-12.362
+                c6.826,0,12.359,5.535,12.359,12.362C27.127,21.594,21.594,27.126,14.768,27.126z" />
+                <path d="M14.385,19.337c-1.338,0-2.289,0.951-2.289,2.34c0,1.336,0.926,2.339,2.289,2.339c1.414,0,2.314-1.003,2.314-2.339
+                C16.672,20.288,15.771,19.337,14.385,19.337z" />
+                <path
+                    d="M14.742,6.092c-1.824,0-3.34,0.513-4.293,1.053l0.875,2.804c0.668-0.462,1.697-0.772,2.545-0.772
+                c1.285,0.027,1.879,0.644,1.879,1.543c0,0.85-0.67,1.697-1.494,2.701c-1.156,1.364-1.594,2.701-1.516,4.012l0.025,0.669h3.42
+                v-0.463c-0.025-1.158,0.387-2.162,1.311-3.215c0.979-1.08,2.211-2.366,2.211-4.321C19.705,7.968,18.139,6.092,14.742,6.092z" />
+            </g>
+        </svg>
+        <h1 style="font-size: 32px; margin: 0; color: #1a1a1a; font-weight: 600;">Frequently Asked Questions</h1>
+    </div>
+
+    <div class="faq-section">
+        <div class="faq-item">
+            <div class="faq-question">
+                How to Use the Extension
+                <svg class="arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <div class="faq-answer">
+                <p><strong>Single Order Download:</strong></p>
+                <ol>
+                    <li>Navigate to a specific Walmart order page</li>
+                    <li>Click the extension icon</li>
+                    <li>Click "Download Invoice"</li>
+                </ol>
+
+                <p style="margin-top: 20px;"><strong>Batch Download:</strong></p>
+                <ol>
+                    <li>Go to your Walmart order history page (walmart.com/orders)</li>
+                    <li>Click the extension icon</li>
+                    <li>Set the number of pages to crawl (0 = unlimited)</li>
+                    <li>Click "Start Collection"</li>
+                    <li>Wait for the order numbers to load</li>
+                    <li>Select the orders you want to download</li>
+                    <li>Click "Download Selected Orders"</li>
+                    <li>Wait for the download to complete</li>
+                </ol>
+
+                <div class="note">
+                    <strong>Note:</strong>
+                    <ol style="margin: 5px 0 5px 20px;">
+                        <li>Before downloading multiple orders, make sure you've configured the Chrome settings as
+                            described in "Required Chrome Settings for Bulk Downloads" section below.</li>
+                        <li>Batch download may take a few minutes depending on the number of orders selected.</li>
+                        <li>Do not close the popup or change the window while using the extension. This will stop the
+                            process and you'll have to restart from the beginning.</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question">
+                Required Chrome Settings for Bulk Downloads
+                <svg class="arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <div class="faq-answer">
+                <p style="margin-bottom: 15px;"><strong>1. Configure Download Settings:</strong></p>
+                <ol>
+                    <li>
+                        Open Chrome settings by pasting the following link in a new tab: (click below to copy)
+                        <div class="copy-link-container">
+                            <code class="copy-link"
+                                data-link="chrome://settings/downloads">chrome://settings/downloads</code>
+                            <button class="copy-button">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </li>
+                    <li>Click on "Downloads" in the left sidebar if not already selected</li>
+                    <li>Turn OFF "Ask where to save each file before downloading"</li>
+                    <li>Turn OFF "Show downloads when they're done"</li>
+                </ol>
+
+                <p style="margin: 20px 0 15px;"><strong>2. Enable Automatic Downloads:</strong></p>
+                <ol>
+                    <li>
+                        Open Chrome settings by pasting the following link in a new tab: (click below to copy)
+                        <div class="copy-link-container">
+                            <code class="copy-link"
+                                data-link="chrome://settings/content/siteDetails?site=https%3A%2F%2Fwww.walmart.com#:~:text=Automatic%20downloads">chrome://settings/content/siteDetails?site=https%3A%2F%2Fwww.walmart.com</code>
+                            <button class="copy-button">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </li>
+                    <li>Find "Automatic downloads" option</li>
+                    <li>Set it to "Allow" (instead of Ask or Block)</li>
+                </ol>
+
+                <p style="margin: 20px 0 15px;"><strong>Alternative Method:</strong> (if above link doesn't work)</p>
+                <ol>
+                    <li>
+                        Open Chrome settings by pasting the following link in a new tab: (click below to copy)
+                        <div class="copy-link-container">
+                            <code class="copy-link"
+                                data-link="chrome://settings/content/automaticDownloads#:~:text=Allowed%20to%20automatically%20download%20multiple%20files">chrome://settings/content/automaticDownloads</code>
+                            <button class="copy-button">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </li>
+                    <li>Under "Allowed to automatically download multiple files", click Add</li>
+                    <li>Enter "[*.]walmart.com" and click Add</li>
+                </ol>
+
+                <div class="note" style="margin-top: 20px;">
+                    <strong>Important:</strong> All these settings are required for bulk downloads to work properly.
+                    Make sure to add walmart.com under "Allowed to automatically download multiple files" and NOT under
+                    "Not allowed to automatically download multiple files"
+                </div>
+
+                <div class="tip">
+                    <strong>Note:</strong> Chrome doesn't allow direct clicking of these links. Please copy and paste
+                    them manually into a new tab.
+                </div>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question">
+                Download Issues & Tips
+                <svg class="arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <div class="faq-answer">
+                <p>Before downloading multiple orders, make sure you've configured the Chrome settings as described in
+                    "Required Chrome Settings for Bulk Downloads" section above.</p>
+
+                <div class="note" style="margin: 15px 0;">
+                    <strong>Important:</strong> Do not close the popup or change the window while using the extension.
+                    This will stop the process and you'll have to restart from the beginning.
+                </div>
+
+                <p style="margin-top: 15px;">If you're experiencing download issues, it could be due to:</p>
+
+                <ul>
+                    <li>Slow internet connection - try downloading fewer orders at once</li>
+                    <li>Order age - very old orders might take longer to load</li>
+                    <li>Browser resources - try closing other tabs and windows</li>
+                </ul>
+
+                <div class="tip">
+                    <strong>Recommendation:</strong> For better reliability, try downloading 5-10 orders at a time
+                    instead of selecting all orders at once.
+                </div>
+
+                <div class="note" style="margin-top: 15px;">
+                    <strong>Important:</strong> Most download issues are solved by correctly configuring Chrome
+                    settings. Please double-check the "Required Chrome Settings for Bulk Downloads" section if you're
+                    having problems.
+                </div>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question">
+                How to Merge Multiple Excel Files?
+                <svg class="arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <div class="faq-answer">
+                <p>To merge multiple Excel files exported from this extension:</p>
+
+                <ol>
+                    <li>Visit <a href="https://hppanpaliya.github.io/excel-merger/" target="_blank"
+                            style="color: var(--primary); text-decoration: none;">https://hppanpaliya.github.io/excel-merger/</a>
+                    </li>
+                    <li>Upload your exported Excel files</li>
+                    <li>Download the merged file</li>
+                </ol>
+
+                <div class="tip">
+                    <strong>Note:</strong> This tool is specifically designed to work with Excel files exported from
+                    this extension.
+                </div>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question">
+                Need Help?
+                <svg class="arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <div class="faq-answer">
+                <p>If you're still experiencing issues or have questions, feel free to reach out for support:</p>
+
+                <div class="tip" style="text-align: center;">
+                    <strong>Contact:</strong> <a href="mailto:harshal.hpp@gmail.com"
+                        style="color: var(--primary); text-decoration: none;">harshal.hpp@gmail.com</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="./faq.js"></script>
+</body>
+
+</html>

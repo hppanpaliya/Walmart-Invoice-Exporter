@@ -10,6 +10,13 @@ document.addEventListener("DOMContentLoaded", function () {
   const pageLimitInput = document.getElementById("pageLimit");
   progressElement.style.display = "none";
 
+  document.getElementById('faqButton').addEventListener('click', function(e) {
+    e.preventDefault();
+    chrome.tabs.create({
+        url: chrome.runtime.getURL('faq/faq.html')
+    });
+});
+
   // Add loading spinner function
   function setButtonLoading(button, isLoading) {
     const btnText = button.querySelector(".btn-text");
