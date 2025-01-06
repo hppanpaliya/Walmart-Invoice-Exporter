@@ -258,10 +258,26 @@ async function downloadSelectedOrders() {
       // Wait for page load and trigger download with timeout
       await Promise.race([
         new Promise((resolve, reject) => {
-          function listener(tabId, info) {
+          async function handleDownload(tabId, info) {
             if (tabId === downloadTab.id && info.status === "complete") {
-              chrome.tabs.onUpdated.removeListener(listener);
-              setTimeout(() => {
+              chrome.tabs.onUpdated.removeListener(handleDownload);
+
+              try {
+                // First, block images
+                await new Promise((blockResolve) => {
+                  chrome.tabs.sendMessage(downloadTab.id, { action: "blockImagesForDownload" }, (response) => {
+                    if (chrome.runtime.lastError) {
+                      console.error("Error blocking images:", chrome.runtime.lastError);
+                    }
+                    // Continue even if blocking fails
+                    blockResolve();
+                  });
+                });
+
+                // Wait a bit longer for the page to stabilize
+                await new Promise((r) => setTimeout(r, 2000));
+
+                // Then proceed with download
                 chrome.tabs.sendMessage(downloadTab.id, { method: "downloadXLSX" }, (response) => {
                   if (chrome.runtime.lastError) {
                     reject(new Error(`Failed to download order #${orderNumber}: ${chrome.runtime.lastError.message}`));
@@ -269,10 +285,13 @@ async function downloadSelectedOrders() {
                     resolve();
                   }
                 });
-              }, 2000);
+              } catch (error) {
+                reject(error);
+              }
             }
           }
-          chrome.tabs.onUpdated.addListener(listener);
+
+          chrome.tabs.onUpdated.addListener(handleDownload);
         }),
         new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout downloading order #${orderNumber}`)), 30000))
       ]);

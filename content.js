@@ -3,6 +3,107 @@ let allOrderNumbers = new Set();
 let currentPage = 0;
 let isProcessing = false;
 
+function removeAllImages() {
+  // Remove background images from elements
+  const allElements = document.getElementsByTagName('*');
+  for (let element of allElements) {
+    if (element.style) {
+      element.style.backgroundImage = 'none';
+    }
+  }
+
+  // Remove all img elements
+  const images = document.querySelectorAll('img');
+  images.forEach(img => {
+    img.remove();
+  });
+
+  // Remove picture elements
+  const pictures = document.querySelectorAll('picture');
+  pictures.forEach(pic => {
+    pic.remove();
+  });
+
+  // Remove CSS background images
+  const styleSheets = Array.from(document.styleSheets);
+  styleSheets.forEach(sheet => {
+    try {
+      const rules = Array.from(sheet.cssRules || sheet.rules);
+      rules.forEach((rule, index) => {
+        if (rule.style && rule.style.backgroundImage) {
+          rule.style.backgroundImage = 'none';
+        }
+      });
+    } catch (e) {
+      // Handle cross-origin stylesheet errors silently
+    }
+  });
+}
+
+function blockImageLoading() {
+  // Override Image constructor
+  const originalImage = window.Image;
+  window.Image = function() {
+    const dummyImage = {};
+    Object.defineProperty(dummyImage, 'src', {
+      set: function() { return ''; },
+      get: function() { return ''; }
+    });
+    return dummyImage;
+  };
+
+  // Block image loading using Content-Security-Policy
+  const meta = document.createElement('meta');
+  meta.setAttribute('http-equiv', 'Content-Security-Policy');
+  meta.setAttribute('content', "img-src 'none'");  // Fixed CSP directive
+  document.head.appendChild(meta);
+
+  // Prevent loading through srcset
+  HTMLImageElement.prototype.setAttribute = new Proxy(HTMLImageElement.prototype.setAttribute, {
+    apply(target, thisArg, argumentsList) {
+      const [attr] = argumentsList;
+      if (attr === 'src' || attr === 'srcset') {
+        return;
+      }
+      return Reflect.apply(target, thisArg, argumentsList);
+    }
+  });
+
+  // Intercept image loading
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeName === 'IMG' || node.nodeName === 'PICTURE') {
+          node.remove();
+        }
+        if (node.getElementsByTagName) {
+          const images = node.getElementsByTagName('img');
+          const pictures = node.getElementsByTagName('picture');
+          Array.from(images).forEach(img => img.remove());
+          Array.from(pictures).forEach(pic => pic.remove());
+        }
+      });
+    });
+  });
+
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true
+  });
+}
+
+function aggressiveImageBlocking() {
+  // Add style to hide images immediately
+
+
+  removeAllImages();
+  blockImageLoading();
+  
+  // Additional cleanup passes
+  setTimeout(removeAllImages, 500);
+  setTimeout(removeAllImages, 1000);
+}
+
 // Function to wait for an element to appear
 async function waitForElement(selector, timeout = 30000) {
   const startTime = Date.now();
@@ -21,13 +122,20 @@ async function waitForElement(selector, timeout = 30000) {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "collectOrderNumbers") {
     // Handle collection asynchronously
+    aggressiveImageBlocking();
     handleCollectOrderNumbers().then(sendResponse);
     return true; // Indicates we'll send response asynchronously
   } else if (request.action === "clickNextButton") {
     // Handle next button click asynchronously
+    aggressiveImageBlocking();
     handleClickNextButton().then(sendResponse);
     return true;
+  } else if (request.action === "blockImagesForDownload") {
+    aggressiveImageBlocking();
+    sendResponse({ success: true });
+    return true;
   } else if (request.method === "downloadXLSX") {
+    aggressiveImageBlocking();
     // Array to store all order items
     let orderItems = [];
 
