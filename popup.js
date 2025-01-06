@@ -275,7 +275,7 @@ async function downloadSelectedOrders() {
                 });
 
                 // Wait a bit longer for the page to stabilize
-                await new Promise((r) => setTimeout(r, 2000));
+                await new Promise((r) => setTimeout(r, 1000));
 
                 // Then proceed with download
                 chrome.tabs.sendMessage(downloadTab.id, { method: "downloadXLSX" }, (response) => {
