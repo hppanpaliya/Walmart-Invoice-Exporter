@@ -3,224 +3,31 @@
 
 <head>
     <title>Walmart Invoice Exporter</title>
-    <style>
-        :root {
-            --primary: #0071dc;
-            --danger: #e41e31;
-            --success: #2ecc71;
-            --background: #f8f9fa;
-            --border: #e5e7eb;
-            --text: #1a1a1a;
-            --text-secondary: #666;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            width: 400px;
-            padding: 10px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            color: var(--text);
-            background: white;
-        }
-
-        .header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 10px;
-        }
-
-        .header h1 {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text);
-        }
-
-        .card {
-            background: var(--background);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 16px;
-        }
-
-        .input-group {
-            margin-bottom: 16px;
-        }
-
-        .input-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 12px;
-            color: var(--text-secondary);
-        }
-
-        .input-group input {
-            width: 80px;
-            padding: 8px;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            font-size: 12px;
-        }
-
-        .input-group input:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 2px rgba(0, 113, 220, 0.1);
-        }
-
-        .button-group {
-            display: flex;
-            gap: 8px;
-        }
-
-        .btn {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 6px;
-            font-size: 12px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .btn-primary {
-            background: var(--primary);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: #005bb0;
-        }
-
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-        }
-
-        .btn-danger:hover {
-            background: #c91829;
-        }
-
-        .btn-success {
-            background: var(--success);
-            color: white;
-            width: 100%;
-            justify-content: center;
-            margin-top: 16px;
-        }
-
-        .btn-success:hover {
-            background: #27ae60;
-        }
-
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
-        #progress {
-            font-size: 12px;
-            color: var(--text-secondary);
-            margin: 12px 0;
-            padding: 12px;
-            background: var(--background);
-            border-radius: 6px;
-            border: 1px solid var(--border);
-        }
-
-        .checkbox-container {
-            padding: 8px 0;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .checkbox-container input[type="checkbox"] {
-            width: 14px;
-            height: 14px;
-            cursor: pointer;
-        }
-
-        .checkbox-container label {
-            font-size: 12px;
-            cursor: pointer;
-        }
-
-        #orderNumbersContainer {
-            max-height: 450px;
-            overflow-y: auto;
-            padding-right: 8px;
-        }
-
-        #orderNumbersContainer h3 {
-            font-size: 14px;
-            margin-bottom: 8px;
-            color: var(--text);
-        }
-
-        /* Custom scrollbar */
-        #orderNumbersContainer::-webkit-scrollbar {
-            width: 4px;
-        }
-
-        #orderNumbersContainer::-webkit-scrollbar-track {
-            background: var(--background);
-            border-radius: 4px;
-        }
-
-        #orderNumbersContainer::-webkit-scrollbar-thumb {
-            background: #ccc;
-            border-radius: 4px;
-        }
-
-        #orderNumbersContainer::-webkit-scrollbar-thumb:hover {
-            background: #999;
-        }
-
-        #downloadProgress {
-            font-size: 12px;
-            color: var(--text-secondary);
-            margin: 12px 0;
-            padding: 12px;
-            background: var(--background);
-            border-radius: 6px;
-            border: 1px solid var(--border);
-        }
-
-        .loading-spinner {
-            display: inline-block;
-            width: 14px;
-            height: 14px;
-            border: 2px solid #ffffff;
-            border-radius: 50%;
-            border-top-color: transparent;
-            animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="popup.css">
 </head>
 
 <body>
     <div class="header">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path
-                d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+            <path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
         </svg>
         <h1>Walmart Invoice Exporter</h1>
+        <button id="faqButton" class="faq-button">
+            <svg width="16" height="16" viewBox="0 0 29.536 29.536" fill="currentColor">
+                <g>
+                    <path d="M14.768,0C6.611,0,0,6.609,0,14.768c0,8.155,6.611,14.767,14.768,14.767s14.768-6.612,14.768-14.767
+                        C29.535,6.609,22.924,0,14.768,0z M14.768,27.126c-6.828,0-12.361-5.532-12.361-12.359c0-6.828,5.533-12.362,12.361-12.362
+                        c6.826,0,12.359,5.535,12.359,12.362C27.127,21.594,21.594,27.126,14.768,27.126z" stroke="currentColor" stroke-width="0.5"/>
+                    <path d="M14.385,19.337c-1.338,0-2.289,0.951-2.289,2.34c0,1.336,0.926,2.339,2.289,2.339c1.414,0,2.314-1.003,2.314-2.339
+                        C16.672,20.288,15.771,19.337,14.385,19.337z" stroke="currentColor" stroke-width="0.5"/>
+                    <path d="M14.742,6.092c-1.824,0-3.34,0.513-4.293,1.053l0.875,2.804c0.668-0.462,1.697-0.772,2.545-0.772
+                        c1.285,0.027,1.879,0.644,1.879,1.543c0,0.85-0.67,1.697-1.494,2.701c-1.156,1.364-1.594,2.701-1.516,4.012l0.025,0.669h3.42
+                        v-0.463c-0.025-1.158,0.387-2.162,1.311-3.215c0.979-1.08,2.211-2.366,2.211-4.321C19.705,7.968,18.139,6.092,14.742,6.092z" stroke="currentColor" stroke-width="0.5"/>
+                </g>
+            </svg>
+            
+            <b>Help & FAQ</b>
+        </button>
     </div>
 
     <div class="card">

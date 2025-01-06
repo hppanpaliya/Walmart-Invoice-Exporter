@@ -31,12 +31,15 @@ jobs:
           # Copy files to maintain structure
           cp -r _locales temp/Walmart-Invoice-Exporter/
           cp -r images temp/Walmart-Invoice-Exporter/
+          cp -r faq temp/Walmart-Invoice-Exporter/
           cp background.js temp/Walmart-Invoice-Exporter/
           cp content.js temp/Walmart-Invoice-Exporter/
           cp exceljs.bare.min.js temp/Walmart-Invoice-Exporter/
           cp manifest.json temp/Walmart-Invoice-Exporter/
           cp popup.html temp/Walmart-Invoice-Exporter/
           cp popup.js temp/Walmart-Invoice-Exporter/
+          cp popup.css temp/Walmart-Invoice-Exporter/
+          
           
           # Create ZIP from the temp directory
           cd temp
