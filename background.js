@@ -1,4 +1,5 @@
 let allOrderNumbers = new Set();
+let allAdditionalFields = {};
 let currentPage = 1;
 let isCollecting = false;
 let tabId = null;
@@ -12,7 +13,7 @@ let pagesCached = {};
 // Cache expiration time (24 hours in milliseconds)
 const CACHE_EXPIRATION = 24 * 60 * 60 * 1000;
 
-// Function to load cached order numbers
+// Function to load cached order data
 function loadCachedOrderNumbers() {
   return new Promise((resolve) => {
     chrome.storage.session.get([cacheKey], (result) => {
@@ -24,11 +25,13 @@ function loadCachedOrderNumbers() {
           console.log("Cache is expired. Clearing.");
           chrome.storage.session.remove(cacheKey);
           allOrderNumbers = new Set();
+          allAdditionalFields = {};
           pagesCached = {};
         } else {
           allOrderNumbers = new Set(cachedData.orderNumbers);
+          allAdditionalFields = cachedData.additionalFields || {};
           pagesCached = cachedData.pagesCached || {};
-          console.log(`Loaded ${allOrderNumbers.size} order numbers from cache with ${Object.keys(pagesCached).length} pages cached`);
+          console.log(`Loaded ${allOrderNumbers.size} orders from cache with ${Object.keys(pagesCached).length} pages cached`);
         }
       }
       resolve();
@@ -36,16 +39,17 @@ function loadCachedOrderNumbers() {
   });
 }
 
-// Function to save order numbers and page cache to session storage
+// Function to save order data to cache
 function saveToCache() {
   const dataToCache = {
     orderNumbers: Array.from(allOrderNumbers),
+    additionalFields: allAdditionalFields,
     pagesCached: pagesCached,
     timestamp: Date.now(),
   };
 
   chrome.storage.session.set({ [cacheKey]: dataToCache }, () => {
-    console.log(`Saved ${allOrderNumbers.size} order numbers and ${Object.keys(pagesCached).length} pages to cache`);
+    console.log(`Saved ${allOrderNumbers.size} orders and ${Object.keys(pagesCached).length} pages to cache`);
   });
 }
 
@@ -83,6 +87,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         currentPage: currentPage,
         pageLimit: pageLimit,
         orderNumbers: Array.from(allOrderNumbers),
+        additionalFields: allAdditionalFields,
         isCollecting: isCollecting,
         pagesCached: pagesCached,
       });
@@ -157,10 +162,16 @@ function collectOrderNumbers() {
       // Add order numbers to the set
       response.orderNumbers.forEach((num) => allOrderNumbers.add(num));
 
+      // Add additional fields to the map
+      if (response.additionalFields) {
+        allAdditionalFields = { ...allAdditionalFields, ...response.additionalFields };
+      }
+
       // Cache page data
       pagesCached[currentPage] = {
         hasNextPage: response.hasNextPage,
         orderNumbers: response.orderNumbers,
+        additionalFields: response.additionalFields || {},
         timestamp: Date.now(),
       };
 

@@ -238,18 +238,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 async function handleCollectOrderNumbers() {
   try {
-    // First wait for the Purchase history heading to appear
     await waitForElement("h1.w_kV33.w_LD4J.w_mvVb");
 
-    const orderNumbers = extractOrderNumbers();
+    const { orderNumbers, additionalFields } = extractOrderNumbers();
     const hasNextPage = await checkForNextPage();
 
     console.log(`Extracted ${orderNumbers.length} order numbers. Has next page: ${hasNextPage}`);
-    return { orderNumbers: orderNumbers, hasNextPage: hasNextPage };
+    return { orderNumbers, additionalFields, hasNextPage };
   } catch (error) {
     console.error("Error during collection:", error);
-    // Return empty results if we timeout
-    return { orderNumbers: [], hasNextPage: false };
+    return { orderNumbers: [], additionalFields: {}, hasNextPage: false };
   }
 }
 
@@ -275,13 +273,27 @@ function extractOrderNumbers() {
   );
   console.log(`Found ${orderElements.length} order elements`);
   const orderNumbers = [];
+  const additionalFields = {}; // Map order number to additional field
+
   orderElements.forEach((element) => {
     const match = element.textContent.trim().match(/#\s*([\d-]+)/);
     if (match && match[1]) {
-      orderNumbers.push(match[1]);
+      const orderNumber = match[1];
+      orderNumbers.push(orderNumber);
+
+      // Try to find the additional field for this order
+      let container = element.closest("div.w_udHt.w_CEpt");
+      if (container) {
+        const parentContainer = container.parentElement.parentElement;
+        const additionalFieldElement = parentContainer.querySelector("h3.w_kV33.w_Sl3f.w_mvVb.f3");
+        if (additionalFieldElement) {
+          additionalFields[orderNumber] = additionalFieldElement.textContent.trim();
+        }
+      }
     }
   });
-  return orderNumbers;
+
+  return { orderNumbers, additionalFields };
 }
 
 async function checkForNextPage() {

@@ -8,6 +8,8 @@ A Chrome extension that allows users to download their Walmart order history in 
 
 - **Batch Download**: Select and download multiple order invoices at once
 - **Page Crawling**: Automatically collect order numbers from your order history
+- **Smart Caching System**: Stores previously collected orders for faster repeat access or accidental closure
+- **Order Description Tooltips**: Hover over order numbers to see their delivery date or status
 - **Smart Image Blocking**: Automatically blocks images during processing to improve speed
 - **Customizable Limits**: Set how many pages of order history to crawl
 - **Detailed Excel Format**: Each invoice includes:
@@ -21,7 +23,8 @@ A Chrome extension that allows users to download their Walmart order history in 
 ## Technical Details
 
 - Uses Chrome's Manifest V3
-- Requires `ActiveTabs` permission
+- Requires `ActiveTabs` permission for order page access
+- Utilizes `Storage` for caching order numbers in session storage on the client side only
 - Compatible with various Walmart order formats:
   - Regular orders (13 or 15 digits)
   - In-store purchases (20+ digits)
@@ -31,6 +34,8 @@ A Chrome extension that allows users to download their Walmart order history in 
 
 ## Performance Features
 
+- **Smart Caching**: Orders are cached for 24 hours for instant loading on repeat visits
+- **Throttling**: Limits the time between downloads to prevent walmart.com from blocking requests
 - **Image Blocking**: Automatically prevents image loading to speed up page processing
 - **Memory Optimization**: Cleans up resources after each order download
 - **Background Processing**: Efficient handling of multiple downloads
@@ -76,9 +81,10 @@ Install the Walmart Invoice Exporter directly from the [Chrome Web Store](https:
 3. Set the number of pages to crawl (0 = unlimited)
 4. Click "Start Collection"
 5. Wait for the order numbers to load (may take a few seconds)
-6. Select the orders you want to download
-7. Click "Download Selected Orders"
-8. Wait for the downloads to complete
+6. Hover over order numbers to see their descriptions (delivery date, status) if needed
+7. Select the orders you want to download
+8. Click "Download Selected Orders"
+9. Wait for the downloads to complete
 
 ## Troubleshooting
 
