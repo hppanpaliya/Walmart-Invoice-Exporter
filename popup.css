@@ -236,3 +236,35 @@ body {
     stroke: var(--text);
     transition: stroke 0.2s ease;
 }
+
+.btn-clear {
+    background: var(--background);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+
+  .btn-clear:hover {
+    background: #e5e7eb;
+  }
+
+  .cache-info {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    padding: 4px 8px;
+    background: #f0f9ff;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .cache-info svg {
+    flex-shrink: 0;
+  }
+  
+  .cache-time {
+    font-style: italic;
+    margin-top: 2px;
+    font-size: 10px;
+  }
