@@ -89,7 +89,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true; // Indicate async response
   } else if (request.action === "clearCache") {
-    chrome.storage.session.remove(cacheKey, () => {
+    chrome.storage.session.clear(() => { // Clear all session storage
       console.log("Cache cleared");
       allOrderNumbers.clear();
       pagesCached = {};

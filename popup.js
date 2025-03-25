@@ -185,6 +185,11 @@ document.addEventListener("DOMContentLoaded", function () {
       progressElement.style.display = "block";
       progressElement.innerHTML = "";
       progressElement.appendChild(cacheInfo);
+
+      // Show rating hint
+      if (response.orderNumbers.length > 4) {
+        maybeShowRatingHint();
+      }
     }
   });
 });
@@ -454,6 +459,11 @@ async function downloadSelectedOrders() {
       `;
     }
     setTimeout(() => progressDiv.remove(), failedOrders.length > 0 ? 30000 : 10000);
+
+    // Show rating hint
+    if (failedOrders.length === 0) {
+      maybeShowRatingHint();
+    }
   } catch (error) {
     console.error("Download error:", error);
     alert("An error occurred during download process. Some orders may have failed.");
@@ -479,4 +489,51 @@ function setButtonLoading(button, isLoading) {
     const spinner = button.querySelector(".loading-spinner");
     if (spinner) spinner.remove();
   }
+}
+
+function maybeShowRatingHint() {
+  // Show 80% of the time after a successful action
+  if (Math.random() > 0.8) return;
+
+  // Check if user has dismissed the hint before
+  chrome.storage.session.get(["ratingHintDismissed"], function (result) {
+    if (result.ratingHintDismissed) return;
+
+    // Create rating hint element if it doesn't exist
+    let ratingHint = document.getElementById("ratingHint");
+    if (!ratingHint) {
+      ratingHint = document.createElement("div");
+      ratingHint.id = "ratingHint";
+      ratingHint.className = "rating-hint";
+      ratingHint.innerHTML = `
+        <a href="https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe/reviews" target="_blank">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+          Find this helpful? Consider rating it
+        </a>
+        <button class="dismiss-hint" title="Don't show again">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      `;
+
+      // Add it to the UI
+      const downloadButton = document.getElementById("downloadButton");
+      downloadButton.insertAdjacentElement("afterend", ratingHint);
+
+      // Handle dismiss click
+      ratingHint.querySelector(".dismiss-hint").addEventListener("click", function () {
+        ratingHint.classList.remove("show");
+        chrome.storage.session.set({ ratingHintDismissed: true });
+      });
+    }
+
+    // Show the hint
+    setTimeout(() => {
+      ratingHint.classList.add("show");
+    }, 1500);
+  });
 }
