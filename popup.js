@@ -518,17 +518,24 @@ function maybeShowRatingHint() {
   // Show 80% of the time after a successful action
   if (Math.random() > 0.8) return;
 
-  // Check if user has dismissed the hint before
-  chrome.storage.session.get(["ratingHintDismissed"], function (result) {
-    if (result.ratingHintDismissed) return;
+  // First check if hint has been dismissed in current session
+  chrome.storage.session.get(["ratingHintDismissed"], function (sessionResult) {
+    if (sessionResult.ratingHintDismissed) return;
 
-    // Create rating hint element if it doesn't exist
-    let ratingHint = document.getElementById("ratingHint");
-    if (!ratingHint) {
-      ratingHint = document.createElement("div");
-      ratingHint.id = "ratingHint";
-      ratingHint.className = "rating-hint";
-      ratingHint.innerHTML = `
+    // Then check if hint has been dismissed 5 times in total (using local storage)
+    chrome.storage.local.get(["ratingHintDismissCount"], function (localResult) {
+      const dismissCount = localResult.ratingHintDismissCount || 0;
+
+      // If dismissed 7 or more times, never show again
+      if (dismissCount >= 7) return;
+
+      // Create rating hint element if it doesn't exist
+      let ratingHint = document.getElementById("ratingHint");
+      if (!ratingHint) {
+        ratingHint = document.createElement("div");
+        ratingHint.id = "ratingHint";
+        ratingHint.className = "rating-hint";
+        ratingHint.innerHTML = `
         <a href="https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe/reviews" target="_blank">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
@@ -543,20 +550,31 @@ function maybeShowRatingHint() {
         </button>
       `;
 
-      // Add it to the UI
-      const downloadButton = document.getElementById("downloadButton");
-      downloadButton.insertAdjacentElement("afterend", ratingHint);
+        // Add it to the UI
+        const downloadButton = document.getElementById("downloadButton");
+        downloadButton.insertAdjacentElement("afterend", ratingHint);
 
-      // Handle dismiss click
-      ratingHint.querySelector(".dismiss-hint").addEventListener("click", function () {
-        ratingHint.classList.remove("show");
-        chrome.storage.session.set({ ratingHintDismissed: true });
-      });
-    }
+        // Handle dismiss click
+        ratingHint.querySelector(".dismiss-hint").addEventListener("click", function () {
+          ratingHint.classList.remove("show");
 
-    // Show the hint
-    setTimeout(() => {
-      ratingHint.classList.add("show");
-    }, 1500);
+          // Update session storage for current session
+          chrome.storage.session.set({ ratingHintDismissed: true });
+
+          // Increment dismiss count in local storage
+          chrome.storage.local.get(["ratingHintDismissCount"], function (result) {
+            const newCount = (result.ratingHintDismissCount || 0) + 1;
+            chrome.storage.local.set({ ratingHintDismissCount: newCount });
+
+            console.log(`Rating hint dismissed ${newCount} times in total`);
+          });
+        });
+      }
+
+      // Show the hint
+      setTimeout(() => {
+        ratingHint.classList.add("show");
+      }, 1500);
+    });
   });
 }
