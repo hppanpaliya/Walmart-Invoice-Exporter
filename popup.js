@@ -145,7 +145,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Check for cached data on popup open
   chrome.runtime.sendMessage({ action: "getProgress" }, function (response) {
     if (response && response.orderNumbers && response.orderNumbers.length > 0) {
-      displayOrderNumbers(response.orderNumbers);
+      displayOrderNumbers(response.orderNumbers, response.additionalFields);
 
       // Show cache info
       const cachePages = Object.keys(response.pagesCached || {}).length;
@@ -198,14 +198,14 @@ function updateProgress() {
   chrome.runtime.sendMessage({ action: "getProgress" }, function (response) {
     if (response.isCollecting) {
       updateProgressUI(response.currentPage, response.pageLimit, true);
-      displayOrderNumbers(response.orderNumbers);
+      displayOrderNumbers(response.orderNumbers, response.additionalFields);
       setTimeout(updateProgress, 1000);
       // set all checkboxes to disabled
       const checkboxes = document.querySelectorAll('input[type="checkbox"]');
       checkboxes.forEach((cb) => (cb.disabled = true));
     } else {
       updateProgressUI(response.currentPage, response.pageLimit, false);
-      displayOrderNumbers(response.orderNumbers);
+      displayOrderNumbers(response.orderNumbers, response.additionalFields);
       document.getElementById("startCollection").style.display = "inline-flex";
       document.getElementById("stopCollection").style.display = "none";
       document.getElementById("startCollection").querySelector(".btn-text").textContent = "Start Collection";
@@ -241,7 +241,7 @@ function createProgressElement() {
   return progressElement;
 }
 
-function displayOrderNumbers(orderNumbers) {
+function displayOrderNumbers(orderNumbers, additionalFields = {}) {
   const container = document.getElementById("orderNumbersContainer");
   container.innerHTML = "<h3>Select orders to download</h3>";
 
@@ -276,7 +276,30 @@ function displayOrderNumbers(orderNumbers) {
 
     const label = document.createElement("label");
     label.htmlFor = orderNumber;
-    label.appendChild(document.createTextNode(`Order #${orderNumber}`));
+    label.className = "order-label";
+
+    // Create span for the order number text
+    const orderText = document.createElement("span");
+    orderText.textContent = `Order #${orderNumber}`;
+    label.appendChild(orderText);
+
+    // Add hover functionality if there's an additional field
+    if (additionalFields && additionalFields[orderNumber]) {
+      const infoIcon = document.createElement("span");
+      infoIcon.className = "info-icon";
+      infoIcon.innerHTML = `
+  <svg width="12" height="12" viewBox="0 0 50 50" fill="none" stroke="currentColor" stroke-width="2">
+<path d="M 25 2 C 12.309295 2 2 12.309295 2 25 C 2 37.690705 12.309295 48 25 48 C 37.690705 48 48 37.690705 48 25 C 48 12.309295 37.690705 2 25 2 z M 25 4 C 36.609824 4 46 13.390176 46 25 C 46 36.609824 36.609824 46 25 46 C 13.390176 46 4 36.609824 4 25 C 4 13.390176 13.390176 4 25 4 z M 25 11 A 3 3 0 0 0 22 14 A 3 3 0 0 0 25 17 A 3 3 0 0 0 28 14 A 3 3 0 0 0 25 11 z M 21 21 L 21 23 L 22 23 L 23 23 L 23 36 L 22 36 L 21 36 L 21 38 L 22 38 L 23 38 L 27 38 L 28 38 L 29 38 L 29 36 L 28 36 L 27 36 L 27 21 L 26 21 L 22 21 L 21 21 z"></path>
+  </svg>
+  
+`;
+      label.appendChild(infoIcon);
+
+      const tooltip = document.createElement("span");
+      tooltip.className = "order-tooltip";
+      tooltip.textContent = additionalFields[orderNumber];
+      label.appendChild(tooltip);
+    }
 
     div.appendChild(checkbox);
     div.appendChild(label);

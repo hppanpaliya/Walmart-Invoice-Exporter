@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1] - March 25, 2025
+
+- **Enhancement:** Added order description tooltip functionality
+  - Hover over order numbers to see order delivery date or if it's canceled or returned order
+  - Displays order delivery date from order history without downloading the order invoice
+  - Makes identifying and selecting specific orders much easier
+
 ## [3.0] - March 25, 2025
 
 - **Feature:** Implemented session storage caching system
