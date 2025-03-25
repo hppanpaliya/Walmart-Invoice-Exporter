@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.0] - March 25, 2025
+
+- **Feature:** Implemented session storage caching system
+  - Automatically stores previously collected order numbers
+  - Dramatically improves loading time for repeat usage
+  - Shows cache timestamp and source information
+  - Includes option to clear cache when fresh data is needed
+  - Cache automatically expires after 24 hours
+- **Enhancement:** Improved memory management during order collection
+- **Enhancement:** Updated FAQ with information about the caching system
+
 ## [2.5] - January 5, 2025
 
 - **Enhancement:** Improved performance by blocking image loading in background tabs
