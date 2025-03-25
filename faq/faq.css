@@ -1,232 +1,230 @@
 :root {
-    --primary: #0071dc;
-    --danger: #e41e31;
-    --success: #2ecc71;
-    --background: #f8f9fa;
-    --border: #e5e7eb;
-    --text: #1a1a1a;
-    --text-secondary: #666;
+  --primary: #0071dc;
+  --danger: #e41e31;
+  --success: #2ecc71;
+  --background: #f8f9fa;
+  --border: #e5e7eb;
+  --text: #1a1a1a;
+  --text-secondary: #666;
 }
 
 body {
-    width: 100%;
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 20px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    color: var(--text);
-    background: white;
-    line-height: 1.6;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--text);
+  background: white;
+  line-height: 1.6;
 }
 
 .header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 24px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
 }
 
 .header h1 {
-    font-size: 24px;
-    font-weight: 600;
-    color: var(--text);
-    margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
 }
 
 .faq-section {
-    margin-bottom: 32px;
+  margin-bottom: 32px;
 }
 
 .faq-item {
-    background: var(--background);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 16px;
-    overflow: hidden;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  overflow: hidden;
 }
 
 .faq-question {
-    padding: 16px;
-    font-weight: 500;
-    font-size: 16px;
-    cursor: pointer;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    user-select: none;
+  padding: 16px;
+  font-weight: 500;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
 }
 
 .faq-question:hover {
-    background: rgba(0, 0, 0, 0.02);
+  background: rgba(0, 0, 0, 0.02);
 }
 
 .faq-answer {
-    padding: 0 16px;
-    font-size: 14px;
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+  padding: 0 16px;
+  font-size: 14px;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease-out, padding 0.3s ease-out;
 }
 
 .faq-answer.active {
-    padding: 16px;
-    max-height: 900px;
-    border-top: 1px solid var(--border);
+  padding: 16px;
+  max-height: 900px;
+  border-top: 1px solid var(--border);
 }
 
 .faq-answer img {
-    max-width: 100%;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    margin: 8px 0;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin: 8px 0;
 }
 
 .arrow {
-    transition: transform 0.3s ease;
+  transition: transform 0.3s ease;
 }
 
 .arrow.active {
-    transform: rotate(180deg);
+  transform: rotate(180deg);
 }
 
 .step {
-    margin: 12px 0;
-    padding-left: 24px;
-    position: relative;
+  margin: 12px 0;
+  padding-left: 24px;
+  position: relative;
 }
 
-
-
 .note {
-    background: #fff3cd;
-    border: 1px solid #ffeeba;
-    color: #856404;
-    padding: 12px;
-    border-radius: 4px;
-    margin: 12px 0;
+  background: #fff3cd;
+  border: 1px solid #ffeeba;
+  color: #856404;
+  padding: 12px;
+  border-radius: 4px;
+  margin: 12px 0;
 }
 
 /* Add to your existing CSS */
 .copy-link-container {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: #f5f5f5;
-    padding: 8px;
-    border-radius: 4px;
-    margin: 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f5f5f5;
+  padding: 8px;
+  border-radius: 4px;
+  margin: 8px 0;
 }
 
 .copy-link {
-    flex: 1;
-    user-select: all;
-    font-family: monospace;
-    font-size: 13px;
-    overflow-x: auto;
-    white-space: nowrap;
-    padding: 4px;
+  flex: 1;
+  user-select: all;
+  font-family: monospace;
+  font-size: 13px;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 4px;
 }
 
 .copy-button {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    padding: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-secondary);
-    transition: color 0.2s;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  transition: color 0.2s;
 }
 
 .copy-button:hover {
-    color: var(--primary);
+  color: var(--primary);
 }
 
 .toast {
-    position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #333;
-    color: white;
-    padding: 12px 24px;
-    border-radius: 4px;
-    font-size: 14px;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.3s, visibility 0.3s;
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: white;
+  padding: 12px 24px;
+  border-radius: 4px;
+  font-size: 14px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s, visibility 0.3s;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .toast.show {
-    opacity: 1;
-    visibility: visible;
+  opacity: 1;
+  visibility: visible;
 }
 
 .toast svg {
-    stroke: #4caf50;
+  stroke: #4caf50;
 }
 
 /* Add these footer styles to the end of your existing faq.css file */
 
 .footer {
-    margin-top: 40px;
-    padding-top: 20px;
-    font-size: 16px;
-    border-top: 1px solid var(--border);
-    text-align: center;
+  margin-top: 40px;
+  padding-top: 20px;
+  font-size: 16px;
+  border-top: 1px solid var(--border);
+  text-align: center;
 }
 
 .footer-container {
-    max-width: 800px;
-    margin: 0 auto;
+  max-width: 800px;
+  margin: 0 auto;
 }
 
 .footer-title {
-    font-size: 20px;
-    margin-bottom: 15px;
-    color: var(--text);
+  font-size: 20px;
+  margin-bottom: 15px;
+  color: var(--text);
 }
 
 .footer-description {
-    margin-bottom: 20px;
-    color: var(--text-secondary);
+  margin-bottom: 20px;
+  color: var(--text-secondary);
 }
 
 .rating-button {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 20px;
-    background-color: var(--primary);
-    color: white;
-    text-decoration: none;
-    border-radius: 6px;
-    font-weight: 500;
-    margin-bottom: 20px;
-    transition: background-color 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background-color: var(--primary);
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  font-weight: 500;
+  margin-bottom: 20px;
+  transition: background-color 0.2s ease;
 }
 
 .rating-button:hover {
-    background-color: #005bb0;
+  background-color: #005bb0;
 }
 
 .rating-button svg {
-    stroke: white;
+  stroke: white;
 }
 
 .footer-note {
-    font-size: 16px;
-    color: var(--text-secondary);
-    margin-top: 20px;
+  font-size: 16px;
+  color: var(--text-secondary);
+  margin-top: 20px;
 }
 
 .heart {
-    color: #e41e31;
+  color: #e41e31;
 }

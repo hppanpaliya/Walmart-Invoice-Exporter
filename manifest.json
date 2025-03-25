@@ -31,10 +31,10 @@
   },
   "default_locale": "en",
 
-  "web_accessible_resources": [{
-    "resources": ["faq.html","faq.js"
-  ],
-    "matches": ["https://www.walmart.com/*"]
-  }]
-    
+  "web_accessible_resources": [
+    {
+      "resources": ["faq.html", "faq.js"],
+      "matches": ["https://www.walmart.com/*"]
+    }
+  ]
 }
