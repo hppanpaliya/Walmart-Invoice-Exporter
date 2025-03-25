@@ -50,6 +50,7 @@ body {
 .faq-question {
     padding: 16px;
     font-weight: 500;
+    font-size: 16px;
     cursor: pointer;
     display: flex;
     justify-content: space-between;
@@ -63,6 +64,7 @@ body {
 
 .faq-answer {
     padding: 0 16px;
+    font-size: 14px;
     max-height: 0;
     overflow: hidden;
     transition: max-height 0.3s ease-out, padding 0.3s ease-out;
@@ -169,4 +171,62 @@ body {
 
 .toast svg {
     stroke: #4caf50;
+}
+
+/* Add these footer styles to the end of your existing faq.css file */
+
+.footer {
+    margin-top: 40px;
+    padding-top: 20px;
+    font-size: 16px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+}
+
+.footer-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.footer-title {
+    font-size: 20px;
+    margin-bottom: 15px;
+    color: var(--text);
+}
+
+.footer-description {
+    margin-bottom: 20px;
+    color: var(--text-secondary);
+}
+
+.rating-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background-color: var(--primary);
+    color: white;
+    text-decoration: none;
+    border-radius: 6px;
+    font-weight: 500;
+    margin-bottom: 20px;
+    transition: background-color 0.2s ease;
+}
+
+.rating-button:hover {
+    background-color: #005bb0;
+}
+
+.rating-button svg {
+    stroke: white;
+}
+
+.footer-note {
+    font-size: 16px;
+    color: var(--text-secondary);
+    margin-top: 20px;
+}
+
+.heart {
+    color: #e41e31;
 }

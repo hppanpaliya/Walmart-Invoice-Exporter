@@ -10,12 +10,12 @@ document.addEventListener("DOMContentLoaded", function () {
   const pageLimitInput = document.getElementById("pageLimit");
   progressElement.style.display = "none";
 
-  document.getElementById('faqButton').addEventListener('click', function(e) {
+  document.getElementById("faqButton").addEventListener("click", function (e) {
     e.preventDefault();
     chrome.tabs.create({
-        url: chrome.runtime.getURL('faq/faq.html')
+      url: chrome.runtime.getURL("faq/faq.html"),
     });
-});
+  });
 
   // Add loading spinner function
   function setButtonLoading(button, isLoading) {
@@ -100,6 +100,91 @@ document.addEventListener("DOMContentLoaded", function () {
           <p style="color: var(--primary); font-weight: 500; margin-bottom: 16px;"><a href="https://walmart.com/orders" target="_blank">walmart.com/orders</a></p>
           <p style="color: var(--text-secondary); font-size: 14px;">to use this extension.</p>
         </div>`;
+    }
+  });
+  
+  // Add clear cache button
+  const clearCacheButton = document.createElement("button");
+  clearCacheButton.id = "clearCache";
+  clearCacheButton.className = "btn btn-clear";
+  clearCacheButton.innerHTML = `
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M3 6h18"></path>
+      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
+    </svg>
+    <span class="btn-text">Clear Cache</span>
+  `;
+
+  // Insert clear cache button into the button group
+  const buttonGroup = document.querySelector(".button-group");
+  buttonGroup.appendChild(clearCacheButton);
+
+  // Add clear cache functionality
+  clearCacheButton.addEventListener("click", function () {
+    setButtonLoading(clearCacheButton, true);
+    chrome.runtime.sendMessage({ action: "clearCache" }, function (response) {
+      if (response.status === "cache_cleared") {
+        setButtonLoading(clearCacheButton, false);
+
+        // Update the UI to show no orders
+        displayOrderNumbers([]);
+
+        // Show a message
+        const progressElement = document.getElementById("progress");
+        progressElement.textContent = "Cache cleared successfully";
+        progressElement.style.display = "block";
+
+        // Hide the message after 2 seconds
+        setTimeout(() => {
+          progressElement.style.display = "none";
+        }, 2000);
+      }
+    });
+  });
+
+  // Check for cached data on popup open
+  chrome.runtime.sendMessage({ action: "getProgress" }, function (response) {
+    if (response && response.orderNumbers && response.orderNumbers.length > 0) {
+      displayOrderNumbers(response.orderNumbers);
+
+      // Show cache info
+      const cachePages = Object.keys(response.pagesCached || {}).length;
+      const cacheInfo = document.createElement("div");
+      cacheInfo.className = "cache-info";
+
+      // Format the cache timestamp
+      let cacheTimeInfo = "";
+      if (response.pagesCached && Object.keys(response.pagesCached).length > 0) {
+        // Find the earliest timestamp from all cached pages
+        const timestamps = Object.values(response.pagesCached)
+          .map((page) => page.timestamp)
+          .filter((ts) => ts);
+
+        if (timestamps.length > 0) {
+          const earliestTimestamp = Math.min(...timestamps);
+          const cacheDate = new Date(earliestTimestamp);
+          const formattedDate = cacheDate.toLocaleString();
+          cacheTimeInfo = `<div class="cache-time">Cached on: ${formattedDate}</div>`;
+        }
+      }
+
+      cacheInfo.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+          <line x1="12" y1="22.08" x2="12" y2="12"></line>
+        </svg>
+        <div>
+          <span>Using cached data: ${response.orderNumbers.length} orders from ${cachePages} pages</span>
+          ${cacheTimeInfo}
+        </div>
+      `;
+
+      // Add cache info to the UI
+      const progressElement = document.getElementById("progress");
+      progressElement.style.display = "block";
+      progressElement.innerHTML = "";
+      progressElement.appendChild(cacheInfo);
     }
   });
 });
@@ -293,7 +378,7 @@ async function downloadSelectedOrders() {
 
           chrome.tabs.onUpdated.addListener(handleDownload);
         }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout downloading order #${orderNumber}`)), 30000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout downloading order #${orderNumber}`)), 30000)),
       ]);
 
       return true; // Download successful
@@ -321,7 +406,7 @@ async function downloadSelectedOrders() {
       const isLongOrderNumber = orderNumber.length >= 20;
 
       // First attempt with default parameter based on order number length
-      let firstAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? '?storePurchase=true' : ''}`;
+      let firstAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? "?storePurchase=true" : ""}`;
       downloadSuccess = await attemptDownload(orderNumber, firstAttemptUrl, 1);
 
       // If first attempt fails, try with opposite parameter
@@ -330,8 +415,8 @@ async function downloadSelectedOrders() {
           <span class="loading-spinner" style="border-color: var(--success); border-top-color: transparent;"></span>
           Retrying order ${i + 1} of ${selectedOrders.length} (#${orderNumber}) with different parameters...
         `;
-        
-        let secondAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? '' : '?storePurchase=true'}`;
+
+        let secondAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? "" : "?storePurchase=true"}`;
         downloadSuccess = await attemptDownload(orderNumber, secondAttemptUrl, 2);
       }
 
@@ -340,7 +425,7 @@ async function downloadSelectedOrders() {
         failedOrders.push(orderNumber);
       }
 
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
     // Cleanup
@@ -365,7 +450,7 @@ async function downloadSelectedOrders() {
           <line x1="12" y1="16" x2="12.01" y2="16"></line>
         </svg>
         Downloads completed with ${failedOrders.length} failed orders:<br>
-        Failed orders: ${failedOrders.map(order => `#${order}`).join(', ')}
+        Failed orders: ${failedOrders.map((order) => `#${order}`).join(", ")}
       `;
     }
     setTimeout(() => progressDiv.remove(), failedOrders.length > 0 ? 30000 : 10000);
