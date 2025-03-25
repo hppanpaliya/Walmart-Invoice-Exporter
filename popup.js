@@ -102,7 +102,7 @@ document.addEventListener("DOMContentLoaded", function () {
         </div>`;
     }
   });
-  
+
   // Add clear cache button
   const clearCacheButton = document.createElement("button");
   clearCacheButton.id = "clearCache";

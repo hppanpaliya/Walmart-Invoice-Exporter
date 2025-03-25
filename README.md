@@ -58,6 +58,7 @@ Install the Walmart Invoice Exporter directly from the [Chrome Web Store](https:
 5. Pin the extension to your toolbar for easy access
 
 ## What's New
+
 ### [Changelog](./CHANGELOG.md)
 
 ## Usage
@@ -79,8 +80,6 @@ Install the Walmart Invoice Exporter directly from the [Chrome Web Store](https:
 7. Click "Download Selected Orders"
 8. Wait for the downloads to complete
 
-
-
 ## Troubleshooting
 
 ### Required Chrome Settings for Downloads
@@ -88,26 +87,33 @@ Install the Walmart Invoice Exporter directly from the [Chrome Web Store](https:
 Before using the download feature, make sure to configure Chrome settings:
 
 #### 1. Configure Download Settings:
+
 - Open Chrome Settings or paste the following link in the address bar:
+
 ```
 chrome://settings/downloads
 ```
+
 - Click on "Downloads" in the left sidebar if not already selected
 - Turn OFF "Ask where to save each file before downloading"
 - Turn OFF "Show downloads when they're done"
 
 #### 2. Enable Automatic Downloads:
+
 ```
 chrome://settings/content/siteDetails?site=https%3A%2F%2Fwww.walmart.com#:~:text=Automatic%20downloads
 ```
+
 - Open a new Chrome tab and paste the above link
 - Find "Automatic downloads" option
 - Set it to "Allow" (instead of Ask or Block)
 
 #### Alternative Method: (If the above link doesn't work):
+
 ```
 chrome://settings/content/automaticDownloads
 ```
+
 - Open a new Chrome tab and paste the above link
 - Under "**Allowed to automatically download multiple files**", click Add
 - Enter `[*.]walmart.com` and click Add
@@ -132,7 +138,6 @@ For best results when batch downloading:
 3. Ensure stable and fast internet connection
 4. Allow the extension to complete its process without switching tabs or changing windows
 5. Keep the popup window open during downloads
-
 
 ## Contributing
 
