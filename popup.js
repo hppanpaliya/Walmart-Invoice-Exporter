@@ -574,7 +574,7 @@ function maybeShowRatingHint() {
       // Show the hint
       setTimeout(() => {
         ratingHint.classList.add("show");
-      }, 1500);
+      }, 500);
     });
   });
 }

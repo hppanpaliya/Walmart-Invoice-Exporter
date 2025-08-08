@@ -205,7 +205,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     orderDate = orderDate.replace("order", "").trim();
     let orderTotal = document.querySelector(".bill-order-total-payment h2:last-child")?.innerText;
     let deliveryCharges = document.querySelector(".print-fees")?.innerText || "$0.00";
-    let tax = document.querySelector(".print-bill-payment-section .pv3 .w_U9_0.w_U0S3.w_QcqU:last-child")?.innerText || "$0.00";
+    
+    // Find tax by looking for the text "Tax" and getting the corresponding amount
+    let tax = "$0.00";
+    const taxElements = document.querySelectorAll('.w_iUH7');
+    for (let element of taxElements) {
+      if (element.textContent.includes('Tax')) {
+        const taxItem = element.closest('.print-fees-item');
+        const taxAmount = taxItem?.querySelector('.w_U9_0.w_sD6D.w_QcqU.ml2');
+        if (taxAmount) {
+          tax = taxAmount.innerText;
+          break;
+        }
+      }
+    }
+    
     let tip =
       document.querySelector(".print-bill-payment-section .flex.justify-between.pb2.pt3 .w_U9_0.w_U0S3.w_QcqU:last-child")?.innerText || "$0.00";
 
