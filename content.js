@@ -139,116 +139,113 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   } else if (request.method === "downloadXLSX") {
     aggressiveImageBlocking();
-    // Array to store all order items
-    let orderItems = [];
+    const data = scrapeOrderData();
+    // Convert the order details to an XLSX file using the convertToXlsx function
+    convertToXlsx(data, ExcelJS);
+    sendResponse({ data });
+  } else if (request.method === 'getOrderData') {
+    aggressiveImageBlocking();
+    const data = scrapeOrderData();
+    sendResponse({ data });
+  }
+  return true;
+});
 
-    // Select all elements representing the print items list
-    let printItemsList = document.querySelectorAll(".dn.print-items-list");
+function scrapeOrderData() {
+  // Array to store all order items
+  let orderItems = [];
 
-    // Loop through each item in the print items list
-    printItemsList.forEach((item) => {
-      let productName = item.querySelector(".w_U9_0.w_sD6D.w_QcqU")?.innerText;
-      let deliveryStatus = item.querySelector(".print-bill-type .w_U9_0.w_sD6D.w_QcqU")?.innerText || "Delivered";
-      let quantity = item.querySelector(".print-bill-qty .w_U9_0.w_sD6D.w_QcqU")?.innerText;
-      let price = item.querySelector(".print-bill-price .w_U9_0.w_sD6D.w_QcqU")?.innerText;
+  // Select all elements representing the print items list
+  let printItemsList = document.querySelectorAll(".dn.print-items-list");
 
-      // Find the corresponding visible item to get the product link
-      let productLink = "N/A";
-      let visibleItems = document.querySelectorAll('[data-testid="itemtile-stack"] [data-testid="productName"] span');
-      for (let visibleItem of visibleItems) {
-        if (visibleItem?.innerText.trim() === productName.trim()) {
-          let linkElement = visibleItem.closest('[data-testid="itemtile-stack"]').querySelector('a[link-identifier="itemClick"]');
-          if (linkElement) {
-            productLink = linkElement.href;
-            break;
-          }
-        }
-      }
+  // Loop through each item in the print items list
+  printItemsList.forEach((item) => {
+    let productName = item.querySelector(".w_U9_0.w_sD6D.w_QcqU")?.innerText;
+    let deliveryStatus = item.querySelector(".print-bill-type .w_U9_0.w_sD6D.w_QcqU")?.innerText || "Delivered";
+    let quantity = item.querySelector(".print-bill-qty .w_U9_0.w_sD6D.w_QcqU")?.innerText;
+    let price = item.querySelector(".print-bill-price .w_U9_0.w_sD6D.w_QcqU")?.innerText;
 
-      // Push the item details into the orderItems array
-      orderItems.push({
-        productName,
-        productLink,
-        deliveryStatus,
-        quantity,
-        price,
-      });
-    });
-
-    // Function to find the order number based on a list of possible selectors
-    function findOrderNumber() {
-      const selectors = [
-        ".f-subheadline-m.dark-gray-m.print-bill-bar-id",
-        "[data-testid='orderInfoCard'] .dark-gray",
-        ".print-bill-heading .dark-gray",
-        ".print-bill-bar-id",
-      ];
-
-      for (let selector of selectors) {
-        const element = document.querySelector(selector);
-        if (element) {
-          const text = element.textContent;
-          const match = text.match(/#\s*([\d-]+)/);
-          if (match) {
-            return match[1];
-          }
-        }
-      }
-
-      console.log("Order number not found with current selectors");
-      return null;
-    }
-
-    // Extract additional order details
-    let orderNumber = findOrderNumber();
-    let orderDate = document.querySelector(".print-bill-date")?.innerText;
-    orderDate = orderDate.replace("order", "").trim();
-    let orderTotal = document.querySelector(".bill-order-total-payment h2:last-child")?.innerText;
-    let deliveryCharges = document.querySelector(".print-fees")?.innerText || "$0.00";
-    
-    // Find tax by looking for the text "Tax" and getting the corresponding amount
-    let tax = "$0.00";
-    const taxElements = document.querySelectorAll('.w_iUH7');
-    for (let element of taxElements) {
-      if (element.textContent.includes('Tax')) {
-        const taxItem = element.closest('.print-fees-item');
-        const taxAmount = taxItem?.querySelector('.w_U9_0.w_sD6D.w_QcqU.ml2');
-        if (taxAmount) {
-          tax = taxAmount.innerText;
+    // Find the corresponding visible item to get the product link
+    let productLink = "N/A";
+    let visibleItems = document.querySelectorAll('[data-testid="itemtile-stack"] [data-testid="productName"] span');
+    for (let visibleItem of visibleItems) {
+      if (visibleItem?.innerText.trim() === (productName || '').trim()) {
+        let linkElement = visibleItem.closest('[data-testid="itemtile-stack"]').querySelector('a[link-identifier="itemClick"]');
+        if (linkElement) {
+          productLink = linkElement.href;
           break;
         }
       }
     }
-    
-    let tip =
-      document.querySelector(".print-bill-payment-section .flex.justify-between.pb2.pt3 .w_U9_0.w_U0S3.w_QcqU:last-child")?.innerText || "$0.00";
 
-    // Check if the order number was found
-    if (orderNumber) {
-      console.log("Order number:", orderNumber);
-    } else {
-      console.log("Could not find order number");
+    // Push the item details into the orderItems array
+    orderItems.push({
+      productName,
+      productLink,
+      deliveryStatus,
+      quantity,
+      price,
+    });
+  });
+
+  // Function to find the order number based on a list of possible selectors
+  function findOrderNumber() {
+    const selectors = [
+      ".f-subheadline-m.dark-gray-m.print-bill-bar-id",
+      "[data-testid='orderInfoCard'] .dark-gray",
+      ".print-bill-heading .dark-gray",
+      ".print-bill-bar-id",
+    ];
+
+    for (let selector of selectors) {
+      const element = document.querySelector(selector);
+      if (element) {
+        const text = element.textContent;
+        const match = text.match(/#\s*([\d-]+)/);
+        if (match) {
+          return match[1];
+        }
+      }
     }
 
-    // Collect all order details
-    let orderDetails = {
-      orderNumber,
-      orderDate,
-      orderTotal,
-      deliveryCharges,
-      tax,
-      tip,
-      items: orderItems,
-    };
-
-    // Convert the order details to an XLSX file using the convertToXlsx function
-    convertToXlsx(orderDetails, ExcelJS);
-
-    // Send the response back to the caller with the order details
-    sendResponse({ data: orderDetails });
+    console.log("Order number not found with current selectors");
+    return null;
   }
-  return true;
-});
+
+  // Extract additional order details
+  let orderNumber = findOrderNumber();
+  let orderDate = document.querySelector(".print-bill-date")?.innerText || '';
+  orderDate = orderDate.replace("order", "").trim();
+  let orderTotal = document.querySelector(".bill-order-total-payment h2:last-child")?.innerText || '';
+  let deliveryCharges = document.querySelector(".print-fees")?.innerText || "$0.00";
+
+  // Find tax by looking for the text "Tax" and getting the corresponding amount
+  let tax = "$0.00";
+  const taxElements = document.querySelectorAll('.w_iUH7');
+  for (let element of taxElements) {
+    if (element.textContent.includes('Tax')) {
+      const taxItem = element.closest('.print-fees-item');
+      const taxAmount = taxItem?.querySelector('.w_U9_0.w_sD6D.w_QcqU.ml2');
+      if (taxAmount) {
+        tax = taxAmount.innerText;
+        break;
+      }
+    }
+  }
+
+  let tip =
+    document.querySelector(".print-bill-payment-section .flex.justify-between.pb2.pt3 .w_U9_0.w_U0S3.w_QcqU:last-child")?.innerText || "$0.00";
+
+  return {
+    orderNumber,
+    orderDate,
+    orderTotal,
+    deliveryCharges,
+    tax,
+    tip,
+    items: orderItems,
+  };
+}
 
 async function handleCollectOrderNumbers() {
   try {

@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.2] - August 9, 2025
+
+- **Feature:** Added Export mode selector (Multiple files or Single combined file)
+  - New option in the popup to choose between downloading one XLSX per order or a single XLSX containing all selected orders
+  - Combined export is processed sequentially in one background tab for reliability
+  - Uses ExcelJS in the popup to generate a single workbook with all items
+- **Enhancement:** Content script now supports structured data retrieval (no download) to power combined export
+- **Note:** Existing multiple-file download flow remains unchanged
+
 ## [3.1] - March 25, 2025
 
 - **Enhancement:** Added order description tooltip functionality
