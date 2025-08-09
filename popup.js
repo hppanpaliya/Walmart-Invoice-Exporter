@@ -1,6 +1,7 @@
 let allOrderNumbers = new Set();
 let downloadInProgress = false;
 let timeout = 1000;
+let exportMode = 'multiple'; // 'multiple' | 'single'
 
 document.addEventListener("DOMContentLoaded", function () {
   const startButton = document.getElementById("startCollection");
@@ -8,6 +9,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const progressElement = document.getElementById("progress");
   const orderNumbersContainer = document.getElementById("orderNumbersContainer");
   const pageLimitInput = document.getElementById("pageLimit");
+  const exportModeSelect = document.getElementById("exportMode");
   progressElement.style.display = "none";
 
   document.getElementById("faqButton").addEventListener("click", function (e) {
@@ -32,6 +34,25 @@ document.addEventListener("DOMContentLoaded", function () {
       const spinner = button.querySelector(".loading-spinner");
       if (spinner) spinner.remove();
     }
+  }
+
+  // Initialize export mode from storage
+  chrome.storage.local.get(['exportMode'], (res) => {
+    exportMode = res.exportMode || 'multiple';
+    if (exportModeSelect) exportModeSelect.value = exportMode;
+  });
+
+  if (exportModeSelect) {
+    exportModeSelect.addEventListener('change', () => {
+      exportMode = exportModeSelect.value;
+      chrome.storage.local.set({ exportMode });
+      // Update button label if present
+      const btn = document.getElementById('downloadButton');
+      if (btn) {
+        const label = exportMode === 'single' ? 'Download as Single File' : 'Download Selected Orders';
+        btn.lastChild.nodeValue = ` ${label}`; // Keep icon, change text
+      }
+    });
   }
 
   chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
@@ -319,13 +340,14 @@ function displayOrderNumbers(orderNumbers, additionalFields = {}) {
     const downloadButton = document.createElement("button");
     downloadButton.id = "downloadButton";
     downloadButton.className = "btn btn-success";
+    const label = exportMode === 'single' ? 'Download as Single File' : 'Download Selected Orders';
     downloadButton.innerHTML = `
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
         <polyline points="7 10 12 15 17 10"></polyline>
         <line x1="12" y1="15" x2="12" y2="3"></line>
       </svg>
-      Download Selected Orders
+      ${label}
     `;
     downloadButton.addEventListener("click", downloadSelectedOrders);
     container.appendChild(downloadButton);
@@ -351,8 +373,25 @@ async function downloadSelectedOrders() {
   downloadButton.disabled = true;
   setButtonLoading(downloadButton, true);
   downloadInProgress = true;
-  let downloadTab = null;
   const failedOrders = [];
+
+  // Route based on export mode
+  if (exportMode === 'single') {
+    try {
+      await downloadCombinedSelectedOrders(selectedOrders, failedOrders);
+    } catch (e) {
+      console.error('Combined export failed:', e);
+      alert('An error occurred creating the combined spreadsheet.');
+    } finally {
+      downloadButton.disabled = false;
+      setButtonLoading(downloadButton, false);
+      downloadInProgress = false;
+    }
+    return;
+  }
+
+  // Multiple files flow (existing)
+  let downloadTab = null;
 
   // Helper function to attempt download with specific URL
   async function attemptDownload(orderNumber, url, attempt) {
@@ -497,6 +536,158 @@ async function downloadSelectedOrders() {
     downloadButton.disabled = false;
     setButtonLoading(downloadButton, false);
     downloadInProgress = false;
+  }
+}
+
+// Combined export: build one workbook in popup with ExcelJS
+async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
+  // Create progress indicator
+  const progressDiv = document.createElement("div");
+  progressDiv.id = "downloadProgress";
+  document.getElementById("progress").style.display = "none";
+  document.getElementById("progress").insertAdjacentElement("afterend", progressDiv);
+
+  // Prepare workbook
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Walmart Orders');
+  worksheet.columns = [
+    { header: 'Order Number', key: 'orderNumber', width: 18 },
+    { header: 'Order Date', key: 'orderDate', width: 20 },
+    { header: 'Product Name', key: 'productName', width: 60 },
+    { header: 'Quantity', key: 'quantity', width: 10 },
+    { header: 'Price', key: 'price', width: 14 },
+    { header: 'Delivery Status', key: 'deliveryStatus', width: 20 },
+    { header: 'Product Link', key: 'productLink', width: 60 },
+  ];
+
+  let downloadTab = null;
+
+  // Helper to navigate and get data with retry for storePurchase param
+  const getDataForOrder = async (orderNumber, attempt = 1) => {
+    const isLongOrderNumber = orderNumber.length >= 20;
+    const firstAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? "?storePurchase=true" : ""}`;
+    const secondAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? "" : "?storePurchase=true"}`;
+
+    const tryUrl = async (url) => {
+      // Create or reuse tab
+      if (!downloadTab) {
+        downloadTab = await new Promise((resolve) => {
+          chrome.tabs.create({ url, active: false }, resolve);
+        });
+      } else {
+        await new Promise((resolve) => {
+          chrome.tabs.update(downloadTab.id, { url }, resolve);
+        });
+      }
+
+      // Wait for load and request data
+      return await Promise.race([
+        new Promise((resolve, reject) => {
+          const handle = async (tabId, info) => {
+            if (downloadTab && tabId === downloadTab.id && info.status === 'complete') {
+              chrome.tabs.onUpdated.removeListener(handle);
+              try {
+                // Block images then request data
+                await new Promise((r) => {
+                  chrome.tabs.sendMessage(downloadTab.id, { action: 'blockImagesForDownload' }, () => r());
+                });
+                await new Promise((r) => setTimeout(r, 800));
+                chrome.tabs.sendMessage(downloadTab.id, { method: 'getOrderData' }, (resp) => {
+                  if (chrome.runtime.lastError || !resp || !resp.data) {
+                    reject(new Error('Failed to get data'));
+                  } else {
+                    resolve(resp.data);
+                  }
+                });
+              } catch (err) {
+                reject(err);
+              }
+            }
+          };
+          chrome.tabs.onUpdated.addListener(handle);
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout getting data')), 30000)),
+      ]);
+    };
+
+    try {
+      return await tryUrl(firstAttemptUrl);
+    } catch (_) {
+      return await tryUrl(secondAttemptUrl);
+    }
+  };
+
+  for (let i = 0; i < selectedOrders.length; i++) {
+    const orderNumber = selectedOrders[i];
+    progressDiv.innerHTML = `
+      <span class="loading-spinner" style="border-color: var(--success); border-top-color: transparent;"></span>
+      Collecting data ${i + 1} of ${selectedOrders.length} (#${orderNumber})...
+    `;
+
+    try {
+      const data = await getDataForOrder(orderNumber);
+      // Append rows for each item
+      (data.items || []).forEach((item) => {
+        worksheet.addRow({
+          orderNumber: data.orderNumber || orderNumber,
+          orderDate: data.orderDate || '',
+          productName: item.productName || '',
+          quantity: Number(String(item.quantity || '').replace(/[^0-9.-]+/g, '')) || 0,
+          price: Number(String(item.price || '').replace(/[^0-9.-]+/g, '')) || 0,
+          deliveryStatus: item.deliveryStatus || '',
+          productLink: item.productLink || ''
+        });
+      });
+    } catch (e) {
+      console.error('Failed to collect data for', orderNumber, e);
+      failedOrders.push(orderNumber);
+    }
+
+    await new Promise((r) => setTimeout(r, 400));
+  }
+
+  // Style header row
+  worksheet.getRow(1).font = { bold: true };
+
+  // Download single workbook
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Walmart_Orders.xlsx';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  if (downloadTab) {
+    chrome.tabs.remove(downloadTab.id);
+  }
+
+  // Completion message
+  if (failedOrders.length === 0) {
+    progressDiv.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" style="margin-right: 8px;">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+      </svg>
+      Export completed successfully!
+    `;
+  } else {
+    progressDiv.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" style="margin-right: 8px;">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      Export completed with ${failedOrders.length} failures: ${failedOrders.map((o) => `#${o}`).join(', ')}
+    `;
+  }
+  setTimeout(() => progressDiv.remove(), failedOrders.length > 0 ? 30000 : 10000);
+
+  if (failedOrders.length === 0) {
+    maybeShowRatingHint();
   }
 }
 

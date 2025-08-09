@@ -62,6 +62,15 @@ body {
   font-size: 12px;
 }
 
+.input-group select {
+  width: 100%;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  background: white;
+}
+
 .input-group input:focus {
   outline: none;
   border-color: var(--primary);
