@@ -249,7 +249,12 @@ function scrapeOrderData() {
 
 async function handleCollectOrderNumbers() {
   try {
+    // Wait for the main heading, which should be present on all pages
     await waitForElement("h1.w_kV33.w_LD4J.w_mvVb");
+    
+    // It can take a moment for the new order cards to render after a page navigation.
+    // We'll wait for at least one order card to be present before scraping.
+    await waitForElement('[data-testid^="order-"]');
 
     const { orderNumbers, additionalFields } = extractOrderNumbers();
     const hasNextPage = await checkForNextPage();
@@ -258,6 +263,11 @@ async function handleCollectOrderNumbers() {
     return { orderNumbers, additionalFields, hasNextPage };
   } catch (error) {
     console.error("Error during collection:", error);
+    // If we timed out waiting for an order, it likely means there are no more.
+    if (error.message.includes("not found after")) {
+        console.log("No order cards found. Assuming end of orders.");
+        return { orderNumbers: [], additionalFields: {}, hasNextPage: false };
+    }
     return { orderNumbers: [], additionalFields: {}, hasNextPage: false };
   }
 }
@@ -278,29 +288,51 @@ async function handleClickNextButton() {
   }
 }
 
+// Replaced the JSON parsing and old DOM scraping with a single, reliable DOM scraping method.
 function extractOrderNumbers() {
-  const orderElements = document.querySelectorAll(
-    "#maincontent > main > section > div.flex.relative-m > div.w-100.di-m.flex-auto > div > section > div > div > div > div.w_udHt.w_CEpt.bg-near-white-primary.pv3.mv0 > span.w_kV33.w_Sl3f.w_mvVb.w_E5rV > h2 > span"
-  );
-  console.log(`Found ${orderElements.length} order elements`);
   const orderNumbers = [];
-  const additionalFields = {}; // Map order number to additional field
+  const additionalFields = {};
 
-  orderElements.forEach((element) => {
-    const match = element.textContent.trim().match(/#\s*([\d-]+)/);
-    if (match && match[1]) {
-      const orderNumber = match[1];
-      orderNumbers.push(orderNumber);
+  // Select all order cards. They all have a `data-testid` starting with "order-"
+  const orderCards = document.querySelectorAll('[data-testid^="order-"]');
+  
+  if (orderCards.length === 0) {
+      console.warn("No order cards found with selector '[data-testid^=\"order-\"]'");
+  }
 
-      // Try to find the additional field for this order
-      let container = element.closest("div.w_udHt.w_CEpt");
-      if (container) {
-        const parentContainer = container.parentElement.parentElement;
-        const additionalFieldElement = parentContainer.querySelector("h3.w_kV33.w_Sl3f.w_mvVb.f3");
-        if (additionalFieldElement) {
-          additionalFields[orderNumber] = additionalFieldElement.textContent.trim();
-        }
+  orderCards.forEach((card, index) => {
+    try {
+      // Find the main H2 title, which contains the status/date.
+      // e.g., "Delivered on Oct 29" or "Nov 01, 2025 purchase"
+      const titleElement = card.querySelector('h2.w_kV33.w_Sl3f.w_mvVb.f3');
+      
+      // Find the "View details" button, which reliably contains the order number in its automation ID.
+      const buttonElement = card.querySelector('button[data-automation-id^="view-order-details-link-"]');
+
+      if (!titleElement) {
+        console.warn(`Could not find title element for order card ${index}`);
+        return; // skip this card
       }
+
+      if (!buttonElement) {
+        console.warn(`Could not find button element for order card ${index}`);
+        return; // skip this card
+      }
+
+      const title = titleElement.textContent.trim();
+      const automationId = buttonElement.getAttribute('data-automation-id');
+      
+      // Extract the order number from an ID like "view-order-details-link-xxxxxxxxxxx"
+      const orderNumber = automationId.replace('view-order-details-link-', '');
+
+      if (orderNumber && title) {
+        orderNumbers.push(orderNumber);
+        additionalFields[orderNumber] = title;
+      } else {
+         console.warn(`Failed to parse order number or title for order card ${index}`);
+      }
+    } catch (e) {
+      console.error(`Error processing order card ${index}:`, e);
     }
   });
 
