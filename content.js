@@ -140,8 +140,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.method === "downloadXLSX") {
     aggressiveImageBlocking();
     const data = scrapeOrderData();
-    // Convert the order details to an XLSX file using the convertToXlsx function
-    convertToXlsx(data, ExcelJS);
+    // Convert the order details to an XLSX file using the shared convertToXlsx function
+    convertToXlsx(data, ExcelJS, { mode: 'single' });
     sendResponse({ data });
   } else if (request.method === 'getOrderData') {
     aggressiveImageBlocking();
@@ -353,78 +353,4 @@ async function checkForNextPage() {
   }
 }
 
-// Function to convert order details to an XLSX file
-async function convertToXlsx(orderDetails, ExcelJS) {
-  // Create a new Excel workbook and worksheet
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("Order Invoice");
 
-  // Define font styles for headers and product details
-  let headerFontStyle = { size: 12, bold: true, name: "Times New Roman" };
-  let productFontStyle = { size: 12, name: "Times New Roman" };
-
-  // Set worksheet columns with headers, keys, and styles
-  worksheet.columns = [
-    { header: "Product Name", key: "productName", width: 60 },
-    { header: "Quantity", key: "quantity", width: 20, style: { numFmt: "#,##0", alignment: { horizontal: "center" } } },
-    { header: "Price", key: "price", width: 20, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
-    { header: "Delivery Status", key: "deliveryStatus", width: 30, style: { alignment: { horizontal: "center" } } },
-    { header: "Product Link", key: "productLink", width: 60, style: { font: { color: { argb: "FF0000FF" }, underline: true } } },
-  ];
-
-  // Add each order item as a row in the worksheet
-  orderDetails.items.forEach((item) => {
-    worksheet.addRow({
-      productName: item.productName,
-      productLink: { text: item.productName.length > 60 ? item.productName.substring(0, 60) + "..." : item.productName, hyperlink: item.productLink },
-      quantity: Number(item.quantity.replace(/[^0-9.-]+/g, "")),
-      price: Number(item.price.replace(/[^0-9.-]+/g, "")),
-      deliveryStatus: item.deliveryStatus,
-    }).font = productFontStyle;
-  });
-
-  // Apply product font style to all cells
-  worksheet.eachRow((row) => {
-    row.eachCell((cell) => {
-      cell.font = productFontStyle;
-    });
-    const cell = row.getCell("productLink");
-    cell.font = { color: { argb: "FF0000FF" }, underline: true };
-  });
-
-  // Apply header font style to the first row (header row)
-  worksheet.getRow(1).eachCell((cell) => {
-    cell.font = headerFontStyle;
-  });
-
-  // Add an empty row between product details and order details for clarity
-  worksheet.addRow([]);
-
-  // Add order details to the worksheet
-  worksheet.addRow(["Order Number", orderDetails.orderNumber]).font = { ...productFontStyle, bold: true };
-  worksheet.addRow(["Order Date", orderDetails.orderDate]).font = { ...productFontStyle, bold: true };
-  let deliveryCharges = worksheet.addRow(["Delivery Charges", Number(orderDetails.deliveryCharges.replace(/[^0-9.-]+/g, ""))]);
-  let tax = worksheet.addRow(["Tax", Number(orderDetails.tax.replace(/[^0-9.-]+/g, ""))]);
-  let tip = worksheet.addRow(["Tip", Number(orderDetails.tip.replace(/[^0-9.-]+/g, ""))]);
-  let total = worksheet.addRow(["Order Total", Number(orderDetails.orderTotal.replace(/[^0-9.-]+/g, ""))]);
-
-  const styleCells = [deliveryCharges, tax, tip, total];
-  styleCells.forEach((row) => {
-    row.getCell(2).numFmt = "$#,##0.00  ";
-    row.getCell(2).font = { ...productFontStyle, bold: true };
-    row.getCell(1).font = { ...productFontStyle, bold: true };
-    row.getCell(2).alignment = { horizontal: "center" };
-  });
-
-  // Generate the Excel file and trigger download in the browser
-  const buffer = await workbook.xlsx.writeBuffer();
-  let blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  let url = window.URL.createObjectURL(blob);
-  let anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `Order_${orderDetails.orderNumber}.xlsx`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  window.URL.revokeObjectURL(url);
-}

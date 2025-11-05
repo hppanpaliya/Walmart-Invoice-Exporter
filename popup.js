@@ -556,20 +556,8 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
   document.getElementById("progress").style.display = "none";
   document.getElementById("progress").insertAdjacentElement("afterend", progressDiv);
 
-  // Prepare workbook
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('Walmart Orders');
-  worksheet.columns = [
-    { header: 'Order Number', key: 'orderNumber', width: 18 },
-    { header: 'Order Date', key: 'orderDate', width: 20 },
-    { header: 'Product Name', key: 'productName', width: 60 },
-    { header: 'Quantity', key: 'quantity', width: 10 },
-    { header: 'Price', key: 'price', width: 14 },
-    { header: 'Delivery Status', key: 'deliveryStatus', width: 20 },
-    { header: 'Product Link', key: 'productLink', width: 60 },
-  ];
-
   let downloadTab = null;
+  const collectedOrdersData = [];
 
   // Helper to navigate and get data with retry for storePurchase param
   const getDataForOrder = async (orderNumber, attempt = 1) => {
@@ -626,6 +614,7 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
     }
   };
 
+  // Collect data for all selected orders
   for (let i = 0; i < selectedOrders.length; i++) {
     const orderNumber = selectedOrders[i];
     progressDiv.innerHTML = `
@@ -635,18 +624,7 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
 
     try {
       const data = await getDataForOrder(orderNumber);
-      // Append rows for each item
-      (data.items || []).forEach((item) => {
-        worksheet.addRow({
-          orderNumber: data.orderNumber || orderNumber,
-          orderDate: data.orderDate || '',
-          productName: item.productName || '',
-          quantity: Number(String(item.quantity || '').replace(/[^0-9.-]+/g, '')) || 0,
-          price: Number(String(item.price || '').replace(/[^0-9.-]+/g, '')) || 0,
-          deliveryStatus: item.deliveryStatus || '',
-          productLink: item.productLink || ''
-        });
-      });
+      collectedOrdersData.push(data);
     } catch (e) {
       console.error('Failed to collect data for', orderNumber, e);
       failedOrders.push(orderNumber);
@@ -655,23 +633,26 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
     await new Promise((r) => setTimeout(r, 400));
   }
 
-  // Style header row
-  worksheet.getRow(1).font = { bold: true };
-
-  // Download single workbook
-  const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'Walmart_Orders.xlsx';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-
+  // Close the download tab
   if (downloadTab) {
     chrome.tabs.remove(downloadTab.id);
+  }
+
+  // Convert collected orders to XLSX using shared utility
+  try {
+    await convertMultipleOrdersToXlsx(collectedOrdersData, ExcelJS, 'Walmart_Orders.xlsx');
+  } catch (e) {
+    console.error('Failed to export to XLSX:', e);
+    progressDiv.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" style="margin-right: 8px;">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      Export failed: ${e.message}
+    `;
+    setTimeout(() => progressDiv.remove(), 5000);
+    return;
   }
 
   // Completion message

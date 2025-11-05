@@ -21,7 +21,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.walmart.com/orders*"],
-      "js": ["content.js", "exceljs.bare.min.js"]
+      "js": ["utils.js", "content.js", "exceljs.bare.min.js"]
     }
   ],
   "icons": {
