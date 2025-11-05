@@ -1,5 +1,8 @@
 # Changelog
 
+## [3.3] - November 15, 2025
+- **Fix:** Resolved issue with order number extraction due to changes in Walmart's order history page structure.
+
 ## [3.2] - August 9, 2025
 
 - **Feature:** Added Export mode selector (Multiple files or Single combined file)

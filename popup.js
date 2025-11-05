@@ -65,7 +65,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       // Check if there's an order number after /orders/
       if (orderPath && /^\d{10,}$/.test(orderPath.split("?")[0])) {
-        // Individual order page
+        // Individual order page - do NOT use cache, only show current order
         const orderNumber = orderPath.split("?")[0];
         console.log("Valid order number:", orderNumber);
         displayOrderNumbers([orderNumber]);
@@ -74,6 +74,8 @@ document.addEventListener("DOMContentLoaded", function () {
         document.querySelector(".card").style.display = "none";
         document.getElementById("progress").style.display = "none";
         document.getElementsByClassName("checkbox-container")[0].style.display = "none";
+        
+        // Skip cache loading for individual order pages
       } else {
         // Main orders page setup
         startButton.addEventListener("click", function () {
@@ -108,6 +110,9 @@ document.addEventListener("DOMContentLoaded", function () {
             }
           });
         });
+        
+        // Load cache only on main orders page
+        loadCacheOnMainPage();
       }
     } else {
       document.body.innerHTML = `
@@ -163,6 +168,10 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   });
 
+});
+
+// Function to load cache only on the main orders page
+function loadCacheOnMainPage() {
   // Check for cached data on popup open
   chrome.runtime.sendMessage({ action: "getProgress" }, function (response) {
     if (response && response.orderNumbers && response.orderNumbers.length > 0) {
@@ -213,7 +222,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
   });
-});
+}
 
 function updateProgress() {
   chrome.runtime.sendMessage({ action: "getProgress" }, function (response) {
