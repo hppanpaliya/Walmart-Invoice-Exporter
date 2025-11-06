@@ -288,6 +288,8 @@ const SVG_ICONS = {
   STAR: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>',
   
   X_CLOSE: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>',
+
+  CACHE: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3c4.97 0 9 3.582 9 8s-4.03 8-9 8-9-3.582-9-8 4.03-8 9-8m0-2C6.477 1 2 4.925 2 9.72c0 3.45 2.563 6.43 6 7.723V22h8v-4.558c3.437-1.294 6-4.273 6-7.723 0-4.795-4.477-8.72-10-8.72z"></path></svg>',
 };
 
 /**
@@ -661,3 +663,131 @@ function truncateText(text, maxLength = 60, suffix = '...') {
   if (!text || text.length <= maxLength) return text;
   return text.substring(0, maxLength) + suffix;
 }
+
+/**
+ * Invoice Caching Utilities
+ */
+
+const INVOICE_CACHE_KEY = 'walmart_invoice_cache';
+const INVOICE_CACHE_EXPIRATION = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Get cached invoice data for an order
+ * @param {string} orderNumber - The order number
+ * @returns {Promise<Object|null>} Cached invoice data or null if not cached or expired
+ */
+function getCachedInvoice(orderNumber) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([INVOICE_CACHE_KEY], (result) => {
+      if (!result[INVOICE_CACHE_KEY]) {
+        resolve(null);
+        return;
+      }
+      
+      const cache = result[INVOICE_CACHE_KEY];
+      const cached = cache[orderNumber];
+      
+      if (!cached) {
+        resolve(null);
+        return;
+      }
+      
+      // Check if cache is expired
+      if (Date.now() - cached.timestamp > INVOICE_CACHE_EXPIRATION) {
+        // Remove expired cache
+        deleteInvoiceCache(orderNumber);
+        resolve(null);
+        return;
+      }
+      
+      resolve(cached.data);
+    });
+  });
+}
+
+/**
+ * Save invoice data to cache
+ * @param {string} orderNumber - The order number
+ * @param {Object} invoiceData - The invoice data to cache
+ * @returns {Promise<void>}
+ */
+function cacheInvoice(orderNumber, invoiceData) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([INVOICE_CACHE_KEY], (result) => {
+      const cache = result[INVOICE_CACHE_KEY] || {};
+      
+      cache[orderNumber] = {
+        data: invoiceData,
+        timestamp: Date.now(),
+      };
+      
+      chrome.storage.local.set({ [INVOICE_CACHE_KEY]: cache }, () => {
+        console.log(`Cached invoice data for order ${orderNumber}`);
+        resolve();
+      });
+    });
+  });
+}
+
+/**
+ * Delete cached invoice for a specific order
+ * @param {string} orderNumber - The order number
+ * @returns {Promise<void>}
+ */
+function deleteInvoiceCache(orderNumber) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([INVOICE_CACHE_KEY], (result) => {
+      const cache = result[INVOICE_CACHE_KEY] || {};
+      delete cache[orderNumber];
+      
+      if (Object.keys(cache).length === 0) {
+        chrome.storage.local.remove(INVOICE_CACHE_KEY, resolve);
+      } else {
+        chrome.storage.local.set({ [INVOICE_CACHE_KEY]: cache }, () => {
+          console.log(`Deleted cache for order ${orderNumber}`);
+          resolve();
+        });
+      }
+    });
+  });
+}
+
+/**
+ * Get all cached order numbers
+ * @returns {Promise<Array>} Array of cached order numbers
+ */
+function getCachedOrderNumbers() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([INVOICE_CACHE_KEY], (result) => {
+      if (!result[INVOICE_CACHE_KEY]) {
+        resolve([]);
+        return;
+      }
+      
+      const orderNumbers = Object.keys(result[INVOICE_CACHE_KEY]);
+      // Filter out expired ones
+      const validOrders = [];
+      for (const order of orderNumbers) {
+        const cached = result[INVOICE_CACHE_KEY][order];
+        if (Date.now() - cached.timestamp <= INVOICE_CACHE_EXPIRATION) {
+          validOrders.push(order);
+        }
+      }
+      resolve(validOrders);
+    });
+  });
+}
+
+/**
+ * Clear all invoice cache
+ * @returns {Promise<void>}
+ */
+function clearAllInvoiceCache() {
+  return new Promise((resolve) => {
+    chrome.storage.local.remove(INVOICE_CACHE_KEY, () => {
+      console.log('All invoice cache cleared');
+      resolve();
+    });
+  });
+}
+
