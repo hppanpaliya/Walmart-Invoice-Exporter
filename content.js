@@ -156,21 +156,21 @@ function scrapeOrderData() {
   let orderItems = [];
 
   // Select all elements representing the print items list
-  let printItemsList = document.querySelectorAll(".dn.print-items-list");
+  let printItemsList = document.querySelectorAll(CONSTANTS.SELECTORS.PRINT_ITEMS);
 
   // Loop through each item in the print items list
   printItemsList.forEach((item) => {
-    let productName = item.querySelector(".w_U9_0.w_sD6D.w_QcqU")?.innerText;
-    let deliveryStatus = item.querySelector(".print-bill-type .w_U9_0.w_sD6D.w_QcqU")?.innerText || "Delivered";
-    let quantity = item.querySelector(".print-bill-qty .w_U9_0.w_sD6D.w_QcqU")?.innerText;
-    let price = item.querySelector(".print-bill-price .w_U9_0.w_sD6D.w_QcqU")?.innerText;
+    let productName = item.querySelector(CONSTANTS.SELECTORS.PRINT_ITEM_NAME)?.innerText;
+    let deliveryStatus = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_TYPE)?.innerText || CONSTANTS.TEXT.DELIVERY_LABEL;
+    let quantity = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_QTY)?.innerText;
+    let price = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_PRICE)?.innerText;
 
     // Find the corresponding visible item to get the product link
     let productLink = "N/A";
-    let visibleItems = document.querySelectorAll('[data-testid="itemtile-stack"] [data-testid="productName"] span');
+    let visibleItems = document.querySelectorAll(CONSTANTS.SELECTORS.VISIBLE_ITEMS);
     for (let visibleItem of visibleItems) {
       if (visibleItem?.innerText.trim() === (productName || '').trim()) {
-        let linkElement = visibleItem.closest('[data-testid="itemtile-stack"]').querySelector('a[link-identifier="itemClick"]');
+        let linkElement = visibleItem.closest(CONSTANTS.SELECTORS.ITEM_STACK).querySelector(CONSTANTS.SELECTORS.PRODUCT_LINK);
         if (linkElement) {
           productLink = linkElement.href;
           break;
@@ -191,17 +191,17 @@ function scrapeOrderData() {
   // Function to find the order number based on a list of possible selectors
   function findOrderNumber() {
     const selectors = [
-      ".f-subheadline-m.dark-gray-m.print-bill-bar-id",
-      "[data-testid='orderInfoCard'] .dark-gray",
-      ".print-bill-heading .dark-gray",
-      ".print-bill-bar-id",
+      CONSTANTS.SELECTORS.ORDER_NUMBER_BAR,
+      CONSTANTS.SELECTORS.ORDER_INFO_CARD,
+      CONSTANTS.SELECTORS.ORDER_NUMBER_HEADING,
+      CONSTANTS.SELECTORS.PRINT_BILL_ID,
     ];
 
     for (let selector of selectors) {
       const element = document.querySelector(selector);
       if (element) {
         const text = element.textContent;
-        const match = text.match(/#\s*([\d-]+)/);
+        const match = text.match(CONSTANTS.ORDER_NUMBER_REGEX);
         if (match) {
           return match[1];
         }
@@ -214,14 +214,14 @@ function scrapeOrderData() {
 
   // Extract additional order details
   let orderNumber = findOrderNumber();
-  let orderDate = document.querySelector(".print-bill-date")?.innerText || '';
+  let orderDate = document.querySelector(CONSTANTS.SELECTORS.ORDER_DATE)?.innerText || '';
   orderDate = orderDate.replace("order", "").trim();
-  let orderTotal = document.querySelector(".bill-order-total-payment h2:last-child")?.innerText || '';
-  let deliveryCharges = document.querySelector(".print-fees")?.innerText || "$0.00";
+  let orderTotal = document.querySelector(CONSTANTS.SELECTORS.ORDER_TOTAL)?.innerText || '';
+  let deliveryCharges = document.querySelector(CONSTANTS.SELECTORS.DELIVERY_CHARGES)?.innerText || "$0.00";
 
   // Find tax by looking for the text "Tax" and getting the corresponding amount
   let tax = "$0.00";
-  const taxElements = document.querySelectorAll('.w_iUH7');
+  const taxElements = document.querySelectorAll(CONSTANTS.SELECTORS.TAX_ELEMENTS);
   for (let element of taxElements) {
     if (element.textContent.includes('Tax')) {
       const taxItem = element.closest('.print-fees-item');
@@ -250,7 +250,7 @@ function scrapeOrderData() {
 async function handleCollectOrderNumbers() {
   try {
     // Wait for the main heading, which should be present on all pages
-    await waitForElement("h1.w_kV33.w_LD4J.w_mvVb");
+    await waitForElement(CONSTANTS.SELECTORS.MAIN_HEADING);
     
     // It can take a moment for the new order cards to render after a page navigation.
     // We'll wait for at least one order card to be present before scraping.
@@ -275,10 +275,10 @@ async function handleCollectOrderNumbers() {
 async function handleClickNextButton() {
   try {
     // Wait for the Purchase history heading first
-    await waitForElement("h1.w_kV33.w_LD4J.w_mvVb");
+    await waitForElement(CONSTANTS.SELECTORS.MAIN_HEADING);
 
     // Then wait for the next button to be present and clickable
-    const nextButton = await waitForElement('button[data-automation-id="next-pages-button"]:not([disabled])');
+    const nextButton = await waitForElement(CONSTANTS.SELECTORS.NEXT_BUTTON);
 
     nextButton.click();
     return { success: true };
@@ -294,7 +294,7 @@ function extractOrderNumbers() {
   const additionalFields = {};
 
   // Select all order cards. They all have a `data-testid` starting with "order-"
-  const orderCards = document.querySelectorAll('[data-testid^="order-"]');
+  const orderCards = document.querySelectorAll(CONSTANTS.SELECTORS.ORDER_CARDS);
   
   if (orderCards.length === 0) {
       console.warn("No order cards found with selector '[data-testid^=\"order-\"]'");
@@ -342,10 +342,10 @@ function extractOrderNumbers() {
 async function checkForNextPage() {
   try {
     // Wait for the Purchase history heading first
-    await waitForElement("h1.w_kV33.w_LD4J.w_mvVb");
+    await waitForElement(CONSTANTS.SELECTORS.MAIN_HEADING);
 
     // Then check for the next button
-    const nextButton = document.querySelector('button[data-automation-id="next-pages-button"]:not([disabled])');
+    const nextButton = document.querySelector(CONSTANTS.SELECTORS.NEXT_BUTTON);
     return !!nextButton;
   } catch (error) {
     console.error("Error checking for next page:", error);
