@@ -143,8 +143,12 @@ document.addEventListener("DOMContentLoaded", function () {
   buttonGroup.appendChild(clearCacheButton);
 
   // Add clear cache functionality
-  clearCacheButton.addEventListener("click", function () {
+  clearCacheButton.addEventListener("click", async function () {
     setButtonLoading(clearCacheButton, true);
+    
+    // Clear invoice cache
+    await clearAllInvoiceCache();
+    
     chrome.runtime.sendMessage({ action: "clearCache" }, function (response) {
       if (response.status === "cache_cleared") {
         setButtonLoading(clearCacheButton, false);
@@ -270,9 +274,13 @@ function updateCheckboxCount(container) {
   heading.textContent = `${CONSTANTS.TEXT.SELECT_ORDERS} (${totalOrders}) - Selected: ${checked}`;
 }
 
-function displayOrderNumbers(orderNumbers, additionalFields = {}) {
+async function displayOrderNumbers(orderNumbers, additionalFields = {}) {
   const container = document.getElementById("orderNumbersContainer");
   container.innerHTML = `<h3>${CONSTANTS.TEXT.SELECT_ORDERS} (${orderNumbers.length}) - Selected: 0</h3>`;
+
+  // Get cached order numbers
+  const cachedOrders = await getCachedOrderNumbers();
+  const cachedSet = new Set(cachedOrders);
 
   // Create select all checkbox
   const selectAllDiv = document.createElement("div");
@@ -293,7 +301,7 @@ function displayOrderNumbers(orderNumbers, additionalFields = {}) {
   orderList.style.overflowY = "auto";
   orderList.style.marginBottom = "16px";
 
-  // Add individual order checkboxes
+  // Add individual order checkboxes with cache icons
   orderNumbers.forEach((orderNumber) => {
     const tooltip = additionalFields && additionalFields[orderNumber] ? additionalFields[orderNumber] : null;
     const checkboxDiv = createCheckboxElement({
@@ -302,6 +310,25 @@ function displayOrderNumbers(orderNumbers, additionalFields = {}) {
       label: `${CONSTANTS.TEXT.ORDER_PREFIX}${orderNumber}`,
       tooltip: tooltip,
     });
+
+    // Add cache indicator if cached
+    if (cachedSet.has(orderNumber)) {
+      const cacheIndicator = document.createElement("span");
+      cacheIndicator.style.cssText = 'cursor: pointer; margin-left: 6px; color: var(--primary); display: inline-flex; align-items: center; gap: 2px; font-size: 10px;';
+      cacheIndicator.title = 'Click to delete this order\'s cache';
+      cacheIndicator.innerHTML = renderIcon('CACHE', 'var(--primary)');
+      cacheIndicator.style.display = 'inline-flex';
+      
+      cacheIndicator.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await deleteInvoiceCache(orderNumber);
+        cachedSet.delete(orderNumber);
+        cacheIndicator.style.display = 'none';
+      });
+
+      checkboxDiv.appendChild(cacheIndicator);
+    }
+
     orderList.appendChild(checkboxDiv);
   });
 
@@ -376,6 +403,16 @@ async function downloadSelectedOrders() {
   // Helper function to attempt download with specific URL
   async function attemptDownload(orderNumber, url, attempt) {
     try {
+      // Check cache first - if cached, use it and create Excel file directly
+      const cachedData = await getCachedInvoice(orderNumber);
+      if (cachedData) {
+        console.log(`Using cached data for order ${orderNumber}`);
+        // Convert cached data to Excel directly without opening tab
+        convertToXlsx(cachedData, ExcelJS, { mode: 'single' });
+        return true;
+      }
+
+      // Not cached, so fetch from page
       // Create or reuse tab
       if (!downloadTab) {
         downloadTab = await new Promise((resolve) => {
@@ -409,12 +446,18 @@ async function downloadSelectedOrders() {
                 // Wait a bit longer for the page to stabilize
                 await new Promise((r) => setTimeout(r, 1000));
 
-                // Then proceed with download
-                chrome.tabs.sendMessage(downloadTab.id, { method: "downloadXLSX" }, (response) => {
+                // Get the order data and cache it
+                chrome.tabs.sendMessage(downloadTab.id, { method: "getOrderData" }, async (response) => {
                   if (chrome.runtime.lastError) {
                     reject(new Error(`Failed to download order #${orderNumber}: ${chrome.runtime.lastError.message}`));
-                  } else {
+                  } else if (response && response.data) {
+                    // Cache the data
+                    await cacheInvoice(orderNumber, response.data);
+                    // Convert to Excel
+                    convertToXlsx(response.data, ExcelJS, { mode: 'single' });
                     resolve();
+                  } else {
+                    reject(new Error(`No data received for order #${orderNumber}`));
                   }
                 });
               } catch (error) {
@@ -524,6 +567,13 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
 
   // Helper to navigate and get data with retry for storePurchase param
   const getDataForOrder = async (orderNumber, attempt = 1) => {
+    // Check cache first
+    const cachedData = await getCachedInvoice(orderNumber);
+    if (cachedData) {
+      console.log(`Using cached data for order ${orderNumber}`);
+      return cachedData;
+    }
+
     const isLongOrderNumber = orderNumber.length >= 20;
     const firstAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? "?storePurchase=true" : ""}`;
     const secondAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? "" : "?storePurchase=true"}`;
@@ -552,10 +602,12 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
                   chrome.tabs.sendMessage(downloadTab.id, { action: 'blockImagesForDownload' }, () => r());
                 });
                 await new Promise((r) => setTimeout(r, 800));
-                chrome.tabs.sendMessage(downloadTab.id, { method: 'getOrderData' }, (resp) => {
+                chrome.tabs.sendMessage(downloadTab.id, { method: 'getOrderData' }, async (resp) => {
                   if (chrome.runtime.lastError || !resp || !resp.data) {
                     reject(new Error('Failed to get data'));
                   } else {
+                    // Cache the data
+                    await cacheInvoice(orderNumber, resp.data);
                     resolve(resp.data);
                   }
                 });
