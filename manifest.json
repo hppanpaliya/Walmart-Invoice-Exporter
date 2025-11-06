@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Walmart Invoice Exporter",
-  "version": "3.3",
+  "version": "4",
   "description": "Download Walmart order details in xlsx format",
   "permissions": ["activeTab", "storage"],
   "host_permissions": ["https://www.walmart.com/*"],
