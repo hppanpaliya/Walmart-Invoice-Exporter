@@ -139,120 +139,122 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   } else if (request.method === "downloadXLSX") {
     aggressiveImageBlocking();
-    // Array to store all order items
-    let orderItems = [];
-
-    // Select all elements representing the print items list
-    let printItemsList = document.querySelectorAll(".dn.print-items-list");
-
-    // Loop through each item in the print items list
-    printItemsList.forEach((item) => {
-      let productName = item.querySelector(".w_U9_0.w_sD6D.w_QcqU")?.innerText;
-      let deliveryStatus = item.querySelector(".print-bill-type .w_U9_0.w_sD6D.w_QcqU")?.innerText || "Delivered";
-      let quantity = item.querySelector(".print-bill-qty .w_U9_0.w_sD6D.w_QcqU")?.innerText;
-      let price = item.querySelector(".print-bill-price .w_U9_0.w_sD6D.w_QcqU")?.innerText;
-
-      // Find the corresponding visible item to get the product link
-      let productLink = "N/A";
-      let visibleItems = document.querySelectorAll('[data-testid="itemtile-stack"] [data-testid="productName"] span');
-      for (let visibleItem of visibleItems) {
-        if (visibleItem?.innerText.trim() === productName.trim()) {
-          let linkElement = visibleItem.closest('[data-testid="itemtile-stack"]').querySelector('a[link-identifier="itemClick"]');
-          if (linkElement) {
-            productLink = linkElement.href;
-            break;
-          }
-        }
-      }
-
-      // Push the item details into the orderItems array
-      orderItems.push({
-        productName,
-        productLink,
-        deliveryStatus,
-        quantity,
-        price,
-      });
-    });
-
-    // Function to find the order number based on a list of possible selectors
-    function findOrderNumber() {
-      const selectors = [
-        ".f-subheadline-m.dark-gray-m.print-bill-bar-id",
-        "[data-testid='orderInfoCard'] .dark-gray",
-        ".print-bill-heading .dark-gray",
-        ".print-bill-bar-id",
-      ];
-
-      for (let selector of selectors) {
-        const element = document.querySelector(selector);
-        if (element) {
-          const text = element.textContent;
-          const match = text.match(/#\s*([\d-]+)/);
-          if (match) {
-            return match[1];
-          }
-        }
-      }
-
-      console.log("Order number not found with current selectors");
-      return null;
-    }
-
-    // Extract additional order details
-    let orderNumber = findOrderNumber();
-    let orderDate = document.querySelector(".print-bill-date")?.innerText;
-    orderDate = orderDate.replace("order", "").trim();
-    let orderTotal = document.querySelector(".bill-order-total-payment h2:last-child")?.innerText;
-    let deliveryCharges = document.querySelector(".print-fees")?.innerText || "$0.00";
-    
-    // Find tax by looking for the text "Tax" and getting the corresponding amount
-    let tax = "$0.00";
-    const taxElements = document.querySelectorAll('.w_iUH7');
-    for (let element of taxElements) {
-      if (element.textContent.includes('Tax')) {
-        const taxItem = element.closest('.print-fees-item');
-        const taxAmount = taxItem?.querySelector('.w_U9_0.w_sD6D.w_QcqU.ml2');
-        if (taxAmount) {
-          tax = taxAmount.innerText;
-          break;
-        }
-      }
-    }
-    
-    let tip =
-      document.querySelector(".print-bill-payment-section .flex.justify-between.pb2.pt3 .w_U9_0.w_U0S3.w_QcqU:last-child")?.innerText || "$0.00";
-
-    // Check if the order number was found
-    if (orderNumber) {
-      console.log("Order number:", orderNumber);
-    } else {
-      console.log("Could not find order number");
-    }
-
-    // Collect all order details
-    let orderDetails = {
-      orderNumber,
-      orderDate,
-      orderTotal,
-      deliveryCharges,
-      tax,
-      tip,
-      items: orderItems,
-    };
-
-    // Convert the order details to an XLSX file using the convertToXlsx function
-    convertToXlsx(orderDetails, ExcelJS);
-
-    // Send the response back to the caller with the order details
-    sendResponse({ data: orderDetails });
+    const data = scrapeOrderData();
+    // Convert the order details to an XLSX file using the shared convertToXlsx function
+    convertToXlsx(data, ExcelJS, { mode: 'single' });
+    sendResponse({ data });
+  } else if (request.method === 'getOrderData') {
+    aggressiveImageBlocking();
+    const data = scrapeOrderData();
+    sendResponse({ data });
   }
   return true;
 });
 
+function scrapeOrderData() {
+  // Array to store all order items
+  let orderItems = [];
+
+  // Select all elements representing the print items list
+  let printItemsList = document.querySelectorAll(CONSTANTS.SELECTORS.PRINT_ITEMS);
+
+  // Loop through each item in the print items list
+  printItemsList.forEach((item) => {
+    let productName = item.querySelector(CONSTANTS.SELECTORS.PRINT_ITEM_NAME)?.innerText;
+    let deliveryStatus = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_TYPE)?.innerText || CONSTANTS.TEXT.DELIVERY_LABEL;
+    let quantity = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_QTY)?.innerText;
+    let price = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_PRICE)?.innerText;
+
+    // Find the corresponding visible item to get the product link
+    let productLink = "N/A";
+    let visibleItems = document.querySelectorAll(CONSTANTS.SELECTORS.VISIBLE_ITEMS);
+    for (let visibleItem of visibleItems) {
+      if (visibleItem?.innerText.trim() === (productName || '').trim()) {
+        let linkElement = visibleItem.closest(CONSTANTS.SELECTORS.ITEM_STACK).querySelector(CONSTANTS.SELECTORS.PRODUCT_LINK);
+        if (linkElement) {
+          productLink = linkElement.href;
+          break;
+        }
+      }
+    }
+
+    // Push the item details into the orderItems array
+    orderItems.push({
+      productName,
+      productLink,
+      deliveryStatus,
+      quantity,
+      price,
+    });
+  });
+
+  // Function to find the order number based on a list of possible selectors
+  function findOrderNumber() {
+    const selectors = [
+      CONSTANTS.SELECTORS.ORDER_NUMBER_BAR,
+      CONSTANTS.SELECTORS.ORDER_INFO_CARD,
+      CONSTANTS.SELECTORS.ORDER_NUMBER_HEADING,
+      CONSTANTS.SELECTORS.PRINT_BILL_ID,
+    ];
+
+    for (let selector of selectors) {
+      const element = document.querySelector(selector);
+      if (element) {
+        const text = element.textContent;
+        const match = text.match(CONSTANTS.ORDER_NUMBER_REGEX);
+        if (match) {
+          return match[1];
+        }
+      }
+    }
+
+    console.log("Order number not found with current selectors");
+    return null;
+  }
+
+  // Extract additional order details
+  let orderNumber = findOrderNumber();
+  let orderDate = document.querySelector(CONSTANTS.SELECTORS.ORDER_DATE)?.innerText || '';
+  orderDate = orderDate.replace("order", "").trim();
+  let orderTotal = document.querySelector(CONSTANTS.SELECTORS.ORDER_TOTAL)?.innerText || '';
+  let deliveryCharges = document.querySelector(CONSTANTS.SELECTORS.DELIVERY_CHARGES)?.innerText || "$0.00";
+
+  // Find tax by looking for the text "Tax" and getting the corresponding amount
+  let tax = "$0.00";
+  const taxElements = document.querySelectorAll(CONSTANTS.SELECTORS.TAX_ELEMENTS);
+  for (let element of taxElements) {
+    if (element.textContent.includes('Tax')) {
+      const taxItem = element.closest('.print-fees-item');
+      const taxAmount = taxItem?.querySelector('.w_U9_0.w_sD6D.w_QcqU.ml2');
+      if (taxAmount) {
+        tax = taxAmount.innerText;
+        break;
+      }
+    }
+  }
+
+  let tip =
+    document.querySelector(".print-bill-payment-section .flex.justify-between.pb2.pt3 .w_U9_0.w_U0S3.w_QcqU:last-child")?.innerText || "$0.00";
+
+  return {
+    orderNumber,
+    orderDate,
+    orderTotal,
+    deliveryCharges,
+    tax,
+    tip,
+    items: orderItems,
+  };
+}
+
 async function handleCollectOrderNumbers() {
   try {
-    await waitForElement("h1.w_kV33.w_LD4J.w_mvVb");
+    // Wait for the main heading, which should be present on all pages
+    await waitForElement(CONSTANTS.SELECTORS.MAIN_HEADING);
+    
+    // It can take a moment for the new order cards to render after a page navigation.
+    // We'll wait for at least one order card to be present before scraping.
+    await waitForElement('[data-testid^="order-"]');
 
     const { orderNumbers, additionalFields } = extractOrderNumbers();
     const hasNextPage = await checkForNextPage();
@@ -261,6 +263,11 @@ async function handleCollectOrderNumbers() {
     return { orderNumbers, additionalFields, hasNextPage };
   } catch (error) {
     console.error("Error during collection:", error);
+    // If we timed out waiting for an order, it likely means there are no more.
+    if (error.message.includes("not found after")) {
+        console.log("No order cards found. Assuming end of orders.");
+        return { orderNumbers: [], additionalFields: {}, hasNextPage: false };
+    }
     return { orderNumbers: [], additionalFields: {}, hasNextPage: false };
   }
 }
@@ -268,10 +275,10 @@ async function handleCollectOrderNumbers() {
 async function handleClickNextButton() {
   try {
     // Wait for the Purchase history heading first
-    await waitForElement("h1.w_kV33.w_LD4J.w_mvVb");
+    await waitForElement(CONSTANTS.SELECTORS.MAIN_HEADING);
 
     // Then wait for the next button to be present and clickable
-    const nextButton = await waitForElement('button[data-automation-id="next-pages-button"]:not([disabled])');
+    const nextButton = await waitForElement(CONSTANTS.SELECTORS.NEXT_BUTTON);
 
     nextButton.click();
     return { success: true };
@@ -281,29 +288,51 @@ async function handleClickNextButton() {
   }
 }
 
+// Replaced the JSON parsing and old DOM scraping with a single, reliable DOM scraping method.
 function extractOrderNumbers() {
-  const orderElements = document.querySelectorAll(
-    "#maincontent > main > section > div.flex.relative-m > div.w-100.di-m.flex-auto > div > section > div > div > div > div.w_udHt.w_CEpt.bg-near-white-primary.pv3.mv0 > span.w_kV33.w_Sl3f.w_mvVb.w_E5rV > h2 > span"
-  );
-  console.log(`Found ${orderElements.length} order elements`);
   const orderNumbers = [];
-  const additionalFields = {}; // Map order number to additional field
+  const additionalFields = {};
 
-  orderElements.forEach((element) => {
-    const match = element.textContent.trim().match(/#\s*([\d-]+)/);
-    if (match && match[1]) {
-      const orderNumber = match[1];
-      orderNumbers.push(orderNumber);
+  // Select all order cards. They all have a `data-testid` starting with "order-"
+  const orderCards = document.querySelectorAll(CONSTANTS.SELECTORS.ORDER_CARDS);
+  
+  if (orderCards.length === 0) {
+      console.warn("No order cards found with selector '[data-testid^=\"order-\"]'");
+  }
 
-      // Try to find the additional field for this order
-      let container = element.closest("div.w_udHt.w_CEpt");
-      if (container) {
-        const parentContainer = container.parentElement.parentElement;
-        const additionalFieldElement = parentContainer.querySelector("h3.w_kV33.w_Sl3f.w_mvVb.f3");
-        if (additionalFieldElement) {
-          additionalFields[orderNumber] = additionalFieldElement.textContent.trim();
-        }
+  orderCards.forEach((card, index) => {
+    try {
+      // Find the main H2 title, which contains the status/date.
+      // e.g., "Delivered on Oct 29" or "Nov 01, 2025 purchase"
+      const titleElement = card.querySelector('h2.w_kV33.w_Sl3f.w_mvVb.f3');
+      
+      // Find the "View details" button, which reliably contains the order number in its automation ID.
+      const buttonElement = card.querySelector('button[data-automation-id^="view-order-details-link-"]');
+
+      if (!titleElement) {
+        console.warn(`Could not find title element for order card ${index}`);
+        return; // skip this card
       }
+
+      if (!buttonElement) {
+        console.warn(`Could not find button element for order card ${index}`);
+        return; // skip this card
+      }
+
+      const title = titleElement.textContent.trim();
+      const automationId = buttonElement.getAttribute('data-automation-id');
+      
+      // Extract the order number from an ID like "view-order-details-link-xxxxxxxxxxx"
+      const orderNumber = automationId.replace('view-order-details-link-', '');
+
+      if (orderNumber && title) {
+        orderNumbers.push(orderNumber);
+        additionalFields[orderNumber] = title;
+      } else {
+         console.warn(`Failed to parse order number or title for order card ${index}`);
+      }
+    } catch (e) {
+      console.error(`Error processing order card ${index}:`, e);
     }
   });
 
@@ -313,10 +342,10 @@ function extractOrderNumbers() {
 async function checkForNextPage() {
   try {
     // Wait for the Purchase history heading first
-    await waitForElement("h1.w_kV33.w_LD4J.w_mvVb");
+    await waitForElement(CONSTANTS.SELECTORS.MAIN_HEADING);
 
     // Then check for the next button
-    const nextButton = document.querySelector('button[data-automation-id="next-pages-button"]:not([disabled])');
+    const nextButton = document.querySelector(CONSTANTS.SELECTORS.NEXT_BUTTON);
     return !!nextButton;
   } catch (error) {
     console.error("Error checking for next page:", error);
@@ -324,78 +353,4 @@ async function checkForNextPage() {
   }
 }
 
-// Function to convert order details to an XLSX file
-async function convertToXlsx(orderDetails, ExcelJS) {
-  // Create a new Excel workbook and worksheet
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("Order Invoice");
 
-  // Define font styles for headers and product details
-  let headerFontStyle = { size: 12, bold: true, name: "Times New Roman" };
-  let productFontStyle = { size: 12, name: "Times New Roman" };
-
-  // Set worksheet columns with headers, keys, and styles
-  worksheet.columns = [
-    { header: "Product Name", key: "productName", width: 60 },
-    { header: "Quantity", key: "quantity", width: 20, style: { numFmt: "#,##0", alignment: { horizontal: "center" } } },
-    { header: "Price", key: "price", width: 20, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
-    { header: "Delivery Status", key: "deliveryStatus", width: 30, style: { alignment: { horizontal: "center" } } },
-    { header: "Product Link", key: "productLink", width: 60, style: { font: { color: { argb: "FF0000FF" }, underline: true } } },
-  ];
-
-  // Add each order item as a row in the worksheet
-  orderDetails.items.forEach((item) => {
-    worksheet.addRow({
-      productName: item.productName,
-      productLink: { text: item.productName.length > 60 ? item.productName.substring(0, 60) + "..." : item.productName, hyperlink: item.productLink },
-      quantity: Number(item.quantity.replace(/[^0-9.-]+/g, "")),
-      price: Number(item.price.replace(/[^0-9.-]+/g, "")),
-      deliveryStatus: item.deliveryStatus,
-    }).font = productFontStyle;
-  });
-
-  // Apply product font style to all cells
-  worksheet.eachRow((row) => {
-    row.eachCell((cell) => {
-      cell.font = productFontStyle;
-    });
-    const cell = row.getCell("productLink");
-    cell.font = { color: { argb: "FF0000FF" }, underline: true };
-  });
-
-  // Apply header font style to the first row (header row)
-  worksheet.getRow(1).eachCell((cell) => {
-    cell.font = headerFontStyle;
-  });
-
-  // Add an empty row between product details and order details for clarity
-  worksheet.addRow([]);
-
-  // Add order details to the worksheet
-  worksheet.addRow(["Order Number", orderDetails.orderNumber]).font = { ...productFontStyle, bold: true };
-  worksheet.addRow(["Order Date", orderDetails.orderDate]).font = { ...productFontStyle, bold: true };
-  let deliveryCharges = worksheet.addRow(["Delivery Charges", Number(orderDetails.deliveryCharges.replace(/[^0-9.-]+/g, ""))]);
-  let tax = worksheet.addRow(["Tax", Number(orderDetails.tax.replace(/[^0-9.-]+/g, ""))]);
-  let tip = worksheet.addRow(["Tip", Number(orderDetails.tip.replace(/[^0-9.-]+/g, ""))]);
-  let total = worksheet.addRow(["Order Total", Number(orderDetails.orderTotal.replace(/[^0-9.-]+/g, ""))]);
-
-  const styleCells = [deliveryCharges, tax, tip, total];
-  styleCells.forEach((row) => {
-    row.getCell(2).numFmt = "$#,##0.00  ";
-    row.getCell(2).font = { ...productFontStyle, bold: true };
-    row.getCell(1).font = { ...productFontStyle, bold: true };
-    row.getCell(2).alignment = { horizontal: "center" };
-  });
-
-  // Generate the Excel file and trigger download in the browser
-  const buffer = await workbook.xlsx.writeBuffer();
-  let blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  let url = window.URL.createObjectURL(blob);
-  let anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `Order_${orderDetails.orderNumber}.xlsx`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  window.URL.revokeObjectURL(url);
-}

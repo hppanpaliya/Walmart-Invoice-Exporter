@@ -1,9 +1,10 @@
-name: Create Latest Release
+name: Create Branch Release
 
 on:
   push:
     branches:
-      - main
+      - "*"  # Run on all branches
+  workflow_dispatch: # Allow manual triggering
 
 permissions:
   contents: write
@@ -11,9 +12,21 @@ permissions:
 jobs:
   create-release:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Get branch name
+        id: branch
+        run: echo "branch=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+
+      - name: Get version from manifest.json
+        id: version
+        run: |
+          VERSION=$(jq -r '.version' manifest.json)
+          echo "version=$VERSION" >> $GITHUB_ENV
+        shell: bash
 
       - name: Read CHANGELOG
         id: changelog
@@ -25,10 +38,8 @@ jobs:
 
       - name: Create folder structure and ZIP file
         run: |
-          # Create temporary directory
           mkdir -p temp/Walmart-Invoice-Exporter
           
-          # Copy files to maintain structure
           cp -r _locales temp/Walmart-Invoice-Exporter/
           cp -r images temp/Walmart-Invoice-Exporter/
           cp -r faq temp/Walmart-Invoice-Exporter/
@@ -39,28 +50,49 @@ jobs:
           cp popup.html temp/Walmart-Invoice-Exporter/
           cp popup.js temp/Walmart-Invoice-Exporter/
           cp popup.css temp/Walmart-Invoice-Exporter/
+          cp utils.js temp/Walmart-Invoice-Exporter/
           
-          
-          # Create ZIP from the temp directory
           cd temp
-          zip -r ../Walmart-Invoice-Exporter.zip Walmart-Invoice-Exporter
+          zip -r ../Walmart-Invoice-Exporter-${GITHUB_REF_NAME}-${version}.zip Walmart-Invoice-Exporter
           cd ..
-          
-          # Clean up
           rm -rf temp
 
-      - name: Delete existing 'latest' release and tag
+      # ---------------------------
+      # Handle versioned release
+      # ---------------------------
+      - name: Delete existing versioned release
         uses: dev-drprasad/delete-tag-and-release@v1.0
         with:
-          tag_name: latest
+          tag_name: v${{ env.version }}-${{ env.branch }}
           delete_release: true
           github_token: ${{ github.token }}
+        continue-on-error: true 
 
-      - name: Create new release
+      - name: Create versioned release
         uses: softprops/action-gh-release@v1
         with:
-          files: Walmart-Invoice-Exporter.zip
-          tag_name: latest
-          name: Latest Release
+          files: Walmart-Invoice-Exporter-${{ env.branch }}-${{ env.version }}.zip
+          tag_name: v${{ env.version }}-${{ env.branch }}
+          name: Release v${{ env.version }} - ${{ env.branch }}
+          body: ${{ env.changelog }}
+          token: ${{ github.token }}
+
+      # ---------------------------
+      # Handle "latest" release for this branch
+      # ---------------------------
+      - name: Delete existing latest release for this branch
+        uses: dev-drprasad/delete-tag-and-release@v1.0
+        with:
+          tag_name: latest-${{ env.branch }}
+          delete_release: true
+          github_token: ${{ github.token }}
+        continue-on-error: true 
+
+      - name: Create latest release for this branch
+        uses: softprops/action-gh-release@v1
+        with:
+          files: Walmart-Invoice-Exporter-${{ env.branch }}-${{ env.version }}.zip
+          tag_name: latest-${{ env.branch }}
+          name: Latest Release - ${{ env.branch }}
           body: ${{ env.changelog }}
           token: ${{ github.token }}
