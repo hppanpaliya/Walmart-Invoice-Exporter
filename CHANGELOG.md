@@ -1,5 +1,9 @@
 # Changelog
 
+## [4.0] - November 16, 2025
+- **Feature:** Implemented caching for invoice data in Chrome local storage after the first download. Subsequent downloads check the cache first and use cached data if available, significantly speeding up the process.
+- **Enhancement:** Refactored code to use centralized constants for selectors, text, and CSS classes in `utils.js` for better maintainability.
+
 ## [3.3] - November 15, 2025
 - **Fix:** Resolved issue with order number extraction due to changes in Walmart's order history page structure.
 
