@@ -1,6 +1,7 @@
 let allOrderNumbers = new Set();
 let downloadInProgress = false;
 let timeout = 1000;
+let exportMode = 'multiple'; // 'multiple' | 'single'
 
 document.addEventListener("DOMContentLoaded", function () {
   const startButton = document.getElementById("startCollection");
@@ -8,6 +9,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const progressElement = document.getElementById("progress");
   const orderNumbersContainer = document.getElementById("orderNumbersContainer");
   const pageLimitInput = document.getElementById("pageLimit");
+  const exportModeSelect = document.getElementById("exportMode");
   progressElement.style.display = "none";
 
   document.getElementById("faqButton").addEventListener("click", function (e) {
@@ -34,6 +36,25 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
+  // Initialize export mode from storage
+  chrome.storage.local.get(['exportMode'], (res) => {
+    exportMode = res.exportMode || 'multiple';
+    if (exportModeSelect) exportModeSelect.value = exportMode;
+  });
+
+  if (exportModeSelect) {
+    exportModeSelect.addEventListener('change', () => {
+      exportMode = exportModeSelect.value;
+      chrome.storage.local.set({ exportMode });
+      // Update button label if present
+      const btn = document.getElementById('downloadButton');
+      if (btn) {
+        const label = exportMode === 'single' ? 'Download as Single File' : 'Download Selected Orders';
+        btn.lastChild.nodeValue = ` ${label}`; // Keep icon, change text
+      }
+    });
+  }
+
   chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
     var tab = tabs[0];
     var url = tab.url;
@@ -44,15 +65,20 @@ document.addEventListener("DOMContentLoaded", function () {
 
       // Check if there's an order number after /orders/
       if (orderPath && /^\d{10,}$/.test(orderPath.split("?")[0])) {
-        // Individual order page
+        // Individual order page - do NOT use cache, only show current order
         const orderNumber = orderPath.split("?")[0];
         console.log("Valid order number:", orderNumber);
         displayOrderNumbers([orderNumber]);
 
         // Hide unnecessary UI elements
-        document.querySelector(".card").style.display = "none";
+        // document.querySelector(".card").style.display = "none";
+        // hide div with id pageLimitGroup and buttonGroup
+        document.getElementById("pageLimitGroup").style.display = "none";
+        document.getElementById("buttonGroup").style.display = "none";
         document.getElementById("progress").style.display = "none";
         document.getElementsByClassName("checkbox-container")[0].style.display = "none";
+        
+        // Skip cache loading for individual order pages
       } else {
         // Main orders page setup
         startButton.addEventListener("click", function () {
@@ -87,17 +113,17 @@ document.addEventListener("DOMContentLoaded", function () {
             }
           });
         });
+        
+        // Load cache only on main orders page
+        loadCacheOnMainPage();
       }
     } else {
-      document.body.innerHTML = `
+      document.querySelector(".card").style.display = "none";
+      orderNumbersContainer.innerHTML = `
         <div class="card" style="text-align: center; padding: 24px;">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#e41e31" stroke-width="2" style="margin-bottom: 16px;">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
-            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-          </svg>
+          ${renderIcon('ERROR_LARGE')}
           <p style="color: var(--text); font-size: 16px; margin-bottom: 8px;">Please navigate to</p>
-          <p style="color: var(--primary); font-weight: 500; margin-bottom: 16px;"><a href="https://walmart.com/orders" target="_blank">walmart.com/orders</a></p>
+          <p style="color: var(--primary); font-weight: 500; margin-bottom: 16px;"><a href="${CONSTANTS.URLS.WALMART_ORDERS}" target="_blank">walmart.com/orders</a></p>
           <p style="color: var(--text-secondary); font-size: 14px;">to use this extension.</p>
         </div>`;
     }
@@ -106,13 +132,10 @@ document.addEventListener("DOMContentLoaded", function () {
   // Add clear cache button
   const clearCacheButton = document.createElement("button");
   clearCacheButton.id = "clearCache";
-  clearCacheButton.className = "btn btn-clear";
+  clearCacheButton.className = CONSTANTS.CSS_CLASSES.BTN_CLEAR;
   clearCacheButton.innerHTML = `
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M3 6h18"></path>
-      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
-    </svg>
-    <span class="btn-text">Clear Cache</span>
+    ${renderIcon('TRASH')}
+    <span class="btn-text">${CONSTANTS.TEXT.CLEAR_CACHE_BTN}</span>
   `;
 
   // Insert clear cache button into the button group
@@ -142,6 +165,10 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   });
 
+});
+
+// Function to load cache only on the main orders page
+function loadCacheOnMainPage() {
   // Check for cached data on popup open
   chrome.runtime.sendMessage({ action: "getProgress" }, function (response) {
     if (response && response.orderNumbers && response.orderNumbers.length > 0) {
@@ -169,22 +196,16 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       cacheInfo.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-          <line x1="12" y1="22.08" x2="12" y2="12"></line>
-        </svg>
+
         <div>
-          <span>Using cached data: ${response.orderNumbers.length} orders from ${cachePages} pages</span>
+          <span>${CONSTANTS.TEXT.USING_CACHE} ${response.orderNumbers.length} ${CONSTANTS.TEXT.ORDERS} ${cachePages} ${CONSTANTS.TEXT.PAGES}</span>
           ${cacheTimeInfo}
         </div>
       `;
 
       // Add cache info to the UI
-      const progressElement = document.getElementById("progress");
-      progressElement.style.display = "block";
-      progressElement.innerHTML = "";
-      progressElement.appendChild(cacheInfo);
+      const cardClass = document.querySelector(".card"); 
+      cardClass.appendChild(cacheInfo);
 
       // Show rating hint
       if (response.orderNumbers.length > 4) {
@@ -192,7 +213,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
   });
-});
+}
 
 function updateProgress() {
   chrome.runtime.sendMessage({ action: "getProgress" }, function (response) {
@@ -241,91 +262,74 @@ function createProgressElement() {
   return progressElement;
 }
 
+function updateCheckboxCount(container) {
+  const heading = container.querySelector("h3");
+  const total = container.querySelectorAll('input[type="checkbox"]:not(#selectAll)').length;
+  const checked = container.querySelectorAll('input[type="checkbox"]:not(#selectAll):checked').length;
+  const totalOrders = container.querySelectorAll('input[type="checkbox"]:not(#selectAll)').length;
+  heading.textContent = `${CONSTANTS.TEXT.SELECT_ORDERS} (${totalOrders}) - Selected: ${checked}`;
+}
+
 function displayOrderNumbers(orderNumbers, additionalFields = {}) {
   const container = document.getElementById("orderNumbersContainer");
-  container.innerHTML = "<h3>Select orders to download</h3>";
+  container.innerHTML = `<h3>${CONSTANTS.TEXT.SELECT_ORDERS} (${orderNumbers.length}) - Selected: 0</h3>`;
 
   // Create select all checkbox
   const selectAllDiv = document.createElement("div");
-  selectAllDiv.className = "checkbox-container";
+  selectAllDiv.className = CONSTANTS.CSS_CLASSES.CHECKBOX_CONTAINER;
   const selectAll = document.createElement("input");
   selectAll.type = "checkbox";
   selectAll.id = "selectAll";
   const selectAllLabel = document.createElement("label");
   selectAllLabel.htmlFor = "selectAll";
-  selectAllLabel.appendChild(document.createTextNode("Select All"));
+  selectAllLabel.appendChild(document.createTextNode(CONSTANTS.TEXT.SELECT_ALL));
   selectAllDiv.appendChild(selectAll);
   selectAllDiv.appendChild(selectAllLabel);
   container.appendChild(selectAllDiv);
 
   // Create order list container with scrollable area
   const orderList = document.createElement("div");
-  orderList.style.maxHeight = "200px";
+  orderList.style.maxHeight = "150px";
   orderList.style.overflowY = "auto";
   orderList.style.marginBottom = "16px";
 
   // Add individual order checkboxes
   orderNumbers.forEach((orderNumber) => {
-    const div = document.createElement("div");
-    div.className = "checkbox-container";
-
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.id = orderNumber;
-    checkbox.value = orderNumber;
-
-    const label = document.createElement("label");
-    label.htmlFor = orderNumber;
-    label.className = "order-label";
-
-    // Create span for the order number text
-    const orderText = document.createElement("span");
-    orderText.textContent = `Order #${orderNumber}`;
-    label.appendChild(orderText);
-
-    // Add hover functionality if there's an additional field
-    if (additionalFields && additionalFields[orderNumber]) {
-      const infoIcon = document.createElement("span");
-      infoIcon.className = "info-icon";
-      infoIcon.innerHTML = `
-  <svg width="12" height="12" viewBox="0 0 50 50" fill="none" stroke="currentColor" stroke-width="2">
-<path d="M 25 2 C 12.309295 2 2 12.309295 2 25 C 2 37.690705 12.309295 48 25 48 C 37.690705 48 48 37.690705 48 25 C 48 12.309295 37.690705 2 25 2 z M 25 4 C 36.609824 4 46 13.390176 46 25 C 46 36.609824 36.609824 46 25 46 C 13.390176 46 4 36.609824 4 25 C 4 13.390176 13.390176 4 25 4 z M 25 11 A 3 3 0 0 0 22 14 A 3 3 0 0 0 25 17 A 3 3 0 0 0 28 14 A 3 3 0 0 0 25 11 z M 21 21 L 21 23 L 22 23 L 23 23 L 23 36 L 22 36 L 21 36 L 21 38 L 22 38 L 23 38 L 27 38 L 28 38 L 29 38 L 29 36 L 28 36 L 27 36 L 27 21 L 26 21 L 22 21 L 21 21 z"></path>
-  </svg>
-  
-`;
-      label.appendChild(infoIcon);
-
-      const tooltip = document.createElement("span");
-      tooltip.className = "order-tooltip";
-      tooltip.textContent = additionalFields[orderNumber];
-      label.appendChild(tooltip);
-    }
-
-    div.appendChild(checkbox);
-    div.appendChild(label);
-    orderList.appendChild(div);
+    const tooltip = additionalFields && additionalFields[orderNumber] ? additionalFields[orderNumber] : null;
+    const checkboxDiv = createCheckboxElement({
+      id: orderNumber,
+      value: orderNumber,
+      label: `${CONSTANTS.TEXT.ORDER_PREFIX}${orderNumber}`,
+      tooltip: tooltip,
+    });
+    orderList.appendChild(checkboxDiv);
   });
 
   container.appendChild(orderList);
 
   // Add select all functionality
   selectAll.addEventListener("change", function () {
-    const checkboxes = orderList.querySelectorAll('input[type="checkbox"]');
-    checkboxes.forEach((cb) => (cb.checked = selectAll.checked));
+    toggleAllCheckboxes(orderList, selectAll.checked);
+    updateCheckboxCount(container);
+  });
+
+  // Update count on individual checkbox changes
+  orderNumbers.forEach((orderNumber) => {
+    const checkbox = container.querySelector(`input[value="${orderNumber}"]`);
+    if (checkbox) {
+      checkbox.addEventListener("change", () => updateCheckboxCount(container));
+    }
   });
 
   // Add download button if there are order numbers
   if (orderNumbers.length > 0 && !document.getElementById("downloadButton")) {
     const downloadButton = document.createElement("button");
     downloadButton.id = "downloadButton";
-    downloadButton.className = "btn btn-success";
+    downloadButton.className = CONSTANTS.CSS_CLASSES.BTN_SUCCESS;
+    const label = exportMode === CONSTANTS.EXPORT_MODES.SINGLE ? 'Download as Single File' : 'Download Selected Orders';
     downloadButton.innerHTML = `
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-        <polyline points="7 10 12 15 17 10"></polyline>
-        <line x1="12" y1="15" x2="12" y2="3"></line>
-      </svg>
-      Download Selected Orders
+      ${renderIcon('DOWNLOAD')}
+      ${label}
     `;
     downloadButton.addEventListener("click", downloadSelectedOrders);
     container.appendChild(downloadButton);
@@ -338,9 +342,7 @@ async function downloadSelectedOrders() {
     return;
   }
 
-  const selectedOrders = Array.from(document.querySelectorAll('input[type="checkbox"]:checked'))
-    .map((cb) => cb.value)
-    .filter((value) => value !== "on");
+  const selectedOrders = getSelectedOrderNumbers();
 
   if (selectedOrders.length === 0) {
     alert("Please select at least one order to download.");
@@ -351,8 +353,25 @@ async function downloadSelectedOrders() {
   downloadButton.disabled = true;
   setButtonLoading(downloadButton, true);
   downloadInProgress = true;
-  let downloadTab = null;
   const failedOrders = [];
+
+  // Route based on export mode
+  if (exportMode === CONSTANTS.EXPORT_MODES.SINGLE) {
+    try {
+      await downloadCombinedSelectedOrders(selectedOrders, failedOrders);
+    } catch (e) {
+      console.error('Combined export failed:', e);
+      alert('An error occurred creating the combined spreadsheet.');
+    } finally {
+      downloadButton.disabled = false;
+      setButtonLoading(downloadButton, false);
+      downloadInProgress = false;
+    }
+    return;
+  }
+
+  // Multiple files flow (existing)
+  let downloadTab = null;
 
   // Helper function to attempt download with specific URL
   async function attemptDownload(orderNumber, url, attempt) {
@@ -406,7 +425,7 @@ async function downloadSelectedOrders() {
 
           chrome.tabs.onUpdated.addListener(handleDownload);
         }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout downloading order #${orderNumber}`)), 30000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout downloading order #${orderNumber}`)), CONSTANTS.TIMING.DOWNLOAD_TIMEOUT)),
       ]);
 
       return true; // Download successful
@@ -425,26 +444,30 @@ async function downloadSelectedOrders() {
 
     for (let i = 0; i < selectedOrders.length; i++) {
       const orderNumber = selectedOrders[i];
-      progressDiv.innerHTML = `
-        <span class="loading-spinner" style="border-color: var(--success); border-top-color: transparent;"></span>
-        Downloading order ${i + 1} of ${selectedOrders.length} (#${orderNumber})...
-      `;
+      progressDiv.innerHTML = createProgressMessage(
+        i + 1,
+        selectedOrders.length,
+        CONSTANTS.TEXT.DOWNLOADING,
+        orderNumber
+      );
 
       let downloadSuccess = false;
       const isLongOrderNumber = orderNumber.length >= 20;
 
       // First attempt with default parameter based on order number length
-      let firstAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? "?storePurchase=true" : ""}`;
+      let firstAttemptUrl = `${CONSTANTS.URLS.WALMART_ORDERS}/${orderNumber}${isLongOrderNumber ? "?storePurchase=true" : ""}`;
       downloadSuccess = await attemptDownload(orderNumber, firstAttemptUrl, 1);
 
       // If first attempt fails, try with opposite parameter
       if (!downloadSuccess) {
-        progressDiv.innerHTML = `
-          <span class="loading-spinner" style="border-color: var(--success); border-top-color: transparent;"></span>
-          Retrying order ${i + 1} of ${selectedOrders.length} (#${orderNumber}) with different parameters...
-        `;
+        progressDiv.innerHTML = createProgressMessage(
+          i + 1,
+          selectedOrders.length,
+          CONSTANTS.TEXT.RETRY_PREFIX,
+          orderNumber
+        );
 
-        let secondAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? "" : "?storePurchase=true"}`;
+        let secondAttemptUrl = `${CONSTANTS.URLS.WALMART_ORDERS}/${orderNumber}${isLongOrderNumber ? "" : "?storePurchase=true"}`;
         downloadSuccess = await attemptDownload(orderNumber, secondAttemptUrl, 2);
       }
 
@@ -453,7 +476,7 @@ async function downloadSelectedOrders() {
         failedOrders.push(orderNumber);
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await delay(500);
     }
 
     // Cleanup
@@ -463,23 +486,11 @@ async function downloadSelectedOrders() {
 
     // Show completion message with failed orders if any
     if (failedOrders.length === 0) {
-      progressDiv.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" style="margin-right: 8px;">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-          <polyline points="22 4 12 14.01 9 11.01"></polyline>
-        </svg>
-        All downloads completed successfully!
-      `;
+      progressDiv.innerHTML = createSuccessMessage('All downloads completed successfully!');
     } else {
-      progressDiv.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" style="margin-right: 8px;">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="8" x2="12" y2="12"></line>
-          <line x1="12" y1="16" x2="12.01" y2="16"></line>
-        </svg>
-        Downloads completed with ${failedOrders.length} failed orders:<br>
-        Failed orders: ${failedOrders.map((order) => `#${order}`).join(", ")}
-      `;
+      progressDiv.innerHTML = createErrorMessage(
+        `Downloads completed with ${failedOrders.length} failed orders:<br>Failed orders: ${failedOrders.map((order) => `#${order}`).join(", ")}`
+      );
     }
     setTimeout(() => progressDiv.remove(), failedOrders.length > 0 ? 30000 : 10000);
 
@@ -497,6 +508,130 @@ async function downloadSelectedOrders() {
     downloadButton.disabled = false;
     setButtonLoading(downloadButton, false);
     downloadInProgress = false;
+  }
+}
+
+// Combined export: build one workbook in popup with ExcelJS
+async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
+  // Create progress indicator
+  const progressDiv = document.createElement("div");
+  progressDiv.id = "downloadProgress";
+  document.getElementById("progress").style.display = "none";
+  document.getElementById("progress").insertAdjacentElement("afterend", progressDiv);
+
+  let downloadTab = null;
+  const collectedOrdersData = [];
+
+  // Helper to navigate and get data with retry for storePurchase param
+  const getDataForOrder = async (orderNumber, attempt = 1) => {
+    const isLongOrderNumber = orderNumber.length >= 20;
+    const firstAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? "?storePurchase=true" : ""}`;
+    const secondAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? "" : "?storePurchase=true"}`;
+
+    const tryUrl = async (url) => {
+      // Create or reuse tab
+      if (!downloadTab) {
+        downloadTab = await new Promise((resolve) => {
+          chrome.tabs.create({ url, active: false }, resolve);
+        });
+      } else {
+        await new Promise((resolve) => {
+          chrome.tabs.update(downloadTab.id, { url }, resolve);
+        });
+      }
+
+      // Wait for load and request data
+      return await Promise.race([
+        new Promise((resolve, reject) => {
+          const handle = async (tabId, info) => {
+            if (downloadTab && tabId === downloadTab.id && info.status === 'complete') {
+              chrome.tabs.onUpdated.removeListener(handle);
+              try {
+                // Block images then request data
+                await new Promise((r) => {
+                  chrome.tabs.sendMessage(downloadTab.id, { action: 'blockImagesForDownload' }, () => r());
+                });
+                await new Promise((r) => setTimeout(r, 800));
+                chrome.tabs.sendMessage(downloadTab.id, { method: 'getOrderData' }, (resp) => {
+                  if (chrome.runtime.lastError || !resp || !resp.data) {
+                    reject(new Error('Failed to get data'));
+                  } else {
+                    resolve(resp.data);
+                  }
+                });
+              } catch (err) {
+                reject(err);
+              }
+            }
+          };
+          chrome.tabs.onUpdated.addListener(handle);
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout getting data')), 30000)),
+      ]);
+    };
+
+    try {
+      return await tryUrl(firstAttemptUrl);
+    } catch (_) {
+      return await tryUrl(secondAttemptUrl);
+    }
+  };
+
+  // Collect data for all selected orders
+  for (let i = 0; i < selectedOrders.length; i++) {
+    const orderNumber = selectedOrders[i];
+    progressDiv.innerHTML = createProgressMessage(
+      i + 1,
+      selectedOrders.length,
+      CONSTANTS.TEXT.COLLECTING,
+      orderNumber
+    );
+
+    try {
+      const data = await getDataForOrder(orderNumber);
+      collectedOrdersData.push(data);
+    } catch (e) {
+      console.error('Failed to collect data for', orderNumber, e);
+      failedOrders.push(orderNumber);
+    }
+
+    await delay(CONSTANTS.TIMING.RETRY_DELAY);
+  }
+
+  // Close the download tab
+  if (downloadTab) {
+    chrome.tabs.remove(downloadTab.id);
+  }
+
+  // Convert collected orders to XLSX using shared utility
+  try {
+    await convertMultipleOrdersToXlsx(collectedOrdersData, ExcelJS, 'Walmart_Orders.xlsx');
+  } catch (e) {
+    console.error('Failed to export to XLSX:', e);
+    progressDiv.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" style="margin-right: 8px;">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      Export failed: ${e.message}
+    `;
+    setTimeout(() => progressDiv.remove(), 5000);
+    return;
+  }
+
+  // Completion message
+  if (failedOrders.length === 0) {
+    progressDiv.innerHTML = createSuccessMessage(CONSTANTS.TEXT.EXPORT_SUCCESS);
+  } else {
+    progressDiv.innerHTML = createErrorMessage(
+      `Export completed with ${failedOrders.length} failures: ${failedOrders.map((o) => `#${o}`).join(', ')}`
+    );
+  }
+  setTimeout(() => progressDiv.remove(), failedOrders.length > 0 ? 30000 : 10000);
+
+  if (failedOrders.length === 0) {
+    maybeShowRatingHint();
   }
 }
 
@@ -536,17 +671,12 @@ function maybeShowRatingHint() {
         ratingHint.id = "ratingHint";
         ratingHint.className = "rating-hint";
         ratingHint.innerHTML = `
-        <a href="https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe/reviews" target="_blank">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-          </svg>
+        <a href="${CONSTANTS.URLS.WALMART_REVIEWS}" target="_blank">
+          ${renderIcon('STAR')}
           Find this helpful? Consider rating it
         </a>
         <button class="dismiss-hint" title="Don't show again">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          ${renderIcon('X_CLOSE')}
         </button>
       `;
 
@@ -574,7 +704,7 @@ function maybeShowRatingHint() {
       // Show the hint
       setTimeout(() => {
         ratingHint.classList.add("show");
-      }, 500);
+      }, CONSTANTS.TIMING.RATING_DELAY);
     });
   });
 }

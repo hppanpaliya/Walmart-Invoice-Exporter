@@ -4,6 +4,8 @@
 <head>
     <title>Walmart Invoice Exporter</title>
     <link rel="stylesheet" href="popup.css">
+    <script src="exceljs.bare.min.js"></script>
+    <script src="utils.js"></script>
 </head>
 
 <body>
@@ -35,11 +37,18 @@
     </div>
 
     <div class="card">
-        <div class="input-group">
+        <div class="input-group" id="pageLimitGroup">
             <label for="pageLimit">Number of pages to crawl (0 = unlimited)</label>
             <input type="number" id="pageLimit" min="0" value="0">
         </div>
-        <div class="button-group">
+        <div class="input-group" id="exportModeGroup">
+            <label for="exportMode">Export mode</label>
+            <select id="exportMode">
+                <option value="multiple">Multiple files (one per order)</option>
+                <option value="single">Single file (all items)</option>
+            </select>
+        </div>
+        <div class="button-group" id="buttonGroup">
             <button id="startCollection" class="btn btn-primary">
                 <span class="btn-text">Start Collection</span>
             </button>
