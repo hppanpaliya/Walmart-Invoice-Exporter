@@ -1,7 +1,10 @@
 let allOrderNumbers = new Set();
 let downloadInProgress = false;
+let collectionInProgress = false;
 let timeout = 1000;
 let exportMode = 'multiple'; // 'multiple' | 'single'
+let lastWalmartOrdersTabId = null; // Track the last known Walmart orders tab
+let currentView = 'main'; // 'main' | 'faq'
 
 document.addEventListener("DOMContentLoaded", function () {
   const startButton = document.getElementById("startCollection");
@@ -12,12 +15,100 @@ document.addEventListener("DOMContentLoaded", function () {
   const exportModeSelect = document.getElementById("exportMode");
   progressElement.style.display = "none";
 
-  document.getElementById("faqButton").addEventListener("click", function (e) {
+  // View elements
+  const mainView = document.getElementById("mainView");
+  const faqView = document.getElementById("faqView");
+  const faqButton = document.getElementById("faqButton");
+  const backButton = document.getElementById("backButton");
+  const confirmDialog = document.getElementById("confirmDialog");
+  const confirmDialogCancel = document.getElementById("confirmDialogCancel");
+  const confirmDialogProceed = document.getElementById("confirmDialogProceed");
+  const confirmDialogMessage = document.getElementById("confirmDialogMessage");
+
+  // Navigation functions
+  function showView(viewName) {
+    if (viewName === 'faq') {
+      mainView.classList.remove('active');
+      faqView.classList.add('active');
+      currentView = 'faq';
+    } else {
+      faqView.classList.remove('active');
+      mainView.classList.add('active');
+      currentView = 'main';
+      // Refresh the main view state
+      checkCurrentTab();
+    }
+  }
+
+  function isOperationRunning() {
+    return downloadInProgress || collectionInProgress;
+  }
+
+  function showConfirmDialog(message) {
+    confirmDialogMessage.textContent = message;
+    confirmDialog.classList.add('active');
+  }
+
+  function hideConfirmDialog() {
+    confirmDialog.classList.remove('active');
+  }
+
+  // FAQ button click - show confirmation if operation running
+  faqButton.addEventListener("click", function (e) {
     e.preventDefault();
-    chrome.tabs.create({
-      url: chrome.runtime.getURL("faq/faq.html"),
-    });
+    
+    if (isOperationRunning()) {
+      const opType = collectionInProgress ? 'collection' : 'download';
+      showConfirmDialog(`A ${opType} is currently running. Navigating to FAQ will stop the operation. Your collected data will be preserved.`);
+    } else {
+      showView('faq');
+    }
   });
+
+  // Back button click - show confirmation if operation running (shouldn't happen in FAQ, but be safe)
+  backButton.addEventListener("click", function (e) {
+    e.preventDefault();
+    showView('main');
+  });
+
+  // Confirmation dialog handlers
+  confirmDialogCancel.addEventListener("click", function () {
+    hideConfirmDialog();
+  });
+
+  confirmDialogProceed.addEventListener("click", function () {
+    hideConfirmDialog();
+    
+    // Stop any running operations
+    if (collectionInProgress) {
+      chrome.runtime.sendMessage({ action: "stopCollection" }, function (response) {
+        collectionInProgress = false;
+        // Update UI
+        document.getElementById("stopCollection").style.display = "none";
+        document.getElementById("startCollection").style.display = "inline-flex";
+        document.getElementById("startCollection").querySelector(".btn-text").textContent = "Restart Collection";
+      });
+    }
+    
+    // Note: downloadInProgress will naturally stop when we switch views
+    // as the download loop checks state
+    downloadInProgress = false;
+    
+    showView('faq');
+  });
+
+  // Close dialog on overlay click
+  confirmDialog.addEventListener("click", function (e) {
+    if (e.target === confirmDialog) {
+      hideConfirmDialog();
+    }
+  });
+
+  // Initialize FAQ accordion
+  initFaqAccordion();
+
+  // Initialize copy-to-clipboard for FAQ links
+  initCopyLinks();
 
   // Add loading spinner function
   function setButtonLoading(button, isLoading) {
@@ -55,77 +146,214 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-    var tab = tabs[0];
-    var url = tab.url;
-
-    if (url.startsWith("https://www.walmart.com/orders")) {
-      const cleanUrl = url.replace(/\/$/, "");
-      const orderPath = cleanUrl.split("/orders/")[1];
-
-      // Check if there's an order number after /orders/
-      if (orderPath && /^\d{10,}$/.test(orderPath.split("?")[0])) {
-        // Individual order page - do NOT use cache, only show current order
-        const orderNumber = orderPath.split("?")[0];
-        console.log("Valid order number:", orderNumber);
-        displayOrderNumbers([orderNumber]);
-
-        // Hide unnecessary UI elements
-        // document.querySelector(".card").style.display = "none";
-        // hide div with id pageLimitGroup and buttonGroup
-        document.getElementById("pageLimitGroup").style.display = "none";
-        document.getElementById("buttonGroup").style.display = "none";
-        document.getElementById("progress").style.display = "none";
-        document.getElementsByClassName("checkbox-container")[0].style.display = "none";
-        
-        // Skip cache loading for individual order pages
-      } else {
-        // Main orders page setup
-        startButton.addEventListener("click", function () {
-          const pageLimit = parseInt(pageLimitInput.value, 10);
-          startButton.style.display = "none";
-          stopButton.style.display = "inline-flex";
-          setButtonLoading(startButton, true);
-
-          chrome.runtime.sendMessage(
-            {
-              action: "startCollection",
-              url: url,
-              pageLimit: pageLimit,
-            },
-            function (response) {
-              if (response.status === "started") {
-                updateProgress();
-              }
-              setButtonLoading(startButton, false);
-            }
-          );
-        });
-
-        stopButton.addEventListener("click", function () {
-          setButtonLoading(stopButton, true);
-          chrome.runtime.sendMessage({ action: "stopCollection" }, function (response) {
-            if (response.status === "stopped") {
-              stopButton.style.display = "none";
-              startButton.style.display = "inline-flex";
-              startButton.querySelector(".btn-text").textContent = "Restart Collection";
-              setButtonLoading(stopButton, false);
-            }
-          });
-        });
-        
-        // Load cache only on main orders page
-        loadCacheOnMainPage();
+  // Function to check current tab and update UI
+  function checkCurrentTab() {
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      if (!tabs || tabs.length === 0) {
+        showOffTabWarning();
+        return;
       }
-    } else {
-      document.querySelector(".card").style.display = "none";
-      orderNumbersContainer.innerHTML = `
-        <div class="card" style="text-align: center; padding: 24px;">
-          ${renderIcon('ERROR_LARGE')}
-          <p style="color: var(--text); font-size: 16px; margin-bottom: 8px;">Please navigate to</p>
-          <p style="color: var(--primary); font-weight: 500; margin-bottom: 16px;"><a href="${CONSTANTS.URLS.WALMART_ORDERS}" target="_blank">walmart.com/orders</a></p>
-          <p style="color: var(--text-secondary); font-size: 14px;">to use this extension.</p>
-        </div>`;
+
+      var tab = tabs[0];
+      var url = tab.url;
+
+      // Remove any existing warning banner
+      const existingBanner = document.getElementById("offTabWarning");
+      if (existingBanner) existingBanner.remove();
+
+      if (url && url.startsWith("https://www.walmart.com/orders")) {
+        // Track this tab as a valid Walmart orders tab
+        lastWalmartOrdersTabId = tab.id;
+        
+        const cleanUrl = url.replace(/\/$/, "");
+        const orderPath = cleanUrl.split("/orders/")[1];
+
+        // Re-enable all interactive elements
+        setUIEnabled(true);
+
+        // Check if there's an order number after /orders/
+        if (orderPath && /^\d{10,}$/.test(orderPath.split("?")[0])) {
+          // Individual order page - do NOT use cache, only show current order
+          const orderNumber = orderPath.split("?")[0];
+          console.log("Valid order number:", orderNumber);
+          displayOrderNumbers([orderNumber]);
+
+          // Hide unnecessary UI elements
+          document.getElementById("pageLimitGroup").style.display = "none";
+          document.getElementById("buttonGroup").style.display = "none";
+          document.getElementById("progress").style.display = "none";
+          const checkboxContainer = document.getElementsByClassName("checkbox-container")[0];
+          if (checkboxContainer) checkboxContainer.style.display = "none";
+          
+          // Show the card for single order
+          document.querySelector(".card").style.display = "block";
+        } else {
+          // Main orders page setup - show full UI
+          document.getElementById("pageLimitGroup").style.display = "block";
+          document.getElementById("buttonGroup").style.display = "flex";
+          document.querySelector(".card").style.display = "block";
+          
+          setupCollectionButtons(url);
+          loadCacheOnMainPage();
+        }
+      } else {
+        // Not on Walmart orders - show warning but keep existing data
+        showOffTabWarning();
+      }
+    });
+  }
+
+  // Show warning banner and disable buttons when not on Walmart orders tab
+  function showOffTabWarning() {
+    // Disable interactive elements but don't clear the order list
+    setUIEnabled(false);
+
+    // Add warning banner if not already present
+    if (!document.getElementById("offTabWarning")) {
+      const warningBanner = document.createElement("div");
+      warningBanner.id = "offTabWarning";
+      warningBanner.className = "off-tab-warning";
+      warningBanner.innerHTML = `
+        <div class="warning-content">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span>Return to <a href="#" id="returnToWalmartLink">Walmart Orders</a> to continue</span>
+        </div>
+      `;
+      
+      // Insert at the top of body
+      document.body.insertBefore(warningBanner, document.body.firstChild);
+      
+      // Add click handler to switch to Walmart orders tab or open new one
+      document.getElementById("returnToWalmartLink").addEventListener("click", function(e) {
+        e.preventDefault();
+        switchToWalmartOrdersTab();
+      });
+    }
+
+    // If we have no cached orders loaded yet, load them now
+    chrome.runtime.sendMessage({ action: "getProgress" }, function (response) {
+      if (response && response.orderNumbers && response.orderNumbers.length > 0) {
+        // Only update if we don't already have orders displayed
+        const container = document.getElementById("orderNumbersContainer");
+        if (!container.querySelector('.order-list') || container.querySelector('.order-list').children.length === 0) {
+          displayOrderNumbers(response.orderNumbers, response.additionalFields);
+        }
+      }
+    });
+  }
+
+  // Enable or disable UI elements
+  function setUIEnabled(enabled) {
+    const card = document.querySelector(".card");
+    if (card) {
+      card.style.opacity = enabled ? "1" : "0.6";
+      card.style.pointerEvents = enabled ? "auto" : "none";
+    }
+
+    const downloadButton = document.getElementById("downloadButton");
+    if (downloadButton) {
+      downloadButton.disabled = !enabled;
+      downloadButton.style.opacity = enabled ? "1" : "0.6";
+      downloadButton.style.cursor = enabled ? "pointer" : "not-allowed";
+    }
+
+    // Disable/enable all checkboxes
+    const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(cb => {
+      cb.disabled = !enabled;
+    });
+  }
+
+  // Switch to existing Walmart orders tab or open a new one
+  function switchToWalmartOrdersTab() {
+    // First, try to find an existing Walmart orders tab
+    chrome.tabs.query({ url: "https://www.walmart.com/orders*" }, function(tabs) {
+      if (tabs && tabs.length > 0) {
+        // Switch to the first matching tab
+        chrome.tabs.update(tabs[0].id, { active: true });
+        chrome.windows.update(tabs[0].windowId, { focused: true });
+      } else {
+        // No existing tab, open a new one
+        chrome.tabs.create({ url: CONSTANTS.URLS.WALMART_ORDERS });
+      }
+    });
+  }
+
+  function showNotOnWalmartMessage() {
+    document.querySelector(".card").style.display = "none";
+    orderNumbersContainer.innerHTML = `
+      <div class="card" style="text-align: center; padding: 24px;">
+        ${renderIcon('ERROR_LARGE')}
+        <p style="color: var(--text); font-size: 16px; margin-bottom: 8px;">Please navigate to</p>
+        <p style="color: var(--primary); font-weight: 500; margin-bottom: 16px;"><a href="${CONSTANTS.URLS.WALMART_ORDERS}" target="_blank">walmart.com/orders</a></p>
+        <p style="color: var(--text-secondary); font-size: 14px;">to use this extension.</p>
+      </div>`;
+  }
+
+  function setupCollectionButtons(url) {
+    // Remove old event listeners by cloning
+    const oldStartButton = document.getElementById("startCollection");
+    const newStartButton = oldStartButton.cloneNode(true);
+    oldStartButton.parentNode.replaceChild(newStartButton, oldStartButton);
+
+    const oldStopButton = document.getElementById("stopCollection");
+    const newStopButton = oldStopButton.cloneNode(true);
+    oldStopButton.parentNode.replaceChild(newStopButton, oldStopButton);
+
+    newStartButton.addEventListener("click", function () {
+      const pageLimit = parseInt(pageLimitInput.value, 10);
+      newStartButton.style.display = "none";
+      newStopButton.style.display = "inline-flex";
+      setButtonLoading(newStartButton, true);
+
+      chrome.runtime.sendMessage(
+        {
+          action: "startCollection",
+          url: url,
+          pageLimit: pageLimit,
+        },
+        function (response) {
+          if (response && response.status === "started") {
+            updateProgress();
+          }
+          setButtonLoading(newStartButton, false);
+        }
+      );
+    });
+
+    newStopButton.addEventListener("click", function () {
+      setButtonLoading(newStopButton, true);
+      chrome.runtime.sendMessage({ action: "stopCollection" }, function (response) {
+        if (response && response.status === "stopped") {
+          newStopButton.style.display = "none";
+          newStartButton.style.display = "inline-flex";
+          newStartButton.querySelector(".btn-text").textContent = "Restart Collection";
+          setButtonLoading(newStopButton, false);
+        }
+      });
+    });
+  }
+
+  // Initial check
+  checkCurrentTab();
+
+  // Listen for tab changes to update UI dynamically
+  chrome.tabs.onActivated.addListener(function () {
+    checkCurrentTab();
+  });
+
+  // Listen for tab URL changes
+  chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, tab) {
+    if (changeInfo.status === 'complete') {
+      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+        if (tabs[0] && tabs[0].id === tabId) {
+          checkCurrentTab();
+        }
+      });
     }
   });
 
@@ -150,7 +378,7 @@ document.addEventListener("DOMContentLoaded", function () {
     await clearAllInvoiceCache();
     
     chrome.runtime.sendMessage({ action: "clearCache" }, function (response) {
-      if (response.status === "cache_cleared") {
+      if (response && response.status === "cache_cleared") {
         setButtonLoading(clearCacheButton, false);
 
         // Update the UI to show no orders
@@ -173,7 +401,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 // Function to load cache only on the main orders page
 function loadCacheOnMainPage() {
-  // Check for cached data on popup open
+  // Check for cached data on panel open
   chrome.runtime.sendMessage({ action: "getProgress" }, function (response) {
     if (response && response.orderNumbers && response.orderNumbers.length > 0) {
       displayOrderNumbers(response.orderNumbers, response.additionalFields);
@@ -207,9 +435,11 @@ function loadCacheOnMainPage() {
         </div>
       `;
 
-      // Add cache info to the UI
-      const cardClass = document.querySelector(".card"); 
-      cardClass.appendChild(cacheInfo);
+      // Add cache info to the UI (only if not already added)
+      const cardClass = document.querySelector(".card");
+      if (cardClass && !cardClass.querySelector('.cache-info')) {
+        cardClass.appendChild(cacheInfo);
+      }
 
       // Show rating hint
       if (response.orderNumbers.length > 4) {
@@ -221,14 +451,16 @@ function loadCacheOnMainPage() {
 
 function updateProgress() {
   chrome.runtime.sendMessage({ action: "getProgress" }, function (response) {
-    if (response.isCollecting) {
+    if (response && response.isCollecting) {
+      collectionInProgress = true;
       updateProgressUI(response.currentPage, response.pageLimit, true);
       displayOrderNumbers(response.orderNumbers, response.additionalFields);
       setTimeout(updateProgress, 1000);
       // set all checkboxes to disabled
       const checkboxes = document.querySelectorAll('input[type="checkbox"]');
       checkboxes.forEach((cb) => (cb.disabled = true));
-    } else {
+    } else if (response) {
+      collectionInProgress = false;
       updateProgressUI(response.currentPage, response.pageLimit, false);
       displayOrderNumbers(response.orderNumbers, response.additionalFields);
       document.getElementById("startCollection").style.display = "inline-flex";
@@ -245,6 +477,12 @@ function updateProgressUI(currentPage, pageLimit, inProgress) {
   const progressElement = document.getElementById("progress") || createProgressElement();
   const pageLimitText = pageLimit > 0 ? ` of ${pageLimit}` : "";
   document.getElementById("progress").style.display = "block";
+
+  // Hide placeholder when collection starts
+  const placeholder = document.getElementById("collectionPlaceholder");
+  if (placeholder && inProgress) {
+    placeholder.style.display = "none";
+  }
 
   if (inProgress) {
     console.log("Progress:", currentPage, pageLimit);
@@ -276,6 +514,29 @@ function updateCheckboxCount(container) {
 
 async function displayOrderNumbers(orderNumbers, additionalFields = {}) {
   const container = document.getElementById("orderNumbersContainer");
+  
+  // If no orders, show placeholder
+  if (orderNumbers.length === 0) {
+    container.innerHTML = `
+      <div id="collectionPlaceholder">
+        <p class="placeholder-status">Collection has not started. Total pages: 0</p>
+        <h3>Select orders to download (0) - Selected: 0</h3>
+        <div class="checkbox-container">
+          <input type="checkbox" id="selectAllPlaceholder" disabled>
+          <label for="selectAllPlaceholder">Select All</label>
+        </div>
+        <div class="order-list placeholder-list">
+          <p class="no-orders-message">No orders collected yet.</p>
+        </div>
+        <button id="downloadButtonPlaceholder" class="btn btn-success" disabled>
+          ${renderIcon('DOWNLOAD')}
+          Download as Single File
+        </button>
+      </div>
+    `;
+    return;
+  }
+  
   container.innerHTML = `<h3>${CONSTANTS.TEXT.SELECT_ORDERS} (${orderNumbers.length}) - Selected: 0</h3>`;
 
   // Get cached order numbers
@@ -297,9 +558,7 @@ async function displayOrderNumbers(orderNumbers, additionalFields = {}) {
 
   // Create order list container with scrollable area
   const orderList = document.createElement("div");
-  orderList.style.maxHeight = "150px";
-  orderList.style.overflowY = "auto";
-  orderList.style.marginBottom = "16px";
+  orderList.className = "order-list";
 
   // Add individual order checkboxes with cache icons
   orderNumbers.forEach((orderNumber) => {
@@ -554,7 +813,7 @@ async function downloadSelectedOrders() {
   }
 }
 
-// Combined export: build one workbook in popup with ExcelJS
+// Combined export: build one workbook in panel with ExcelJS
 async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
   // Create progress indicator
   const progressDiv = document.createElement("div");
@@ -757,6 +1016,49 @@ function maybeShowRatingHint() {
       setTimeout(() => {
         ratingHint.classList.add("show");
       }, CONSTANTS.TIMING.RATING_DELAY);
+    });
+  });
+}
+
+// FAQ Accordion functionality
+function initFaqAccordion() {
+  document.querySelectorAll(".faq-question").forEach((question) => {
+    question.addEventListener("click", () => {
+      const answer = question.nextElementSibling;
+      const arrow = question.querySelector(".arrow");
+
+      // Toggle current item
+      answer.classList.toggle("active");
+      arrow.classList.toggle("active");
+
+      // Close other items
+      document.querySelectorAll(".faq-answer").forEach((otherAnswer) => {
+        if (otherAnswer !== answer && otherAnswer.classList.contains("active")) {
+          otherAnswer.classList.remove("active");
+          otherAnswer.previousElementSibling.querySelector(".arrow").classList.remove("active");
+        }
+      });
+    });
+  });
+}
+
+// Copy-to-clipboard for FAQ links
+function initCopyLinks() {
+  const toast = document.getElementById("toast");
+  
+  document.querySelectorAll(".copy-link").forEach((link) => {
+    link.style.cursor = "pointer";
+    link.addEventListener("click", async () => {
+      const linkText = link.dataset.link;
+      try {
+        await navigator.clipboard.writeText(linkText);
+        toast.classList.add("show");
+        setTimeout(() => {
+          toast.classList.remove("show");
+        }, 2000);
+      } catch (err) {
+        console.error("Failed to copy text: ", err);
+      }
     });
   });
 }

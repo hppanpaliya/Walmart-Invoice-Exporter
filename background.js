@@ -13,6 +13,11 @@ let pagesCached = {};
 // Cache expiration time (24 hours in milliseconds)
 const CACHE_EXPIRATION = 24 * 60 * 60 * 1000;
 
+// Open side panel when extension icon is clicked
+chrome.action.onClicked.addListener((tab) => {
+  chrome.sidePanel.open({ windowId: tab.windowId });
+});
+
 // Function to load cached order data
 function loadCachedOrderNumbers() {
   return new Promise((resolve) => {

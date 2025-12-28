@@ -1,7 +1,7 @@
-const OrderNumberRegex = /#\s*([\d-]+)/;
-let allOrderNumbers = new Set();
-let currentPage = 0;
-let isProcessing = false;
+/**
+ * Content script for Walmart Invoice Exporter
+ * Handles DOM extraction and image blocking on Walmart order pages
+ */
 
 function removeAllImages() {
   // Remove background images from elements
@@ -73,7 +73,8 @@ function blockImageLoading() {
     },
   });
 
-  // Intercept image loading
+  // Intercept image loading with optimized MutationObserver
+  // Only monitor childList changes to reduce CPU overhead
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       mutation.addedNodes.forEach((node) => {
@@ -90,14 +91,27 @@ function blockImageLoading() {
     });
   });
 
+  // Disable attribute and characterData monitoring to reduce observer firing frequency
   observer.observe(document.documentElement, {
     childList: true,
     subtree: true,
+    attributes: false,
+    characterData: false
   });
 }
 
 function aggressiveImageBlocking() {
-  // Add style to hide images immediately
+  // Early interception: block images before they load
+  window.addEventListener('beforeload', (e) => {
+    if (e.target.tagName === 'IMG') e.preventDefault();
+  }, true);
+
+  // Handle failed image loads by hiding them
+  document.addEventListener('error', (e) => {
+    if (e.target.tagName === 'IMG' || e.target.tagName === 'PICTURE') {
+      e.target.style.display = 'none';
+    }
+  }, true);
 
   removeAllImages();
   blockImageLoading();
@@ -108,7 +122,8 @@ function aggressiveImageBlocking() {
 }
 
 // Function to wait for an element to appear
-async function waitForElement(selector, timeout = 30000) {
+// Timeout reduced to 10s with 200ms polling for faster response
+async function waitForElement(selector, timeout = 10000) {
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeout) {
@@ -116,7 +131,7 @@ async function waitForElement(selector, timeout = 30000) {
     if (element) {
       return element;
     }
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 200));
   }
 
   throw new Error(`Element ${selector} not found after ${timeout}ms`);
@@ -151,26 +166,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return true;
 });
 
+/**
+ * Scrapes order data from an individual order detail page.
+ * Extracts product details, pricing, and order metadata from the print view.
+ * @returns {Object} Order data including items, totals, and order info
+ */
 function scrapeOrderData() {
-  // Array to store all order items
-  let orderItems = [];
+  const orderItems = [];
 
-  // Select all elements representing the print items list
-  let printItemsList = document.querySelectorAll(CONSTANTS.SELECTORS.PRINT_ITEMS);
+  // Query the hidden print items list which contains reliable product data
+  const printItemsList = document.querySelectorAll(CONSTANTS.SELECTORS.PRINT_ITEMS);
 
-  // Loop through each item in the print items list
   printItemsList.forEach((item) => {
-    let productName = item.querySelector(CONSTANTS.SELECTORS.PRINT_ITEM_NAME)?.innerText;
-    let deliveryStatus = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_TYPE)?.innerText || CONSTANTS.TEXT.DELIVERY_LABEL;
-    let quantity = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_QTY)?.innerText;
-    let price = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_PRICE)?.innerText;
+    const productName = item.querySelector(CONSTANTS.SELECTORS.PRINT_ITEM_NAME)?.innerText;
+    // Fall back to default delivery label if status element not found
+    const deliveryStatus = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_TYPE)?.innerText || CONSTANTS.TEXT.DELIVERY_LABEL;
+    const quantity = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_QTY)?.innerText;
+    const price = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_PRICE)?.innerText;
 
     // Find the corresponding visible item to get the product link
     let productLink = "N/A";
-    let visibleItems = document.querySelectorAll(CONSTANTS.SELECTORS.VISIBLE_ITEMS);
-    for (let visibleItem of visibleItems) {
+    const visibleItems = document.querySelectorAll(CONSTANTS.SELECTORS.VISIBLE_ITEMS);
+    for (const visibleItem of visibleItems) {
       if (visibleItem?.innerText.trim() === (productName || '').trim()) {
-        let linkElement = visibleItem.closest(CONSTANTS.SELECTORS.ITEM_STACK).querySelector(CONSTANTS.SELECTORS.PRODUCT_LINK);
+        const linkElement = visibleItem.closest(CONSTANTS.SELECTORS.ITEM_STACK)?.querySelector(CONSTANTS.SELECTORS.PRODUCT_LINK);
         if (linkElement) {
           productLink = linkElement.href;
           break;
@@ -178,7 +197,6 @@ function scrapeOrderData() {
       }
     }
 
-    // Push the item details into the orderItems array
     orderItems.push({
       productName,
       productLink,
@@ -188,7 +206,10 @@ function scrapeOrderData() {
     });
   });
 
-  // Function to find the order number based on a list of possible selectors
+  /**
+   * Finds order number using fallback selectors.
+   * Tries multiple locations where order number might appear.
+   */
   function findOrderNumber() {
     const selectors = [
       CONSTANTS.SELECTORS.ORDER_NUMBER_BAR,
@@ -197,7 +218,7 @@ function scrapeOrderData() {
       CONSTANTS.SELECTORS.PRINT_BILL_ID,
     ];
 
-    for (let selector of selectors) {
+    for (const selector of selectors) {
       const element = document.querySelector(selector);
       if (element) {
         const text = element.textContent;
@@ -212,17 +233,17 @@ function scrapeOrderData() {
     return null;
   }
 
-  // Extract additional order details
-  let orderNumber = findOrderNumber();
+  // Extract order metadata
+  const orderNumber = findOrderNumber();
   let orderDate = document.querySelector(CONSTANTS.SELECTORS.ORDER_DATE)?.innerText || '';
   orderDate = orderDate.replace("order", "").trim();
-  let orderTotal = document.querySelector(CONSTANTS.SELECTORS.ORDER_TOTAL)?.innerText || '';
-  let deliveryCharges = document.querySelector(CONSTANTS.SELECTORS.DELIVERY_CHARGES)?.innerText || "$0.00";
+  const orderTotal = document.querySelector(CONSTANTS.SELECTORS.ORDER_TOTAL)?.innerText || '';
+  const deliveryCharges = document.querySelector(CONSTANTS.SELECTORS.DELIVERY_CHARGES)?.innerText || "$0.00";
 
-  // Find tax by looking for the text "Tax" and getting the corresponding amount
+  // Find tax by searching for "Tax" label and extracting the corresponding amount
   let tax = "$0.00";
   const taxElements = document.querySelectorAll(CONSTANTS.SELECTORS.TAX_ELEMENTS);
-  for (let element of taxElements) {
+  for (const element of taxElements) {
     if (element.textContent.includes('Tax')) {
       const taxItem = element.closest('.print-fees-item');
       const taxAmount = taxItem?.querySelector('.w_U9_0.w_sD6D.w_QcqU.ml2');
@@ -233,7 +254,7 @@ function scrapeOrderData() {
     }
   }
 
-  let tip =
+  const tip =
     document.querySelector(".print-bill-payment-section .flex.justify-between.pb2.pt3 .w_U9_0.w_U0S3.w_QcqU:last-child")?.innerText || "$0.00";
 
   return {
@@ -247,13 +268,16 @@ function scrapeOrderData() {
   };
 }
 
+/**
+ * Handles order number collection from order history page.
+ * Waits for page elements to load, then extracts order data.
+ */
 async function handleCollectOrderNumbers() {
   try {
     // Wait for the main heading, which should be present on all pages
     await waitForElement(CONSTANTS.SELECTORS.MAIN_HEADING);
     
-    // It can take a moment for the new order cards to render after a page navigation.
-    // We'll wait for at least one order card to be present before scraping.
+    // Wait for order cards to render after page navigation
     await waitForElement('[data-testid^="order-"]');
 
     const { orderNumbers, additionalFields } = extractOrderNumbers();
@@ -263,23 +287,23 @@ async function handleCollectOrderNumbers() {
     return { orderNumbers, additionalFields, hasNextPage };
   } catch (error) {
     console.error("Error during collection:", error);
-    // If we timed out waiting for an order, it likely means there are no more.
+    // Timeout errors indicate no more orders on this page
     if (error.message.includes("not found after")) {
-        console.log("No order cards found. Assuming end of orders.");
-        return { orderNumbers: [], additionalFields: {}, hasNextPage: false };
+      console.log("No order cards found. Assuming end of orders.");
+      return { orderNumbers: [], additionalFields: {}, hasNextPage: false };
     }
     return { orderNumbers: [], additionalFields: {}, hasNextPage: false };
   }
 }
 
+/**
+ * Handles pagination by clicking the next page button.
+ * @returns {Object} Success status of the click operation
+ */
 async function handleClickNextButton() {
   try {
-    // Wait for the Purchase history heading first
     await waitForElement(CONSTANTS.SELECTORS.MAIN_HEADING);
-
-    // Then wait for the next button to be present and clickable
     const nextButton = await waitForElement(CONSTANTS.SELECTORS.NEXT_BUTTON);
-
     nextButton.click();
     return { success: true };
   } catch (error) {
@@ -288,48 +312,35 @@ async function handleClickNextButton() {
   }
 }
 
-// Replaced the JSON parsing and old DOM scraping with a single, reliable DOM scraping method.
+/**
+ * Single-pass order extraction using efficient DOM traversal.
+ * Queries order cards once, then finds child elements within each card.
+ * @returns {Object} Object containing orderNumbers array and additionalFields map
+ */
 function extractOrderNumbers() {
   const orderNumbers = [];
   const additionalFields = {};
 
-  // Select all order cards. They all have a `data-testid` starting with "order-"
+  // Single DOM query for all order cards
   const orderCards = document.querySelectorAll(CONSTANTS.SELECTORS.ORDER_CARDS);
   
   if (orderCards.length === 0) {
-      console.warn("No order cards found with selector '[data-testid^=\"order-\"]'");
+    console.warn("No order cards found with selector '[data-testid^=\"order-\"]'");
+    return { orderNumbers, additionalFields };
   }
 
+  // Single-pass traversal: query within each card to avoid redundant global queries
   orderCards.forEach((card, index) => {
     try {
-      // Find the main H2 title, which contains the status/date.
-      // e.g., "Delivered on Oct 29" or "Nov 01, 2025 purchase"
-      const titleElement = card.querySelector('h2.w_kV33.w_Sl3f.w_mvVb.f3');
+      const title = card.querySelector('h2');
+      const button = card.querySelector('button[data-automation-id^="view-order-details-link-"]');
       
-      // Find the "View details" button, which reliably contains the order number in its automation ID.
-      const buttonElement = card.querySelector('button[data-automation-id^="view-order-details-link-"]');
-
-      if (!titleElement) {
-        console.warn(`Could not find title element for order card ${index}`);
-        return; // skip this card
-      }
-
-      if (!buttonElement) {
-        console.warn(`Could not find button element for order card ${index}`);
-        return; // skip this card
-      }
-
-      const title = titleElement.textContent.trim();
-      const automationId = buttonElement.getAttribute('data-automation-id');
-      
-      // Extract the order number from an ID like "view-order-details-link-xxxxxxxxxxx"
-      const orderNumber = automationId.replace('view-order-details-link-', '');
-
-      if (orderNumber && title) {
-        orderNumbers.push(orderNumber);
-        additionalFields[orderNumber] = title;
-      } else {
-         console.warn(`Failed to parse order number or title for order card ${index}`);
+      if (title && button) {
+        const orderNumber = button.getAttribute('data-automation-id').replace('view-order-details-link-', '');
+        if (orderNumber) {
+          orderNumbers.push(orderNumber);
+          additionalFields[orderNumber] = title.textContent.trim();
+        }
       }
     } catch (e) {
       console.error(`Error processing order card ${index}:`, e);
@@ -339,12 +350,13 @@ function extractOrderNumbers() {
   return { orderNumbers, additionalFields };
 }
 
+/**
+ * Checks if a next page button exists for pagination.
+ * @returns {boolean} True if more pages are available
+ */
 async function checkForNextPage() {
   try {
-    // Wait for the Purchase history heading first
     await waitForElement(CONSTANTS.SELECTORS.MAIN_HEADING);
-
-    // Then check for the next button
     const nextButton = document.querySelector(CONSTANTS.SELECTORS.NEXT_BUTTON);
     return !!nextButton;
   } catch (error) {
@@ -352,5 +364,3 @@ async function checkForNextPage() {
     return false;
   }
 }
-
-
