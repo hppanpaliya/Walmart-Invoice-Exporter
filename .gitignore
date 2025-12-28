@@ -29,3 +29,6 @@ dev/
 
 .aider*
 .env
+# Repomix (local dev only)
+repomix.config.json
+repomix-output.xmldesign.md

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Walmart Invoice Exporter</title>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="sidepanel.css">
+    <script src="exceljs.bare.min.js"></script>
+    <script src="utils.js"></script>
+</head>
+
+<body>
+    <!-- Main View -->
+    <div id="mainView" class="view active">
+        <div class="header">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path
+                    d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <h1>Walmart Invoice Exporter</h1>
+            <button id="faqButton" class="faq-button">
+                <svg width="16" height="16" viewBox="0 0 29.536 29.536" fill="currentColor">
+                    <g>
+                        <path d="M14.768,0C6.611,0,0,6.609,0,14.768c0,8.155,6.611,14.767,14.768,14.767s14.768-6.612,14.768-14.767
+                            C29.535,6.609,22.924,0,14.768,0z M14.768,27.126c-6.828,0-12.361-5.532-12.361-12.359c0-6.828,5.533-12.362,12.361-12.362
+                            c6.826,0,12.359,5.535,12.359,12.362C27.127,21.594,21.594,27.126,14.768,27.126z"
+                            stroke="currentColor" stroke-width="0.5" />
+                        <path d="M14.385,19.337c-1.338,0-2.289,0.951-2.289,2.34c0,1.336,0.926,2.339,2.289,2.339c1.414,0,2.314-1.003,2.314-2.339
+                            C16.672,20.288,15.771,19.337,14.385,19.337z" stroke="currentColor" stroke-width="0.5" />
+                        <path
+                            d="M14.742,6.092c-1.824,0-3.34,0.513-4.293,1.053l0.875,2.804c0.668-0.462,1.697-0.772,2.545-0.772
+                            c1.285,0.027,1.879,0.644,1.879,1.543c0,0.85-0.67,1.697-1.494,2.701c-1.156,1.364-1.594,2.701-1.516,4.012l0.025,0.669h3.42
+                            v-0.463c-0.025-1.158,0.387-2.162,1.311-3.215c0.979-1.08,2.211-2.366,2.211-4.321C19.705,7.968,18.139,6.092,14.742,6.092z"
+                            stroke="currentColor" stroke-width="0.5" />
+                    </g>
+                </svg>
+                <b>Help & FAQ</b>
+            </button>
+        </div>
+
+        <div class="card">
+            <div class="input-group" id="pageLimitGroup">
+                <label for="pageLimit">Number of pages to crawl (0 = unlimited)</label>
+                <input type="number" id="pageLimit" min="0" value="0">
+            </div>
+            <div class="input-group" id="exportModeGroup">
+                <label for="exportMode">Export mode</label>
+                <select id="exportMode">
+                    <option value="multiple">Multiple files (one per order)</option>
+                    <option value="single">Single file (all items)</option>
+                </select>
+            </div>
+            <div class="button-group" id="buttonGroup">
+                <button id="startCollection" class="btn btn-primary">
+                    <span class="btn-text">Start Collection</span>
+                </button>
+                <button id="stopCollection" class="btn btn-danger" style="display: none;">
+                    Stop Collection
+                </button>
+            </div>
+        </div>
+
+        <div id="progress"></div>
+        <div id="orderNumbersContainer">
+            <!-- Placeholder shown before collection starts -->
+            <div id="collectionPlaceholder">
+                <p class="placeholder-status">Collection has not started. Total pages: 0</p>
+                <h3>Select orders to download (0) - Selected: 0</h3>
+                <div class="checkbox-container">
+                    <input type="checkbox" id="selectAllPlaceholder" disabled>
+                    <label for="selectAllPlaceholder">Select All</label>
+                </div>
+                <div class="order-list placeholder-list">
+                    <p class="no-orders-message">No orders collected yet.</p>
+                </div>
+                <button id="downloadButtonPlaceholder" class="btn btn-success" disabled>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Download as Single File
+                </button>
+            </div>
+        </div>
+
+        <!-- Main View Footer -->
+        <footer class="footer main-footer">
+            <div class="footer-container">
+                <h3 class="footer-title">Like the extension?</h3>
+
+                <p class="footer-description">
+                    Leave a review to help others find it.
+                </p>
+
+                <a href="https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe/reviews"
+                    target="_blank" class="rating-button">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon
+                            points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
+                        </polygon>
+                    </svg>
+                    Rate on Chrome Web Store
+                </a>
+
+                <p class="footer-note">
+                    Your reviews help me build new features.
+                    <br>
+                    <br>
+                    Made with <span class="heart">❤️</span> by <a href="https://github.com/hppanpaliya"
+                        target="_blank" style="color: var(--primary); text-decoration: none;">Harshal Panpaliya</a>
+                </p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- FAQ View -->
+    <div id="faqView" class="view">
+        <div class="header">
+            <button id="backButton" class="back-button">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+            </button>
+            <svg width="24" height="24" viewBox="0 0 29.536 29.536" fill="currentColor">
+                <g>
+                    <path d="M14.768,0C6.611,0,0,6.609,0,14.768c0,8.155,6.611,14.767,14.768,14.767s14.768-6.612,14.768-14.767
+                        C29.535,6.609,22.924,0,14.768,0z M14.768,27.126c-6.828,0-12.361-5.532-12.361-12.359c0-6.828,5.533-12.362,12.361-12.362
+                        c6.826,0,12.359,5.535,12.359,12.362C27.127,21.594,21.594,27.126,14.768,27.126z" />
+                    <path d="M14.385,19.337c-1.338,0-2.289,0.951-2.289,2.34c0,1.336,0.926,2.339,2.289,2.339c1.414,0,2.314-1.003,2.314-2.339
+                        C16.672,20.288,15.771,19.337,14.385,19.337z" />
+                    <path
+                        d="M14.742,6.092c-1.824,0-3.34,0.513-4.293,1.053l0.875,2.804c0.668-0.462,1.697-0.772,2.545-0.772
+                        c1.285,0.027,1.879,0.644,1.879,1.543c0,0.85-0.67,1.697-1.494,2.701c-1.156,1.364-1.594,2.701-1.516,4.012l0.025,0.669h3.42
+                        v-0.463c-0.025-1.158,0.387-2.162,1.311-3.215c0.979-1.08,2.211-2.366,2.211-4.321C19.705,7.968,18.139,6.092,14.742,6.092z" />
+                </g>
+            </svg>
+            <h1>Help & FAQ</h1>
+        </div>
+
+        <div class="faq-section">
+            <div class="faq-item">
+                <div class="faq-question">
+                    How to Use the Extension
+                    <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="faq-answer">
+                    <p><strong>Single Order Download:</strong></p>
+                    <ol>
+                        <li>Navigate to a specific Walmart order page</li>
+                        <li>Click the extension icon</li>
+                        <li>Click "Download Invoice"</li>
+                    </ol>
+
+                    <p style="margin-top: 16px;"><strong>Batch Download:</strong></p>
+                    <ol>
+                        <li>Go to your Walmart order history page (walmart.com/orders)</li>
+                        <li>Click the extension icon</li>
+                        <li>Set the number of pages to crawl (0 = unlimited)</li>
+                        <li>Click "Start Collection"</li>
+                        <li>Wait for the order numbers to load</li>
+                        <li>Select the orders you want to download</li>
+                        <li>Click "Download Selected Orders"</li>
+                    </ol>
+
+                    <div class="note">
+                        <strong>Note:</strong> Do not close the panel while downloading. The side panel can stay open while you browse other tabs.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    Required Chrome Settings for Bulk Downloads
+                    <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="faq-answer">
+                    <p><strong>1. Configure Download Settings:</strong></p>
+                    <ol>
+                        <li>Open Chrome settings: <code class="copy-link" data-link="chrome://settings/downloads">chrome://settings/downloads</code></li>
+                        <li>Turn OFF "Ask where to save each file before downloading"</li>
+                        <li>Turn OFF "Show downloads when they're done"</li>
+                    </ol>
+
+                    <p style="margin-top: 16px;"><strong>2. Enable Automatic Downloads:</strong></p>
+                    <ol>
+                        <li>Open: <code class="copy-link" data-link="chrome://settings/content/automaticDownloads">chrome://settings/content/automaticDownloads</code></li>
+                        <li>Under "Allowed to automatically download multiple files", click Add</li>
+                        <li>Enter "[*.]walmart.com" and click Add</li>
+                    </ol>
+
+                    <div class="note">
+                        <strong>Tip:</strong> Click the links above to copy them, then paste into a new tab.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    Download Issues & Tips
+                    <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="faq-answer">
+                    <p>If you're experiencing download issues:</p>
+                    <ul>
+                        <li>Slow internet - try downloading fewer orders at once</li>
+                        <li>Order age - very old orders might take longer</li>
+                        <li>Browser resources - try closing other tabs</li>
+                    </ul>
+
+                    <div class="note">
+                        <strong>Recommendation:</strong> For better reliability, download 5-10 orders at a time.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    Order Caching System
+                    <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="faq-answer">
+                    <p>This extension includes an intelligent caching system:</p>
+                    <ul>
+                        <li><strong>Automatic Caching:</strong> Orders are stored locally after collection</li>
+                        <li><strong>Faster Access:</strong> Previously collected orders appear instantly</li>
+                        <li><strong>Cache Management:</strong> "Clear Cache" button refreshes data</li>
+                        <li><strong>Expiration:</strong> Cache refreshes after 24 hours</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    How to Merge Multiple Excel Files
+                    <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="faq-answer">
+                    <p>To merge multiple Excel files:</p>
+                    <ol>
+                        <li>Visit <a href="https://hppanpaliya.github.io/excel-merger/" target="_blank">hppanpaliya.github.io/excel-merger</a></li>
+                        <li>Upload your exported Excel files</li>
+                        <li>Download the merged file</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    Need Help?
+                    <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="faq-answer">
+                    <p>If you're still experiencing issues or have questions, feel free to reach out for support:</p>
+
+                    <div class="tip" style="text-align: center;">
+                        <strong>Contact:</strong> <a href="mailto:harshal.hpp@gmail.com" style="color: var(--primary); text-decoration: none;">harshal.hpp@gmail.com</a>
+                    </div>
+                </div>
+            </div>
+
+            <footer class="footer">
+                <div class="footer-container">
+                    <h3 class="footer-title">Like the extension?</h3>
+
+                    <p class="footer-description">
+                        Leave a review to help others find it.
+                    </p>
+
+                    <a href="https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe/reviews"
+                        target="_blank" class="rating-button">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon
+                                points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
+                            </polygon>
+                        </svg>
+                        Rate on Chrome Web Store
+                    </a>
+
+                    <p class="footer-note">
+                        Your reviews help me build new features.
+                        <br>
+                        <br>
+                        Made with <span class="heart">❤️</span> by <a href="https://github.com/hppanpaliya"
+                            target="_blank" style="color: var(--primary); text-decoration: none;">Harshal Panpaliya</a>
+                    </p>
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    <!-- Confirmation Dialog -->
+    <div id="confirmDialog" class="confirm-dialog-overlay">
+        <div class="confirm-dialog">
+            <div class="confirm-dialog-content">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <h3>Operation in Progress</h3>
+                <p id="confirmDialogMessage">A collection or download is currently running. Navigating away will stop the current operation.</p>
+                <div class="confirm-dialog-buttons">
+                    <button id="confirmDialogCancel" class="btn btn-clear">Cancel</button>
+                    <button id="confirmDialogProceed" class="btn btn-danger">Stop & Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast for copy feedback -->
+    <div id="toast" class="toast">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <span>Link copied to clipboard!</span>
+    </div>
+
+    <script src="sidepanel.js"></script>
+</body>
+
+</html>
