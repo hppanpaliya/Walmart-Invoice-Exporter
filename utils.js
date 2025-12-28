@@ -431,8 +431,9 @@ const CONSTANTS = {
   TIMING: {
     IMAGE_BLOCK_DELAY: 500,
     PAGE_LOAD_WAIT: 800,
-    DOWNLOAD_TIMEOUT: 30000,
-    COLLECTION_TIMEOUT: 30000,
+    DOWNLOAD_TIMEOUT: 10000,      // Reduced from 30s for faster failure detection
+    COLLECTION_TIMEOUT: 10000,    // Reduced from 30s for faster failure detection
+    ELEMENT_POLL_INTERVAL: 200,   // Polling interval for waitForElement
     RETRY_DELAY: 400,
     RATING_DELAY: 500,
     HINT_DISMISS_DELAY: 5000,
