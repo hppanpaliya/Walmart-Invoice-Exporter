@@ -1,5 +1,33 @@
 # Changelog
 
+## [5.0] - December 28, 2025
+
+### Side Panel UI
+- **Feature:** Converted popup to persistent Chrome Side Panel that stays open while browsing
+- **Feature:** Integrated FAQ directly into side panel with accordion navigation
+- **Feature:** Added off-tab warning banner when navigating away from Walmart orders (preserves collected data)
+- **Feature:** Added confirmation dialog when navigating to FAQ during active collection or download
+- **Feature:** Added placeholder UI showing collection state before starting
+- **Feature:** Added "Rate on Chrome Web Store" footer to both main view and FAQ
+- **Enhancement:** Side panel persists across tab navigation - no more losing progress
+- **Enhancement:** Click-to-return link to switch back to Walmart orders tab
+- **Removed:** Standalone FAQ page (now inline in side panel)
+- **Removed:** Old popup.html, popup.js, popup.css (replaced by sidepanel files)
+
+### Performance Improvements
+- **Performance:** Reduced element wait timeout from 30s to 10s for faster failure detection
+- **Performance:** Decreased DOM polling interval from 500ms to 200ms for quicker element discovery
+- **Performance:** Added early image interception using beforeload and error event listeners
+- **Performance:** Optimized MutationObserver by disabling attribute and characterData monitoring
+- **Performance:** Simplified order extraction to single-pass DOM traversal
+
+### Code Quality
+- **Refactor:** Removed unused variables (OrderNumberRegex, allOrderNumbers, currentPage, isProcessing)
+- **Refactor:** Added JSDoc documentation to all major extraction functions
+- **Refactor:** Converted let declarations to const where values are immutable
+- **Refactor:** Added optional chaining to prevent null reference errors
+- **Refactor:** Centralized timing constants in CONSTANTS.TIMING
+
 ## [4.0] - November 16, 2025
 - **Feature:** Implemented caching for invoice data in Chrome local storage after the first download. Subsequent downloads check the cache first and use cached data if available, significantly speeding up the process.
 - **Enhancement:** Refactored code to use centralized constants for selectors, text, and CSS classes in `utils.js` for better maintainability.
