@@ -178,7 +178,7 @@ chrome://settings/content/automaticDownloads
 
 ### Common Issues
 
-**Issue: Popup appears but no orders are shown**
+**Issue: Side panel appears but no orders are shown**
 - Solution: Refresh the Walmart orders page and try again
 - The cache is automatically loaded if available; otherwise, click "Start Collection"
 
@@ -202,7 +202,7 @@ chrome://settings/content/automaticDownloads
 
 **Getting Help:**
 
-1. Read the FAQ in the extension popup ("Help & FAQ" button) for detailed guides
+1. Read the FAQ in the extension side panel ("Help & FAQ" button) for detailed guides
 2. Check that the extension has necessary permissions
 3. Verify Chrome download settings as described above
 4. For batch downloads, start with smaller batches to identify issues
@@ -218,7 +218,7 @@ For best results when using the extension:
 
 ### During Order Collection:
 1. Start with the default "0" (unlimited) page setting or a smaller number (2-5) to test
-2. Don't close the popup or switch windows during collection
+2. Don't close the side panel or switch windows during collection
 3. Keep the browser window active and focused
 4. On slower connections, the collection may take time - be patient
 
@@ -228,7 +228,7 @@ For best results when using the extension:
 3. Ensure stable and fast internet connection
 4. For "Single file" mode with large selections, processing time increases with order count
 5. Allow the extension to complete its process without interruptions
-6. Keep the popup window open during downloads
+6. Keep the side panel open during downloads
 
 ### Cache Management:
 1. Regularly check for cached orders (indicated by cache icons 📦)
@@ -257,7 +257,7 @@ The extension is built with a modular design for maintainability:
 
 **Core Files:**
 - `manifest.json` - Extension configuration and permissions
-- `popup.html/popup.js/popup.css` - User interface and main logic
+- `sidepanel.html/sidepanel.js/sidepanel.css` - User interface and main logic
 - `background.js` - Background service worker for collection and caching
 - `content.js` - Content script for DOM manipulation on Walmart pages
 - `utils.js` - Shared utility functions for Excel generation and styling
@@ -270,12 +270,12 @@ The extension is built with a modular design for maintainability:
 5. **Performance Optimizer** - Implements image blocking and throttling
 
 **Data Flow:**
-1. User initiates collection from popup
+1. User initiates collection from the side panel
 2. Background worker opens collection tab and sends messages to content script
 3. Content script extracts order numbers and sends them back
-4. Orders are cached locally and displayed in popup
+4. Orders are cached locally and displayed in the side panel
 5. User selects orders and initiates download
-6. Background worker or popup processes each order and creates Excel files
+6. Background worker or side panel processes each order and creates Excel files
 7. Files are cached for future quick re-access
 
 ## Version History

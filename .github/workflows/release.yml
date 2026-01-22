@@ -40,18 +40,25 @@ jobs:
         run: |
           mkdir -p temp/Walmart-Invoice-Exporter
           
+          # Core extension files
           cp -r _locales temp/Walmart-Invoice-Exporter/
           cp -r images temp/Walmart-Invoice-Exporter/
-          cp -r faq temp/Walmart-Invoice-Exporter/
           cp background.js temp/Walmart-Invoice-Exporter/
           cp content.js temp/Walmart-Invoice-Exporter/
           cp exceljs.bare.min.js temp/Walmart-Invoice-Exporter/
           cp manifest.json temp/Walmart-Invoice-Exporter/
-          cp popup.html temp/Walmart-Invoice-Exporter/
-          cp popup.js temp/Walmart-Invoice-Exporter/
-          cp popup.css temp/Walmart-Invoice-Exporter/
           cp utils.js temp/Walmart-Invoice-Exporter/
-          
+
+          # Side panel (replaces old popup/faq structure)
+          cp sidepanel.html temp/Walmart-Invoice-Exporter/
+          cp sidepanel.js temp/Walmart-Invoice-Exporter/
+          cp sidepanel.css temp/Walmart-Invoice-Exporter/
+
+          # Helpful documentation files (optional)
+          cp README.md temp/Walmart-Invoice-Exporter/ || true
+          cp CHANGELOG.md temp/Walmart-Invoice-Exporter/ || true
+          cp Privacy-Policy.md temp/Walmart-Invoice-Exporter/ || true
+
           cd temp
           zip -r ../Walmart-Invoice-Exporter-${GITHUB_REF_NAME}-${version}.zip Walmart-Invoice-Exporter
           cd ..
