@@ -832,6 +832,16 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
   let downloadTab = null;
   const collectedOrdersData = [];
 
+  // Helper function to check if tab still exists
+  const isTabValidForCombined = async (tabId) => {
+    try {
+      await chrome.tabs.get(tabId);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   // Helper to navigate and get data with retry for storePurchase param
   const getDataForOrder = async (orderNumber, attempt = 1) => {
     // Check cache first
@@ -846,14 +856,24 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
     const secondAttemptUrl = `${CONSTANTS.URLS.WALMART_ORDERS}/${orderNumber}${isLongOrderNumber ? "" : "?storePurchase=true"}`;
 
     const tryUrl = async (url) => {
-      // Create or reuse tab
-      if (!downloadTab) {
+      // Create or reuse tab (check if existing tab is still valid)
+      if (!downloadTab || !(await isTabValidForCombined(downloadTab.id))) {
         downloadTab = await new Promise((resolve) => {
           chrome.tabs.create({ url, active: false }, resolve);
         });
       } else {
         await new Promise((resolve) => {
-          chrome.tabs.update(downloadTab.id, { url }, resolve);
+          chrome.tabs.update(downloadTab.id, { url }, (tab) => {
+            if (chrome.runtime.lastError) {
+              // Tab was closed, create a new one
+              chrome.tabs.create({ url, active: false }, (newTab) => {
+                downloadTab = newTab;
+                resolve();
+              });
+            } else {
+              resolve();
+            }
+          });
         });
       }
 
