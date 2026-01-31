@@ -1,10 +1,10 @@
 {
   "extName": {
-    "message": "My Extension",
+    "message": "Walmart Invoice Exporter",
     "description": "The name of the extension."
   },
   "extDescription": {
-    "message": "Makes your life better.",
+    "message": "Download Walmart order details in xlsx format",
     "description": "The description of the extension."
   }
 }
