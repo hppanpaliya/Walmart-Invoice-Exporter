@@ -817,8 +817,8 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
     }
 
     const isLongOrderNumber = orderNumber.length >= 20;
-    const firstAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? "?storePurchase=true" : ""}`;
-    const secondAttemptUrl = `https://www.walmart.com/orders/${orderNumber}${isLongOrderNumber ? "" : "?storePurchase=true"}`;
+    const firstAttemptUrl = `${CONSTANTS.URLS.WALMART_ORDERS}/${orderNumber}${isLongOrderNumber ? "?storePurchase=true" : ""}`;
+    const secondAttemptUrl = `${CONSTANTS.URLS.WALMART_ORDERS}/${orderNumber}${isLongOrderNumber ? "" : "?storePurchase=true"}`;
 
     const tryUrl = async (url) => {
       // Create or reuse tab
