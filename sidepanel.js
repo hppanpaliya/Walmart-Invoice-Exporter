@@ -136,8 +136,8 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
       }
 
-      var tab = tabs[0];
-      var url = tab.url;
+      const tab = tabs[0];
+      const url = tab.url;
 
       // Remove any existing warning banner
       const existingBanner = document.getElementById("offTabWarning");
