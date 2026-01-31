@@ -1,14 +1,35 @@
-let allOrderNumbers = new Set();
-let allAdditionalFields = {};
-let currentPage = 1;
-let isCollecting = false;
-let tabId = null;
-let maxRetries = 3;
-let retryCount = 0;
-let pageLimit = 0;
-let timeout = 100;
-let cacheKey = "walmart_order_cache";
-let pagesCached = {};
+/**
+ * Background service worker for Walmart Invoice Exporter
+ * Handles order collection, pagination, and caching
+ */
+
+// Encapsulate state to reduce global namespace pollution
+const CollectionState = {
+  allOrderNumbers: new Set(),
+  allAdditionalFields: {},
+  currentPage: 1,
+  isCollecting: false,
+  tabId: null,
+  maxRetries: 3,
+  retryCount: 0,
+  pageLimit: 0,
+  timeout: 100,
+  cacheKey: "walmart_order_cache",
+  pagesCached: {},
+  
+  // Reset state for new collection
+  reset() {
+    this.currentPage = 1;
+    this.retryCount = 0;
+  },
+  
+  // Clear all collected data
+  clearAll() {
+    this.allOrderNumbers.clear();
+    this.allAdditionalFields = {};
+    this.pagesCached = {};
+  }
+};
 
 // Cache expiration time (24 hours in milliseconds)
 const CACHE_EXPIRATION = 24 * 60 * 60 * 1000;
@@ -21,22 +42,20 @@ chrome.action.onClicked.addListener((tab) => {
 // Function to load cached order data
 function loadCachedOrderNumbers() {
   return new Promise((resolve) => {
-    chrome.storage.session.get([cacheKey], (result) => {
-      if (result[cacheKey]) {
-        const cachedData = result[cacheKey];
+    chrome.storage.session.get([CollectionState.cacheKey], (result) => {
+      if (result[CollectionState.cacheKey]) {
+        const cachedData = result[CollectionState.cacheKey];
 
         // Check if cache is expired
         if (Date.now() - cachedData.timestamp > CACHE_EXPIRATION) {
           console.log("Cache is expired. Clearing.");
-          chrome.storage.session.remove(cacheKey);
-          allOrderNumbers = new Set();
-          allAdditionalFields = {};
-          pagesCached = {};
+          chrome.storage.session.remove(CollectionState.cacheKey);
+          CollectionState.clearAll();
         } else {
-          allOrderNumbers = new Set(cachedData.orderNumbers);
-          allAdditionalFields = cachedData.additionalFields || {};
-          pagesCached = cachedData.pagesCached || {};
-          console.log(`Loaded ${allOrderNumbers.size} orders from cache with ${Object.keys(pagesCached).length} pages cached`);
+          CollectionState.allOrderNumbers = new Set(cachedData.orderNumbers);
+          CollectionState.allAdditionalFields = cachedData.additionalFields || {};
+          CollectionState.pagesCached = cachedData.pagesCached || {};
+          console.log(`Loaded ${CollectionState.allOrderNumbers.size} orders from cache with ${Object.keys(CollectionState.pagesCached).length} pages cached`);
         }
       }
       resolve();
@@ -47,54 +66,53 @@ function loadCachedOrderNumbers() {
 // Function to save order data to cache
 function saveToCache() {
   const dataToCache = {
-    orderNumbers: Array.from(allOrderNumbers),
-    additionalFields: allAdditionalFields,
-    pagesCached: pagesCached,
+    orderNumbers: Array.from(CollectionState.allOrderNumbers),
+    additionalFields: CollectionState.allAdditionalFields,
+    pagesCached: CollectionState.pagesCached,
     timestamp: Date.now(),
   };
 
-  chrome.storage.session.set({ [cacheKey]: dataToCache }, () => {
-    console.log(`Saved ${allOrderNumbers.size} orders and ${Object.keys(pagesCached).length} pages to cache`);
+  chrome.storage.session.set({ [CollectionState.cacheKey]: dataToCache }, () => {
+    console.log(`Saved ${CollectionState.allOrderNumbers.size} orders and ${Object.keys(CollectionState.pagesCached).length} pages to cache`);
   });
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "startCollection") {
-    if (!isCollecting) {
-      isCollecting = true;
+    if (!CollectionState.isCollecting) {
+      CollectionState.isCollecting = true;
       // Load cached order numbers before starting collection
       loadCachedOrderNumbers().then(() => {
-        currentPage = 1;
-        retryCount = 0;
-        pageLimit = request.pageLimit || 0;
+        CollectionState.reset();
+        CollectionState.pageLimit = request.pageLimit || 0;
         startCollection(request.url);
       });
     }
     sendResponse({ status: "started" });
   } else if (request.action === "stopCollection") {
-    if (isCollecting) {
-      isCollecting = false;
-      if (tabId) {
-        chrome.tabs.remove(tabId);
+    if (CollectionState.isCollecting) {
+      CollectionState.isCollecting = false;
+      if (CollectionState.tabId) {
+        chrome.tabs.remove(CollectionState.tabId);
         chrome.tabs.onUpdated.removeListener(onTabUpdated);
       }
       // Save to cache before sending response
       saveToCache();
       sendResponse({
         status: "stopped",
-        currentPage: currentPage,
-        orderNumbers: Array.from(allOrderNumbers),
+        currentPage: CollectionState.currentPage,
+        orderNumbers: Array.from(CollectionState.allOrderNumbers),
       });
     }
   } else if (request.action === "getProgress") {
     loadCachedOrderNumbers().then(() => {
       sendResponse({
-        currentPage: currentPage,
-        pageLimit: pageLimit,
-        orderNumbers: Array.from(allOrderNumbers),
-        additionalFields: allAdditionalFields,
-        isCollecting: isCollecting,
-        pagesCached: pagesCached,
+        currentPage: CollectionState.currentPage,
+        pageLimit: CollectionState.pageLimit,
+        orderNumbers: Array.from(CollectionState.allOrderNumbers),
+        additionalFields: CollectionState.allAdditionalFields,
+        isCollecting: CollectionState.isCollecting,
+        pagesCached: CollectionState.pagesCached,
       });
     });
     return true; // Indicate async response
@@ -102,8 +120,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     chrome.storage.session.clear(() => {
       // Clear all session storage
       console.log("Cache cleared");
-      allOrderNumbers.clear();
-      pagesCached = {};
+      CollectionState.clearAll();
       sendResponse({ status: "cache_cleared" });
     });
     return true; // Indicate async response
@@ -116,41 +133,41 @@ function startCollection(url) {
   chrome.tabs.create({ url: url, active: false }, (tab) => {
     if (chrome.runtime.lastError) {
       console.error("Failed to create tab:", chrome.runtime.lastError);
-      isCollecting = false;
+      CollectionState.isCollecting = false;
       return;
     }
-    tabId = tab.id;
+    CollectionState.tabId = tab.id;
     chrome.tabs.onUpdated.addListener(onTabUpdated);
   });
 }
 
 function onTabUpdated(updatedTabId, changeInfo, tab) {
-  if (tabId && updatedTabId === tabId && changeInfo.status === "complete") {
-    console.log("Tab updated, collecting order numbers for page:", currentPage);
-    setTimeout(() => collectOrderNumbers(), timeout);
+  if (CollectionState.tabId && updatedTabId === CollectionState.tabId && changeInfo.status === "complete") {
+    console.log("Tab updated, collecting order numbers for page:", CollectionState.currentPage);
+    setTimeout(() => collectOrderNumbers(), CollectionState.timeout);
   }
 }
 
 function collectOrderNumbers() {
-  if (!isCollecting) {
+  if (!CollectionState.isCollecting) {
     console.log("Collection stopped by user");
     finishCollection();
     return;
   }
 
   // Check if we've reached the page limit
-  if (pageLimit > 0 && currentPage > pageLimit) {
-    console.log(`Reached page limit (${pageLimit}). Finishing collection.`);
+  if (CollectionState.pageLimit > 0 && CollectionState.currentPage > CollectionState.pageLimit) {
+    console.log(`Reached page limit (${CollectionState.pageLimit}). Finishing collection.`);
     finishCollection();
     return;
   }
 
   // Check if this page is already cached
-  if (pagesCached[currentPage]) {
-    console.log(`Page ${currentPage} is already cached. Skipping collection.`);
+  if (CollectionState.pagesCached[CollectionState.currentPage]) {
+    console.log(`Page ${CollectionState.currentPage} is already cached. Skipping collection.`);
     // If already cached, we can go to the next page
-    if (pagesCached[currentPage].hasNextPage && (pageLimit === 0 || currentPage < pageLimit)) {
-      currentPage++;
+    if (CollectionState.pagesCached[CollectionState.currentPage].hasNextPage && (CollectionState.pageLimit === 0 || CollectionState.currentPage < CollectionState.pageLimit)) {
+      CollectionState.currentPage++;
       goToNextPage();
     } else {
       console.log("No more pages to collect or reached limit. Finishing collection.");
@@ -159,7 +176,7 @@ function collectOrderNumbers() {
     return;
   }
 
-  chrome.tabs.sendMessage(tabId, { action: "collectOrderNumbers" }, (response) => {
+  chrome.tabs.sendMessage(CollectionState.tabId, { action: "collectOrderNumbers" }, (response) => {
     if (chrome.runtime.lastError) {
       console.error("Error collecting order numbers:", chrome.runtime.lastError);
       retryCollection();
@@ -167,18 +184,18 @@ function collectOrderNumbers() {
     }
 
     if (response && response.orderNumbers) {
-      console.log(`Collected ${response.orderNumbers.length} order numbers from page ${currentPage}`);
+      console.log(`Collected ${response.orderNumbers.length} order numbers from page ${CollectionState.currentPage}`);
 
       // Add order numbers to the set
-      response.orderNumbers.forEach((num) => allOrderNumbers.add(num));
+      response.orderNumbers.forEach((num) => CollectionState.allOrderNumbers.add(num));
 
       // Add additional fields to the map
       if (response.additionalFields) {
-        allAdditionalFields = { ...allAdditionalFields, ...response.additionalFields };
+        CollectionState.allAdditionalFields = { ...CollectionState.allAdditionalFields, ...response.additionalFields };
       }
 
       // Cache page data
-      pagesCached[currentPage] = {
+      CollectionState.pagesCached[CollectionState.currentPage] = {
         hasNextPage: response.hasNextPage,
         orderNumbers: response.orderNumbers,
         additionalFields: response.additionalFields || {},
@@ -188,9 +205,9 @@ function collectOrderNumbers() {
       // Save to cache after each page
       saveToCache();
 
-      if (response.hasNextPage && (pageLimit === 0 || currentPage < pageLimit)) {
-        currentPage++;
-        retryCount = 0;
+      if (response.hasNextPage && (CollectionState.pageLimit === 0 || CollectionState.currentPage < CollectionState.pageLimit)) {
+        CollectionState.currentPage++;
+        CollectionState.retryCount = 0;
         goToNextPage();
       } else {
         console.log("No more pages to collect or reached limit. Finishing collection.");
@@ -204,13 +221,13 @@ function collectOrderNumbers() {
 }
 
 function goToNextPage() {
-  if (!isCollecting) {
+  if (!CollectionState.isCollecting) {
     finishCollection();
     return;
   }
 
-  console.log("Attempting to go to next page:", currentPage);
-  chrome.tabs.sendMessage(tabId, { action: "clickNextButton" }, (response) => {
+  console.log("Attempting to go to next page:", CollectionState.currentPage);
+  chrome.tabs.sendMessage(CollectionState.tabId, { action: "clickNextButton" }, (response) => {
     if (chrome.runtime.lastError) {
       console.error("Error clicking next button:", chrome.runtime.lastError);
       retryCollection();
@@ -224,15 +241,15 @@ function goToNextPage() {
 }
 
 function retryCollection() {
-  if (!isCollecting) {
+  if (!CollectionState.isCollecting) {
     finishCollection();
     return;
   }
 
-  if (retryCount < maxRetries) {
-    retryCount++;
-    console.log(`Retrying collection. Attempt ${retryCount} of ${maxRetries}`);
-    setTimeout(() => collectOrderNumbers(), timeout);
+  if (CollectionState.retryCount < CollectionState.maxRetries) {
+    CollectionState.retryCount++;
+    console.log(`Retrying collection. Attempt ${CollectionState.retryCount} of ${CollectionState.maxRetries}`);
+    setTimeout(() => collectOrderNumbers(), CollectionState.timeout);
   } else {
     console.log("Max retries reached. Finishing collection.");
     finishCollection();
@@ -240,12 +257,12 @@ function retryCollection() {
 }
 
 function finishCollection() {
-  isCollecting = false;
+  CollectionState.isCollecting = false;
   // Save to cache before closing
   saveToCache();
-  if (tabId) {
+  if (CollectionState.tabId) {
     chrome.tabs.onUpdated.removeListener(onTabUpdated);
-    chrome.tabs.remove(tabId);
+    chrome.tabs.remove(CollectionState.tabId);
   }
-  console.log(`Collection finished. Total pages: ${currentPage}, Total order numbers: ${allOrderNumbers.size}`);
+  console.log(`Collection finished. Total pages: ${CollectionState.currentPage}, Total order numbers: ${CollectionState.allOrderNumbers.size}`);
 }
