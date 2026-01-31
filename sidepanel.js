@@ -860,7 +860,7 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
           };
           chrome.tabs.onUpdated.addListener(handle);
         }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout getting data')), 30000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout getting data')), CONSTANTS.TIMING.COLLECTION_TIMEOUT)),
       ]);
     };
 
