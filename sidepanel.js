@@ -791,7 +791,9 @@ async function downloadSelectedOrders() {
 
     // Cleanup
     if (downloadTab) {
-      chrome.tabs.remove(downloadTab.id);
+      chrome.tabs.remove(downloadTab.id).catch(() => {
+        // Tab may already be closed
+      });
     }
 
     // Show completion message with failed orders if any
@@ -812,7 +814,9 @@ async function downloadSelectedOrders() {
     console.error("Download error:", error);
     alert("An error occurred during download process. Some orders may have failed.");
     if (downloadTab) {
-      chrome.tabs.remove(downloadTab.id);
+      chrome.tabs.remove(downloadTab.id).catch(() => {
+        // Tab may already be closed
+      });
     }
   } finally {
     downloadButton.disabled = false;
@@ -939,7 +943,9 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
 
   // Close the download tab
   if (downloadTab) {
-    chrome.tabs.remove(downloadTab.id);
+    chrome.tabs.remove(downloadTab.id).catch(() => {
+      // Tab may already be closed
+    });
   }
 
   // Convert collected orders to XLSX using shared utility
