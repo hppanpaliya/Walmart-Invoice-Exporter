@@ -234,7 +234,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const card = document.querySelector(".card");
     if (card) {
       card.style.opacity = enabled ? "1" : "0.6";
-      card.style.pointerEvents = enabled ? "auto" : "none";
+      // Use a class instead of pointer-events to allow scrolling but disable clicks
+      card.classList.toggle('disabled-card', !enabled);
     }
 
     const downloadButton = document.getElementById("downloadButton");
@@ -244,7 +245,7 @@ document.addEventListener("DOMContentLoaded", function () {
       downloadButton.style.cursor = enabled ? "pointer" : "not-allowed";
     }
 
-    // Disable/enable all checkboxes
+    // Disable/enable all checkboxes and buttons within the card
     const checkboxes = document.querySelectorAll('input[type="checkbox"]');
     checkboxes.forEach(cb => {
       cb.disabled = !enabled;
