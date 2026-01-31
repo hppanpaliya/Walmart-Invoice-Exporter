@@ -922,14 +922,7 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
     await convertMultipleOrdersToXlsx(collectedOrdersData, ExcelJS, 'Walmart_Orders.xlsx');
   } catch (e) {
     console.error('Failed to export to XLSX:', e);
-    progressDiv.innerHTML = `
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" style="margin-right: 8px;">
-        <circle cx="12" cy="12" r="10"></circle>
-        <line x1="12" y1="8" x2="12" y2="12"></line>
-        <line x1="12" y1="16" x2="12.01" y2="16"></line>
-      </svg>
-      Export failed: ${e.message}
-    `;
+    progressDiv.innerHTML = createErrorMessage(`Export failed: ${e.message}`);
     setTimeout(() => progressDiv.remove(), 5000);
     return;
   }
