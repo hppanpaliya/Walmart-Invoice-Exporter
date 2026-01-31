@@ -31,8 +31,8 @@ const CollectionState = {
   }
 };
 
-// Cache expiration time (24 hours in milliseconds)
-const CACHE_EXPIRATION = 24 * 60 * 60 * 1000;
+// Cache expiration time (24 hours in milliseconds) - use shared constant
+const CACHE_EXPIRATION = 24 * 60 * 60 * 1000; // Matches CONSTANTS.TIMING.CACHE_EXPIRATION
 
 // Open side panel when extension icon is clicked
 chrome.action.onClicked.addListener((tab) => {
