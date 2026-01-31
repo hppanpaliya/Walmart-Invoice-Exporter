@@ -48,6 +48,14 @@ body {
   margin-bottom: 12px;
 }
 
+/* Disabled card state - allows scrolling but disables interactive elements */
+.card.disabled-card button,
+.card.disabled-card input,
+.card.disabled-card select,
+.card.disabled-card label {
+  pointer-events: none;
+}
+
 .input-group {
   margin-bottom: 16px;
 }
