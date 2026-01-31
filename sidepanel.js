@@ -110,23 +110,6 @@ document.addEventListener("DOMContentLoaded", function () {
   // Initialize copy-to-clipboard for FAQ links
   initCopyLinks();
 
-  // Add loading spinner function
-  function setButtonLoading(button, isLoading) {
-    const btnText = button.querySelector(".btn-text");
-    if (isLoading) {
-      button.disabled = true;
-      if (!button.querySelector(".loading-spinner")) {
-        const spinner = document.createElement("span");
-        spinner.className = "loading-spinner";
-        button.insertBefore(spinner, btnText);
-      }
-    } else {
-      button.disabled = false;
-      const spinner = button.querySelector(".loading-spinner");
-      if (spinner) spinner.remove();
-    }
-  }
-
   // Initialize export mode from storage
   chrome.storage.local.get(['exportMode'], (res) => {
     exportMode = res.exportMode || 'multiple';
@@ -948,11 +931,16 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
 
 // Helper function to set loading state on any button
 function setButtonLoading(button, isLoading) {
+  const btnText = button.querySelector(".btn-text");
   if (isLoading) {
     button.disabled = true;
-    const spinner = document.createElement("span");
-    spinner.className = "loading-spinner";
-    button.insertBefore(spinner, button.firstChild);
+    // Only add spinner if one doesn't already exist
+    if (!button.querySelector(".loading-spinner")) {
+      const spinner = document.createElement("span");
+      spinner.className = "loading-spinner";
+      // Insert before btn-text if it exists, otherwise as first child
+      button.insertBefore(spinner, btnText || button.firstChild);
+    }
   } else {
     button.disabled = false;
     const spinner = button.querySelector(".loading-spinner");
