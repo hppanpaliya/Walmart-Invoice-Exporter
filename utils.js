@@ -723,9 +723,57 @@ function cacheInvoice(orderNumber, invoiceData) {
       };
       
       chrome.storage.local.set({ [INVOICE_CACHE_KEY]: cache }, () => {
-        console.log(`Cached invoice data for order ${orderNumber}`);
+        if (chrome.runtime.lastError) {
+          // Handle storage quota exceeded error
+          console.warn(`Failed to cache order ${orderNumber}:`, chrome.runtime.lastError.message);
+          // If quota exceeded, try clearing old entries and retry once
+          if (chrome.runtime.lastError.message.includes('QUOTA_BYTES')) {
+            console.log('Storage quota exceeded, clearing old cache entries...');
+            clearOldCacheEntries().then(() => {
+              // Retry caching after clearing old entries
+              chrome.storage.local.set({ [INVOICE_CACHE_KEY]: { [orderNumber]: cache[orderNumber] } }, () => {
+                if (chrome.runtime.lastError) {
+                  console.error('Still failed to cache after cleanup:', chrome.runtime.lastError.message);
+                }
+                resolve();
+              });
+            });
+            return;
+          }
+        } else {
+          console.log(`Cached invoice data for order ${orderNumber}`);
+        }
         resolve();
       });
+    });
+  });
+}
+
+/**
+ * Clear cache entries older than 12 hours to free up space
+ * @returns {Promise<void>}
+ */
+function clearOldCacheEntries() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([INVOICE_CACHE_KEY], (result) => {
+      if (!result[INVOICE_CACHE_KEY]) {
+        resolve();
+        return;
+      }
+      
+      const cache = result[INVOICE_CACHE_KEY];
+      const twelveHoursAgo = Date.now() - (12 * 60 * 60 * 1000);
+      let entriesRemoved = 0;
+      
+      for (const orderNumber of Object.keys(cache)) {
+        if (cache[orderNumber].timestamp < twelveHoursAgo) {
+          delete cache[orderNumber];
+          entriesRemoved++;
+        }
+      }
+      
+      console.log(`Cleared ${entriesRemoved} old cache entries`);
+      chrome.storage.local.set({ [INVOICE_CACHE_KEY]: cache }, resolve);
     });
   });
 }
