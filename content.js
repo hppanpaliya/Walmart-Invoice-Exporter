@@ -43,6 +43,10 @@ function removeAllImages() {
 // Store observer reference for cleanup
 let imageBlockingObserver = null;
 
+// Store original prototypes for potential restoration
+const originalImage = window.Image;
+const originalSetAttribute = HTMLImageElement.prototype.setAttribute;
+
 function blockImageLoading() {
   // Override Image constructor to prevent new image loading
   window.Image = function () {
@@ -65,7 +69,7 @@ function blockImageLoading() {
   document.head.appendChild(meta);
 
   // Prevent loading through srcset
-  HTMLImageElement.prototype.setAttribute = new Proxy(HTMLImageElement.prototype.setAttribute, {
+  HTMLImageElement.prototype.setAttribute = new Proxy(originalSetAttribute, {
     apply(target, thisArg, argumentsList) {
       const [attr] = argumentsList;
       if (attr === "src" || attr === "srcset") {
