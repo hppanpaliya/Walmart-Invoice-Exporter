@@ -44,8 +44,7 @@ function removeAllImages() {
 let imageBlockingObserver = null;
 
 function blockImageLoading() {
-  // Override Image constructor
-  const originalImage = window.Image;
+  // Override Image constructor to prevent new image loading
   window.Image = function () {
     const dummyImage = {};
     Object.defineProperty(dummyImage, "src", {

@@ -1,7 +1,6 @@
 let allOrderNumbers = new Set();
 let downloadInProgress = false;
 let collectionInProgress = false;
-let timeout = 1000;
 let exportMode = 'multiple'; // 'multiple' | 'single'
 let lastWalmartOrdersTabId = null; // Track the last known Walmart orders tab
 let currentView = 'main'; // 'main' | 'faq'
