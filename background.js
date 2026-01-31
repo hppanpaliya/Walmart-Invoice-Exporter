@@ -89,11 +89,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     }
     sendResponse({ status: "started" });
+    return false; // Synchronous response
   } else if (request.action === "stopCollection") {
     if (CollectionState.isCollecting) {
       CollectionState.isCollecting = false;
       if (CollectionState.tabId) {
-        chrome.tabs.remove(CollectionState.tabId);
+        chrome.tabs.remove(CollectionState.tabId).catch(() => {
+          // Tab may already be closed
+        });
         chrome.tabs.onUpdated.removeListener(onTabUpdated);
       }
       // Save to cache before sending response
@@ -104,6 +107,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         orderNumbers: Array.from(CollectionState.allOrderNumbers),
       });
     }
+    return false; // Synchronous response
   } else if (request.action === "getProgress") {
     loadCachedOrderNumbers().then(() => {
       sendResponse({
@@ -125,7 +129,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true; // Indicate async response
   }
-  return true;
+  return false; // Default: synchronous (no response needed)
 });
 
 function startCollection(url) {
