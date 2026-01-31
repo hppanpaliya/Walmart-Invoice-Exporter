@@ -114,13 +114,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 function startCollection(url) {
   console.log("Starting collection from URL:", url);
   chrome.tabs.create({ url: url, active: false }, (tab) => {
+    if (chrome.runtime.lastError) {
+      console.error("Failed to create tab:", chrome.runtime.lastError);
+      isCollecting = false;
+      return;
+    }
     tabId = tab.id;
     chrome.tabs.onUpdated.addListener(onTabUpdated);
   });
 }
 
 function onTabUpdated(updatedTabId, changeInfo, tab) {
-  if (updatedTabId === tabId && changeInfo.status === "complete") {
+  if (tabId && updatedTabId === tabId && changeInfo.status === "complete") {
     console.log("Tab updated, collecting order numbers for page:", currentPage);
     setTimeout(() => collectOrderNumbers(), timeout);
   }
