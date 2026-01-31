@@ -40,6 +40,9 @@ function removeAllImages() {
   });
 }
 
+// Store observer reference for cleanup
+let imageBlockingObserver = null;
+
 function blockImageLoading() {
   // Override Image constructor
   const originalImage = window.Image;
@@ -73,9 +76,14 @@ function blockImageLoading() {
     },
   });
 
+  // Disconnect existing observer if any to prevent memory leaks
+  if (imageBlockingObserver) {
+    imageBlockingObserver.disconnect();
+  }
+
   // Intercept image loading with optimized MutationObserver
   // Only monitor childList changes to reduce CPU overhead
-  const observer = new MutationObserver((mutations) => {
+  imageBlockingObserver = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       mutation.addedNodes.forEach((node) => {
         if (node.nodeName === "IMG" || node.nodeName === "PICTURE") {
@@ -92,7 +100,7 @@ function blockImageLoading() {
   });
 
   // Disable attribute and characterData monitoring to reduce observer firing frequency
-  observer.observe(document.documentElement, {
+  imageBlockingObserver.observe(document.documentElement, {
     childList: true,
     subtree: true,
     attributes: false,
