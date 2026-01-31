@@ -5,6 +5,11 @@ let exportMode = 'multiple'; // 'multiple' | 'single'
 let lastWalmartOrdersTabId = null; // Track the last known Walmart orders tab
 let currentView = 'main'; // 'main' | 'faq'
 
+// Global error handler for unhandled promise rejections
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled promise rejection:', event.reason);
+});
+
 document.addEventListener("DOMContentLoaded", function () {
   const startButton = document.getElementById("startCollection");
   const stopButton = document.getElementById("stopCollection");
