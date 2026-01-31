@@ -266,7 +266,10 @@ function finishCollection() {
   saveToCache();
   if (CollectionState.tabId) {
     chrome.tabs.onUpdated.removeListener(onTabUpdated);
-    chrome.tabs.remove(CollectionState.tabId);
+    chrome.tabs.remove(CollectionState.tabId).catch(() => {
+      // Tab may already be closed, ignore error
+    });
+    CollectionState.tabId = null;
   }
   console.log(`Collection finished. Total pages: ${CollectionState.currentPage}, Total order numbers: ${CollectionState.allOrderNumbers.size}`);
 }
