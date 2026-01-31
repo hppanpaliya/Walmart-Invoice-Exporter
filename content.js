@@ -111,6 +111,14 @@ function blockImageLoading() {
   });
 }
 
+// Cleanup observer when page unloads to prevent memory leaks
+window.addEventListener('beforeunload', () => {
+  if (imageBlockingObserver) {
+    imageBlockingObserver.disconnect();
+    imageBlockingObserver = null;
+  }
+});
+
 function aggressiveImageBlocking() {
   // Handle failed image loads by hiding them
   document.addEventListener('error', (e) => {
