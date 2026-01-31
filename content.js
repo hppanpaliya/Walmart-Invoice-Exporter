@@ -109,11 +109,6 @@ function blockImageLoading() {
 }
 
 function aggressiveImageBlocking() {
-  // Early interception: block images before they load
-  window.addEventListener('beforeload', (e) => {
-    if (e.target.tagName === 'IMG') e.preventDefault();
-  }, true);
-
   // Handle failed image loads by hiding them
   document.addEventListener('error', (e) => {
     if (e.target.tagName === 'IMG' || e.target.tagName === 'PICTURE') {
