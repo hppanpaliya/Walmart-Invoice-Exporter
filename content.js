@@ -29,7 +29,7 @@ function removeAllImages() {
   styleSheets.forEach((sheet) => {
     try {
       const rules = Array.from(sheet.cssRules || sheet.rules);
-      rules.forEach((rule, index) => {
+      rules.forEach((rule) => {
         if (rule.style && rule.style.backgroundImage) {
           rule.style.backgroundImage = "none";
         }
