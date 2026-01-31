@@ -642,6 +642,16 @@ async function downloadSelectedOrders() {
   // Multiple files flow (existing)
   let downloadTab = null;
 
+  // Helper function to check if tab still exists
+  async function isTabValid(tabId) {
+    try {
+      await chrome.tabs.get(tabId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // Helper function to attempt download with specific URL
   async function attemptDownload(orderNumber, url, attempt) {
     try {
@@ -655,14 +665,24 @@ async function downloadSelectedOrders() {
       }
 
       // Not cached, so fetch from page
-      // Create or reuse tab
-      if (!downloadTab) {
+      // Create or reuse tab (check if existing tab is still valid)
+      if (!downloadTab || !(await isTabValid(downloadTab.id))) {
         downloadTab = await new Promise((resolve) => {
           chrome.tabs.create({ url: url, active: false }, resolve);
         });
       } else {
-        await new Promise((resolve) => {
-          chrome.tabs.update(downloadTab.id, { url: url }, resolve);
+        await new Promise((resolve, reject) => {
+          chrome.tabs.update(downloadTab.id, { url: url }, (tab) => {
+            if (chrome.runtime.lastError) {
+              // Tab was closed, create a new one
+              chrome.tabs.create({ url: url, active: false }, (newTab) => {
+                downloadTab = newTab;
+                resolve();
+              });
+            } else {
+              resolve();
+            }
+          });
         });
       }
 
@@ -670,7 +690,7 @@ async function downloadSelectedOrders() {
       await Promise.race([
         new Promise((resolve, reject) => {
           async function handleDownload(tabId, info) {
-            if (tabId === downloadTab.id && info.status === "complete") {
+            if (downloadTab && tabId === downloadTab.id && info.status === "complete") {
               chrome.tabs.onUpdated.removeListener(handleDownload);
 
               try {
