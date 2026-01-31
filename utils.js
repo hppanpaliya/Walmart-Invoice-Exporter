@@ -438,6 +438,9 @@ const CONSTANTS = {
     RATING_DELAY: 500,
     HINT_DISMISS_DELAY: 5000,
     CACHE_EXPIRATION: 24 * 60 * 60 * 1000, // 24 hours
+    SUCCESS_DISPLAY_DURATION: 10000,       // How long to show success messages
+    ERROR_DISPLAY_DURATION: 30000,         // How long to show error messages
+    EXPORT_FAIL_DISPLAY: 5000,             // How long to show export failure messages
   },
 
   // Order Number Regex

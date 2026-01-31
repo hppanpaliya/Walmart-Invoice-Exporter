@@ -797,7 +797,7 @@ async function downloadSelectedOrders() {
         `Downloads completed with ${failedOrders.length} failed orders:<br>Failed orders: ${failedOrders.map((order) => `#${order}`).join(", ")}`
       );
     }
-    setTimeout(() => progressDiv.remove(), failedOrders.length > 0 ? 30000 : 10000);
+    setTimeout(() => progressDiv.remove(), failedOrders.length > 0 ? CONSTANTS.TIMING.ERROR_DISPLAY_DURATION : CONSTANTS.TIMING.SUCCESS_DISPLAY_DURATION);
 
     // Show rating hint
     if (failedOrders.length === 0) {
@@ -923,7 +923,7 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
   } catch (e) {
     console.error('Failed to export to XLSX:', e);
     progressDiv.innerHTML = createErrorMessage(`Export failed: ${e.message}`);
-    setTimeout(() => progressDiv.remove(), 5000);
+    setTimeout(() => progressDiv.remove(), CONSTANTS.TIMING.EXPORT_FAIL_DISPLAY);
     return;
   }
 
@@ -935,7 +935,7 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
       `Export completed with ${failedOrders.length} failures: ${failedOrders.map((o) => `#${o}`).join(', ')}`
     );
   }
-  setTimeout(() => progressDiv.remove(), failedOrders.length > 0 ? 30000 : 10000);
+  setTimeout(() => progressDiv.remove(), failedOrders.length > 0 ? CONSTANTS.TIMING.ERROR_DISPLAY_DURATION : CONSTANTS.TIMING.SUCCESS_DISPLAY_DURATION);
 
   if (failedOrders.length === 0) {
     maybeShowRatingHint();
