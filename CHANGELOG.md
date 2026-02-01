@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.1] - January 31, 2026
+
+### Features
+- **Feature:** Added Order Subtotal column to both single and multiple invoice export modes
+
+- **Enhancement:** Multiple files export now shows subtotal and order total columns
+
 ## [5.0] - December 28, 2025
 
 ### Side Panel UI

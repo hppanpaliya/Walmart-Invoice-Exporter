@@ -20,6 +20,8 @@ A Chrome extension that allows users to download their Walmart order history in 
   - Delivery status
   - Product links
   - Order information (number, date)
+  - Order subtotal (before fees and taxes)
+  - Order total (final amount)
   - Additional charges (delivery, tax, tip)
 - **Secure & Efficient**: Runs only on Walmart's orders pages with minimal required permissions
 - **Centralized Configuration**: Maintains consistent selectors and styling throughout the extension using centralized constants
@@ -40,8 +42,8 @@ A Chrome extension that allows users to download their Walmart order history in 
   - In-store purchases (20+ digits)
   - Various order statuses (delivered, canceled, returned)
 - **Excel Generation**: Implements ExcelJS for robust XLSX file creation
-  - Support for single order exports with complete order summary
-  - Multi-order consolidated exports combining all items into one sheet
+  - Support for single order exports with complete order summary (including subtotal and total)
+  - Multi-order consolidated exports combining all items into one sheet with subtotal and total columns
   - Proper formatting with headers, fonts, and hyperlinks
 - **Performance Optimizations**:
   - Aggressive image blocking (CSS, HTML elements, background images)

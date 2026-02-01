@@ -251,6 +251,7 @@ function scrapeOrderData() {
   const orderNumber = findOrderNumber();
   let orderDate = document.querySelector(CONSTANTS.SELECTORS.ORDER_DATE)?.innerText || '';
   orderDate = orderDate.replace("order", "").trim();
+  const orderSubtotal = document.querySelector(CONSTANTS.SELECTORS.ORDER_SUBTOTAL)?.innerText || '';
   const orderTotal = document.querySelector(CONSTANTS.SELECTORS.ORDER_TOTAL)?.innerText || '';
   const deliveryCharges = document.querySelector(CONSTANTS.SELECTORS.DELIVERY_CHARGES)?.innerText || "$0.00";
 
@@ -274,6 +275,7 @@ function scrapeOrderData() {
   return {
     orderNumber,
     orderDate,
+    orderSubtotal,
     orderTotal,
     deliveryCharges,
     tax,
