@@ -43,6 +43,7 @@ function configureMultipleOrdersColumns(worksheet) {
   worksheet.columns = [
     { header: 'Order Number', key: 'orderNumber', width: 20, style: { alignment: { horizontal: "center" } } },
     { header: 'Order Date', key: 'orderDate', width: 20, style: { alignment: { horizontal: "center" } } },
+    { header: 'Order Total', key: 'orderTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Product Name', key: 'productName', width: 60, style: { alignment: { horizontal: "center" } } },
     { header: 'Quantity', key: 'quantity', width: 10, style: { numFmt: "#,##0", alignment: { horizontal: "center" } } },
     { header: 'Price', key: 'price', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
@@ -82,6 +83,7 @@ function addMultipleOrderItemsToWorksheet(worksheet, items) {
     worksheet.addRow({
       orderNumber: item.orderNumber || '',
       orderDate: item.orderDate || '',
+      orderTotal: parseNumericValue(item.orderTotal),
       productName: item.productName || '',
       quantity: parseNumericValue(item.quantity),
       price: parseNumericValue(item.price),
@@ -247,6 +249,7 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null)
       allItems.push({
         orderNumber: orderDetails.orderNumber || '',
         orderDate: orderDetails.orderDate || '',
+        orderTotal: parseNumericValue(orderDetails.orderTotal),
         productName: item.productName || '',
         quantity: item.quantity,
         price: item.price,
