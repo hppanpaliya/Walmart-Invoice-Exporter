@@ -36,7 +36,12 @@ const CACHE_EXPIRATION = 24 * 60 * 60 * 1000; // Matches CONSTANTS.TIMING.CACHE_
 
 // Open side panel when extension icon is clicked
 chrome.action.onClicked.addListener((tab) => {
-  chrome.sidePanel.open({ windowId: tab.windowId });
+  if (chrome.sidePanel && chrome.sidePanel.open) {
+    chrome.sidePanel.open({ windowId: tab.windowId });
+  }
+  else {
+    console.warn("Side panel API not available.");
+  }
 });
 
 // Function to load cached order data
