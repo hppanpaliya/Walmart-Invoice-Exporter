@@ -43,6 +43,7 @@ function configureMultipleOrdersColumns(worksheet) {
   worksheet.columns = [
     { header: 'Order Number', key: 'orderNumber', width: 20, style: { alignment: { horizontal: "center" } } },
     { header: 'Order Date', key: 'orderDate', width: 20, style: { alignment: { horizontal: "center" } } },
+    { header: 'Subtotal', key: 'orderSubtotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Order Total', key: 'orderTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Product Name', key: 'productName', width: 60, style: { alignment: { horizontal: "center" } } },
     { header: 'Quantity', key: 'quantity', width: 10, style: { numFmt: "#,##0", alignment: { horizontal: "center" } } },
@@ -83,6 +84,7 @@ function addMultipleOrderItemsToWorksheet(worksheet, items) {
     worksheet.addRow({
       orderNumber: item.orderNumber || '',
       orderDate: item.orderDate || '',
+      orderSubtotal: parseNumericValue(item.orderSubtotal),
       orderTotal: parseNumericValue(item.orderTotal),
       productName: item.productName || '',
       quantity: parseNumericValue(item.quantity),
@@ -139,6 +141,7 @@ function addOrderSummary(worksheet, orderDetails) {
   const rows = [
     ['Order Number', orderDetails.orderNumber],
     ['Order Date', orderDetails.orderDate],
+    ['Subtotal', parseNumericValue(orderDetails.orderSubtotal)],
     ['Delivery Charges', parseNumericValue(orderDetails.deliveryCharges)],
     ['Tax', parseNumericValue(orderDetails.tax)],
     ['Tip', parseNumericValue(orderDetails.tip)],
@@ -249,6 +252,7 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null)
       allItems.push({
         orderNumber: orderDetails.orderNumber || '',
         orderDate: orderDetails.orderDate || '',
+        orderSubtotal: parseNumericValue(orderDetails.orderSubtotal),
         orderTotal: parseNumericValue(orderDetails.orderTotal),
         productName: item.productName || '',
         quantity: item.quantity,
@@ -385,6 +389,7 @@ const CONSTANTS = {
     ORDER_NUMBER_HEADING: '.print-bill-heading .dark-gray',
     PRINT_BILL_ID: '.print-bill-bar-id',
     ORDER_DATE: '.print-bill-date',
+    ORDER_SUBTOTAL: '.flex.justify-between.pb3.bill-order-payment-subtotal',
     ORDER_TOTAL: '.bill-order-total-payment h2:last-child',
     DELIVERY_CHARGES: '.print-fees',
     TAX_ELEMENTS: '.w_iUH7',
