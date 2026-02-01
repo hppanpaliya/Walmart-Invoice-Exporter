@@ -192,23 +192,20 @@ function scrapeOrderData() {
   const printItemsList = document.querySelectorAll(CONSTANTS.SELECTORS.PRINT_ITEMS);
 
   printItemsList.forEach((item) => {
-    const productName = item.querySelector(CONSTANTS.SELECTORS.PRINT_ITEM_NAME)?.innerText || '';
+    const productName = item.querySelector(CONSTANTS.SELECTORS.PRINT_ITEM_NAME)?.innerText;
     // Fall back to default delivery label if status element not found
     const deliveryStatus = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_TYPE)?.innerText || CONSTANTS.TEXT.DELIVERY_LABEL;
-    const quantity = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_QTY)?.innerText || '';
-    const price = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_PRICE)?.innerText || '';
+    const quantity = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_QTY)?.innerText;
+    const price = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_PRICE)?.innerText;
 
     // Find the corresponding visible item to get the product link
     let productLink = "N/A";
-    const productNameTrimmed = productName.trim();
-    if (productNameTrimmed) {
-      const visibleItems = document.querySelectorAll(CONSTANTS.SELECTORS.VISIBLE_ITEMS);
-      for (const visibleItem of visibleItems) {
-        const visibleText = visibleItem?.innerText?.trim() || '';
-        if (visibleText === productNameTrimmed) {
-          const linkElement = visibleItem.closest(CONSTANTS.SELECTORS.ITEM_STACK)?.querySelector(CONSTANTS.SELECTORS.PRODUCT_LINK);
-          if (linkElement) {
-            productLink = linkElement.href;
+    const visibleItems = document.querySelectorAll(CONSTANTS.SELECTORS.VISIBLE_ITEMS);
+    for (const visibleItem of visibleItems) {
+      if (visibleItem?.innerText.trim() === (productName || '').trim()) {
+        const linkElement = visibleItem.closest(CONSTANTS.SELECTORS.ITEM_STACK)?.querySelector(CONSTANTS.SELECTORS.PRODUCT_LINK);
+        if (linkElement) {
+          productLink = linkElement.href;
           break;
         }
       }
