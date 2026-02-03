@@ -56,6 +56,19 @@ body {
   pointer-events: none;
 }
 
+/* Exception: keep the global "Clear Cache" button visible and clickable even when the card is disabled */
+.card.disabled-card #clearCache {
+  pointer-events: auto;
+  opacity: 1;
+  cursor: pointer;
+}
+
+/* Muted visual state when there is nothing specific to clear */
+.btn-clear.muted {
+  opacity: 0.6;
+  transition: opacity 0.12s ease-in-out;
+}
+
 .input-group {
   margin-bottom: 16px;
 }

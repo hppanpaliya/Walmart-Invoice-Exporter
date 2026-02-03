@@ -345,11 +345,11 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
-  // Add clear cache button
+  // Add clear cache button (always visible)
   const clearCacheButton = document.createElement("button");
   clearCacheButton.id = "clearCache";
   clearCacheButton.className = CONSTANTS.CSS_CLASSES.BTN_CLEAR;
-  clearCacheButton.style.display = "none"; // Hidden by default, shown if cache exists
+  clearCacheButton.style.display = "inline-flex"; // Always visible
   clearCacheButton.innerHTML = `
     ${renderIcon('TRASH')}
     <span class="btn-text">${CONSTANTS.TEXT.CLEAR_CACHE_BTN}</span>
@@ -620,18 +620,27 @@ async function displayOrderNumbers(orderNumbers, additionalFields = {}) {
   updateClearCacheVisibility();
 }
 
-// Show or hide the clear cache button based on whether cache exists
+// Ensure the clear cache button is always visible; apply a muted visual state when there's nothing cached
 async function updateClearCacheVisibility() {
   const clearCacheBtn = document.getElementById("clearCache");
   if (!clearCacheBtn) return;
 
+  // Always keep the button visible so users can clear caches anytime.
+  // Use a subtle "muted" style when there are no invoice cache entries.
   const cachedOrders = await getCachedOrderNumbers();
+  clearCacheBtn.style.display = "inline-flex";
+
   if (cachedOrders && cachedOrders.length > 0) {
-    clearCacheBtn.style.display = "inline-flex";
+    clearCacheBtn.classList.remove('muted');
+    clearCacheBtn.disabled = false;
+    clearCacheBtn.setAttribute('title', 'Clear cached invoices');
   } else {
-    clearCacheBtn.style.display = "none";
+    // Keep it clickable (user may want to clear other caches); visually mute it to indicate no per-order cache.
+    clearCacheBtn.classList.add('muted');
+    clearCacheBtn.disabled = false;
+    clearCacheBtn.setAttribute('title', 'No invoice cache found — click to ensure caches are cleared');
   }
-}
+} 
 
 function updateOrderCacheStatus(orderNumber) {
   const container = document.getElementById("orderNumbersContainer");
