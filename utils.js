@@ -440,7 +440,7 @@ const CONSTANTS = {
     ORDER_NUMBER_HEADING: '.print-bill-heading .dark-gray',
     PRINT_BILL_ID: '.print-bill-bar-id',
     ORDER_DATE: '.print-bill-date',
-    ORDER_SUBTOTAL: '.flex.justify-between.pb3.bill-order-payment-subtotal',
+    ORDER_SUBTOTAL: '.flex.justify-between.pb3.bill-order-payment-subtotal, span[aria-label^="Subtotal after savings"]',
     ORDER_TOTAL: '.bill-order-total-payment h2:last-child',
     DELIVERY_CHARGES: '.print-fees',
     TAX_ELEMENTS: '.w_iUH7',
