@@ -349,6 +349,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const clearCacheButton = document.createElement("button");
   clearCacheButton.id = "clearCache";
   clearCacheButton.className = CONSTANTS.CSS_CLASSES.BTN_CLEAR;
+  clearCacheButton.style.display = "none"; // Hidden by default, shown if cache exists
   clearCacheButton.innerHTML = `
     ${renderIcon('TRASH')}
     <span class="btn-text">${CONSTANTS.TEXT.CLEAR_CACHE_BTN}</span>
@@ -357,6 +358,9 @@ document.addEventListener("DOMContentLoaded", function () {
   // Insert clear cache button into the button group
   const buttonGroup = document.querySelector(".button-group");
   buttonGroup.appendChild(clearCacheButton);
+
+  // Initial check for clear cache button visibility
+  updateClearCacheVisibility();
 
   // Add clear cache functionality
   clearCacheButton.addEventListener("click", async function () {
@@ -371,6 +375,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // Update the UI to show no orders
         displayOrderNumbers([]);
+        
+        // Hide the clear cache button
+        updateClearCacheVisibility();
 
         // Show a message
         const progressElement = document.getElementById("progress");
@@ -570,6 +577,7 @@ async function displayOrderNumbers(orderNumbers, additionalFields = {}) {
         await deleteInvoiceCache(orderNumber);
         cachedSet.delete(orderNumber);
         cacheIndicator.style.display = 'none';
+        updateClearCacheVisibility();
       });
 
       checkboxDiv.appendChild(cacheIndicator);
@@ -607,6 +615,59 @@ async function displayOrderNumbers(orderNumbers, additionalFields = {}) {
     downloadButton.addEventListener("click", downloadSelectedOrders);
     container.appendChild(downloadButton);
   }
+
+  // Update clear cache button visibility
+  updateClearCacheVisibility();
+}
+
+// Show or hide the clear cache button based on whether cache exists
+async function updateClearCacheVisibility() {
+  const clearCacheBtn = document.getElementById("clearCache");
+  if (!clearCacheBtn) return;
+
+  const cachedOrders = await getCachedOrderNumbers();
+  if (cachedOrders && cachedOrders.length > 0) {
+    clearCacheBtn.style.display = "inline-flex";
+  } else {
+    clearCacheBtn.style.display = "none";
+  }
+}
+
+function updateOrderCacheStatus(orderNumber) {
+  const container = document.getElementById("orderNumbersContainer");
+  if (!container) return;
+  
+  const checkbox = container.querySelector(`input[value="${orderNumber}"]`);
+  if (!checkbox) return;
+  
+  const checkboxDiv = checkbox.closest('.checkbox-container');
+  if (!checkboxDiv) return;
+
+  const existingIndicator = checkboxDiv.querySelector('span[title="Click to delete this order\'s cache"]');
+  if (existingIndicator) {
+    existingIndicator.style.display = 'inline-flex';
+    updateClearCacheVisibility();
+    return;
+  }
+
+  // Create cache indicator
+  const cacheIndicator = document.createElement("span");
+  cacheIndicator.style.cssText = 'cursor: pointer; margin-left: 6px; color: var(--primary); display: inline-flex; align-items: center; gap: 2px; font-size: 10px;';
+  cacheIndicator.title = 'Click to delete this order\'s cache';
+  cacheIndicator.innerHTML = renderIcon('CACHE', 'var(--primary)');
+  cacheIndicator.style.display = 'inline-flex';
+  
+  cacheIndicator.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    await deleteInvoiceCache(orderNumber);
+    cacheIndicator.style.display = 'none';
+    updateClearCacheVisibility();
+  });
+
+  checkboxDiv.appendChild(cacheIndicator);
+  
+  // Update global clear cache button when new item is cached
+  updateClearCacheVisibility();
 }
 
 async function downloadSelectedOrders() {
@@ -719,6 +780,10 @@ async function downloadSelectedOrders() {
                   } else if (response && response.data) {
                     // Cache the data
                     await cacheInvoice(orderNumber, response.data);
+                    
+                    // Update cache status UI immediately
+                    updateOrderCacheStatus(orderNumber);
+
                     // Convert to Excel
                     convertToXlsx(response.data, ExcelJS, { mode: 'single' });
                     resolve();
@@ -898,6 +963,10 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
                   } else {
                     // Cache the data
                     await cacheInvoice(orderNumber, resp.data);
+                    
+                    // Update cache status UI immediately
+                    updateOrderCacheStatus(orderNumber);
+
                     resolve(resp.data);
                   }
                 });
