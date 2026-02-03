@@ -479,8 +479,7 @@ function updateProgressUI(currentPage, pageLimit, inProgress) {
       Fetching order numbers... Fetching Page ${currentPage}${pageLimitText} 
     `;
   } else {
-    progressElement.textContent = `Collection ${pageLimit > 0 && currentPage >= pageLimit ? "reached limit" : "completed"}. Total pages: ${
-      pageLimit > 0 ? currentPage : currentPage - 1
+    progressElement.textContent = `Collection ${pageLimit > 0 && currentPage >= pageLimit ? "reached limit" : "completed"}. Total pages: ${currentPage
     }`;
   }
 }
