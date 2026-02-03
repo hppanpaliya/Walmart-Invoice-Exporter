@@ -189,6 +189,8 @@ function scrapeOrderData() {
   const orderItems = [];
 
   // Query the hidden print items list which contains reliable product data
+  // This list is always present in the DOM (hidden via .dn class) and is populated on page load.
+  // It provides a cleaner data structure compared to the complex interactive UI.
   const printItemsList = document.querySelectorAll(CONSTANTS.SELECTORS.PRINT_ITEMS);
 
   printItemsList.forEach((item) => {
@@ -272,6 +274,36 @@ function scrapeOrderData() {
   const tip =
     document.querySelector(".print-bill-payment-section .flex.justify-between.pb2.pt3 .w_U9_0.w_U0S3.w_QcqU:last-child")?.innerText || "$0.00";
 
+  // Extract payment metadata
+  const paymentMethods = [];
+  const paymentElements = document.querySelectorAll(CONSTANTS.SELECTORS.PAYMENT_METHODS);
+  paymentElements.forEach(el => {
+    const text = el.innerText.trim();
+    if (text && (
+      text.includes('Ending in') || 
+      text.includes('Visa') || 
+      text.includes('Mastercard') || 
+      text.includes('Amex') || 
+      text.includes('Discover') ||
+      text.toLowerCase().includes('benefit card')
+    )) {
+      // Avoid duplicates
+      if (!paymentMethods.includes(text)) {
+        paymentMethods.push(text);
+      }
+    }
+  });
+
+  // Extract address - join lines with comma
+  const addressParts = [];
+  const addressElements = document.querySelectorAll(CONSTANTS.SELECTORS.ADDRESS);
+  addressElements.forEach(el => {
+    if (el.innerText && el.innerText.trim()) {
+      addressParts.push(el.innerText.trim());
+    }
+  });
+  const address = addressParts.slice(0, 2).join(', ');
+
   return {
     orderNumber,
     orderDate,
@@ -280,6 +312,8 @@ function scrapeOrderData() {
     deliveryCharges,
     tax,
     tip,
+    address,
+    paymentMethods: paymentMethods.join('; '),
     items: orderItems,
   };
 }
