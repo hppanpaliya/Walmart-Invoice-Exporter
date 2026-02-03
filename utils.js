@@ -274,8 +274,8 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null)
         deliveryStatus: item.deliveryStatus || '',
         productLink: item.productLink || '',
         deliveryCharges: parseNumericValue(item.deliveryCharges),
-        tax: parseNumericValue(item.tax),
-        tip: parseNumericValue(item.tip),
+        tax: parseNumericValue(orderDetails.tax),
+        tip: parseNumericValue(orderDetails.tip),
       });
     });
   });
