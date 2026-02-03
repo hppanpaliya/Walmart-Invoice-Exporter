@@ -1,5 +1,27 @@
 # Changelog
 
+## [5.2] - February 3, 2026
+
+### Features
+- **Feature:** Added shipping address and payment method to exported invoice details
+- **Feature:** Added Order Total, Sub Total, Tax, Tip column to both multiple and single file mode
+
+
+### Fixes
+- **Fix:** Always collect order numbers to ensure cache is up to date with latest orders
+- **Fix:** Updated caching system to use local storage instead of session storage for better persistence
+- **Fix:** Minimum Chrome version requirement set to 116
+
+### Enhanced Invoice Details
+Exported invoices now include:
+  - Shipping address
+  - Payment method
+  - Delivery charges
+  - Tax
+  - Tip
+  - Order subtotal
+  - Order total (both single and multiple file modes)
+
 ## [5.1] - January 31, 2026
 
 ### Features
