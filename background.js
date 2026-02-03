@@ -185,19 +185,8 @@ function collectOrderNumbers() {
     return;
   }
 
-  // Check if this page is already cached
-  if (CollectionState.pagesCached[CollectionState.currentPage]) {
-    console.log(`Page ${CollectionState.currentPage} is already cached. Skipping collection.`);
-    // If already cached, we can go to the next page
-    if (CollectionState.pagesCached[CollectionState.currentPage].hasNextPage && (CollectionState.pageLimit === 0 || CollectionState.currentPage < CollectionState.pageLimit)) {
-      CollectionState.currentPage++;
-      goToNextPage();
-    } else {
-      console.log("No more pages to collect or reached limit. Finishing collection.");
-      finishCollection();
-    }
-    return;
-  }
+  // Always collect order numbers to ensure cache is up to date with any changes
+
 
   chrome.tabs.sendMessage(CollectionState.tabId, { action: "collectOrderNumbers" }, (response) => {
     if (chrome.runtime.lastError) {
