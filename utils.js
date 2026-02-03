@@ -43,11 +43,16 @@ function configureMultipleOrdersColumns(worksheet) {
   worksheet.columns = [
     { header: 'Order Number', key: 'orderNumber', width: 20, style: { alignment: { horizontal: "center" } } },
     { header: 'Order Date', key: 'orderDate', width: 20, style: { alignment: { horizontal: "center" } } },
+    { header: 'Shipping Address', key: 'address', width: 40, style: { alignment: { horizontal: "center" } } },  
+    { header: 'Payment Method', key: 'paymentMethods', width: 30, style: { alignment: { horizontal: "center" } } },
     { header: 'Subtotal', key: 'orderSubtotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Order Total', key: 'orderTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Product Name', key: 'productName', width: 60, style: { alignment: { horizontal: "center" } } },
     { header: 'Quantity', key: 'quantity', width: 10, style: { numFmt: "#,##0", alignment: { horizontal: "center" } } },
     { header: 'Price', key: 'price', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Delivery Charges', key: 'deliveryCharges', width: 20, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Tax', key: 'tax', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Tip', key: 'tip', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Delivery Status', key: 'deliveryStatus', width: 20, style: { alignment: { horizontal: "center" } } },
     { header: 'Product Link', key: 'productLink', width: 60 , style: { font: STYLES.linkFont } },
   ];
@@ -84,6 +89,8 @@ function addMultipleOrderItemsToWorksheet(worksheet, items) {
     worksheet.addRow({
       orderNumber: item.orderNumber || '',
       orderDate: item.orderDate || '',
+      address: item.address || '',
+      paymentMethods: item.paymentMethods || '',
       orderSubtotal: parseNumericValue(item.orderSubtotal),
       orderTotal: parseNumericValue(item.orderTotal),
       productName: item.productName || '',
@@ -94,6 +101,9 @@ function addMultipleOrderItemsToWorksheet(worksheet, items) {
         text: truncateText(item.productName),
         hyperlink: item.productLink
       },
+      deliveryCharges: parseNumericValue(item.deliveryCharges),
+      tax: parseNumericValue(item.tax),
+      tip: parseNumericValue(item.tip),
     });
   });
 }
@@ -141,6 +151,8 @@ function addOrderSummary(worksheet, orderDetails) {
   const rows = [
     ['Order Number', orderDetails.orderNumber],
     ['Order Date', orderDetails.orderDate],
+    ['Shipping Address', orderDetails.address],
+    ['Payment Method', orderDetails.paymentMethods],
     ['Subtotal', parseNumericValue(orderDetails.orderSubtotal)],
     ['Delivery Charges', parseNumericValue(orderDetails.deliveryCharges)],
     ['Tax', parseNumericValue(orderDetails.tax)],
@@ -252,6 +264,8 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null)
       allItems.push({
         orderNumber: orderDetails.orderNumber || '',
         orderDate: orderDetails.orderDate || '',
+        address: orderDetails.address || '',
+        paymentMethods: orderDetails.paymentMethods || '',
         orderSubtotal: parseNumericValue(orderDetails.orderSubtotal),
         orderTotal: parseNumericValue(orderDetails.orderTotal),
         productName: item.productName || '',
@@ -259,6 +273,9 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null)
         price: item.price,
         deliveryStatus: item.deliveryStatus || '',
         productLink: item.productLink || '',
+        deliveryCharges: parseNumericValue(item.deliveryCharges),
+        tax: parseNumericValue(item.tax),
+        tip: parseNumericValue(item.tip),
       });
     });
   });
@@ -406,13 +423,18 @@ const CONSTANTS = {
   // DOM Selectors (content.js)
   SELECTORS: {
     PRINT_ITEMS: '.dn.print-items-list',
-    PRINT_ITEM_NAME: '.w_U9_0.w_sD6D.w_QcqU',
+    PRINT_ITEM_NAME: '.flex.justify-between > .w_U9_0.w_sD6D.w_QcqU',
     PRINT_BILL_TYPE: '.print-bill-type .w_U9_0.w_sD6D.w_QcqU',
     PRINT_BILL_QTY: '.print-bill-qty .w_U9_0.w_sD6D.w_QcqU',
     PRINT_BILL_PRICE: '.print-bill-price .w_U9_0.w_sD6D.w_QcqU',
     VISIBLE_ITEMS: '[data-testid="itemtile-stack"] [data-testid="productName"] span',
     ITEM_STACK: '[data-testid="itemtile-stack"]',
     PRODUCT_LINK: 'a[link-identifier="itemClick"]',
+
+    PRINT_BILL_GROUP: '.print-bill-group',
+    PRINT_ITEM_ROW: '.dn.print-items-list > .flex.justify-between',
+    PAYMENT_METHODS: '.print-bill-payment-section .w_U9_0.w_sD6D.w_QcqU',
+    ADDRESS: '.print-bill-payment-section .w_U9_0.w_sD6D.w_QcqU span, .print-bill-payment-section .w_yTSq.w_0aYG.w_MwbK',
     ORDER_NUMBER_BAR: '.f-subheadline-m.dark-gray-m.print-bill-bar-id',
     ORDER_INFO_CARD: "[data-testid='orderInfoCard'] .dark-gray",
     ORDER_NUMBER_HEADING: '.print-bill-heading .dark-gray',
