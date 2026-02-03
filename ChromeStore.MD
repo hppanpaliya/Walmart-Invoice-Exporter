@@ -11,9 +11,10 @@ Transform your Walmart order management experience with the Walmart Invoice Expo
    - Delivery status tracking
    - Product links for easy reference
    - Complete order information (number, date)
+   - Shipping address and payment method
+   - All charges (delivery, tax, tip - accurately parsed)
    - Order subtotal (before fees and taxes)
    - Order total (final amount)
-   - All charges (delivery, tax, tip)
 • Export Mode Selector: Choose between:
    - Multiple Files: One XLSX per order
    - Single Combined File: All selected orders in a single XLSX workbook for easier management
@@ -89,6 +90,14 @@ Transform your Walmart order management experience with the Walmart Invoice Expo
 
 
 ★ What's New:
+
+ ✦ Version 5.2 - February 3, 2026
+   • Added shipping address and payment method to exported invoice details
+   • Added Order Total column to multiple files export mode for consistency
+   • Improved clear cache button visibility logic with dynamic UI updates
+   • Fixed tax and tip parsing in multiple file exports
+   • Enhanced cache system with better persistence using local storage
+   • Updated to Chrome 120 minimum version for better compatibility
 
  ✦ Version 5.1 - January 31, 2026
    • Added Order Subtotal column to both single and multiple invoice export modes

@@ -20,6 +20,8 @@ A Chrome extension that allows users to download their Walmart order history in 
   - Delivery status
   - Product links
   - Order information (number, date)
+  - Shipping address 
+  - Payment method
   - Order subtotal (before fees and taxes)
   - Order total (final amount)
   - Additional charges (delivery, tax, tip)
@@ -92,6 +94,14 @@ Install the Walmart Invoice Exporter directly from the [Chrome Web Store](https:
 5. Pin the extension to your toolbar for easy access
 
 ## What's New
+
+### Version 5.2 (February 3, 2026)
+- Added shipping address and payment method to exported invoices
+- Added Order Total to multiple files export mode
+- Improved clear cache button visibility logic
+- Fixed tax and tip parsing in multiple file exports
+- Enhanced cache system with better persistence
+- Updated to Chrome 120 minimum version
 
 ### [Changelog](./CHANGELOG.md)
 
@@ -284,10 +294,11 @@ The extension is built with a modular design for maintainability:
 
 For a complete list of changes, see [CHANGELOG.md](./CHANGELOG.md)
 
-**Latest Features (v4.0):**
-- Invoice caching for instant re-access
-- Centralized configuration constants
-- Enhanced cache management with per-order indicators
+**Latest Features (v5.2):**
+- Shipping address and payment method in exported invoices
+- Order Total in multiple files export mode
+- Enhanced cache system with local storage persistence
+- Dynamic clear cache button visibility
 
 ## Support
 
