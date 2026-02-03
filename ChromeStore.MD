@@ -123,7 +123,7 @@ Transform your Walmart order management experience with the Walmart Invoice Expo
    • Makes identifying and selecting specific orders much easier
 
  ✦ Version 3.0 - March 25, 2025
-   • Implemented intelligent session storage caching system for faster repeat usage
+   • Implemented intelligent local storage caching system for faster repeat usage
    • Added cache timestamp and management options
    • Improved memory management during order collection
    • Updated FAQ with information about the caching system

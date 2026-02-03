@@ -60,7 +60,7 @@
 
 ## [3.0] - March 25, 2025
 
-- **Feature:** Implemented session storage caching system
+- **Feature:** Implemented local storage caching system
   - Automatically stores previously collected order numbers
   - Dramatically improves loading time for repeat usage
   - Shows cache timestamp and source information

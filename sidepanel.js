@@ -801,7 +801,7 @@ async function downloadSelectedOrders() {
       progressDiv.innerHTML = createSuccessMessage('All downloads completed successfully!');
     } else {
       progressDiv.innerHTML = createErrorMessage(
-        `Downloads completed with ${failedOrders.length} failed orders:<br>Failed orders: ${failedOrders.map((order) => `#${order}`).join(", ")}`
+        `Downloads completed with ${failedOrders.length} failed orders:\nFailed orders: ${failedOrders.map((order) => `#${order}`).join(", ")}`
       );
     }
     setTimeout(() => progressDiv.remove(), failedOrders.length > 0 ? CONSTANTS.TIMING.ERROR_DISPLAY_DURATION : CONSTANTS.TIMING.SUCCESS_DISPLAY_DURATION);
@@ -997,7 +997,7 @@ function maybeShowRatingHint() {
   if (Math.random() > 0.8) return;
 
   // First check if hint has been dismissed in current session
-  chrome.storage.session.get(["ratingHintDismissed"], function (sessionResult) {
+  chrome.storage.local.get(["ratingHintDismissed"], function (sessionResult) {
     if (sessionResult.ratingHintDismissed) return;
 
     // Then check if hint has been dismissed 5 times in total (using local storage)
@@ -1031,8 +1031,8 @@ function maybeShowRatingHint() {
         ratingHint.querySelector(".dismiss-hint").addEventListener("click", function () {
           ratingHint.classList.remove("show");
 
-          // Update session storage for current session
-          chrome.storage.session.set({ ratingHintDismissed: true });
+          // Mark dismissed for current browser session (cleared on startup)
+          chrome.storage.local.set({ ratingHintDismissed: true });
 
           // Increment dismiss count in local storage
           chrome.storage.local.get(["ratingHintDismissCount"], function (result) {

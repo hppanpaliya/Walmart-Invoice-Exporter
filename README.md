@@ -302,7 +302,7 @@ For issues or feature requests, please:
 This extension prioritizes your privacy and security:
 
 **Data Storage:**
-- Order numbers are stored in Chrome's session storage (temporary)
+- Order numbers are stored in Chrome's local storage (cached for up to 24 hours)
 - Invoice data is stored in Chrome's local storage (on your device only)
 - Order cache automatically expires after 24 hours
 - No data is sent to external servers

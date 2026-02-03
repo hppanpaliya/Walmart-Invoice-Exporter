@@ -318,6 +318,29 @@ function renderIcon(iconKey, color = null) {
  */
 
 /**
+ * Escape HTML to prevent injection in UI messages
+ * @param {string} value - Value to escape
+ * @returns {string} Escaped string
+ */
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Escape text and preserve line breaks
+ * @param {string} message - Message text (use \n for line breaks)
+ * @returns {string} Safe HTML with <br> tags
+ */
+function formatMessageWithBreaks(message) {
+  return escapeHtml(message).replace(/\n/g, '<br>');
+}
+
+/**
  * Create a progress message with spinner and text
  * @param {number} current - Current item number
  * @param {number} total - Total items
@@ -327,9 +350,13 @@ function renderIcon(iconKey, color = null) {
  * @returns {string} HTML string
  */
 function createProgressMessage(current, total, action, identifier, spinnerColor = 'var(--success)') {
+  const safeAction = escapeHtml(action);
+  const safeCurrent = escapeHtml(current);
+  const safeTotal = escapeHtml(total);
+  const safeIdentifier = escapeHtml(identifier);
   return `
     <span class="loading-spinner" style="border-color: ${spinnerColor}; border-top-color: transparent;"></span>
-    ${action} ${current} of ${total} (#${identifier})...
+    ${safeAction} ${safeCurrent} of ${safeTotal} (#${safeIdentifier})...
   `;
 }
 
@@ -339,9 +366,10 @@ function createProgressMessage(current, total, action, identifier, spinnerColor 
  * @returns {string} HTML string with success icon
  */
 function createSuccessMessage(message) {
+  const safeMessage = formatMessageWithBreaks(message);
   return `
     ${renderIcon('SUCCESS_CHECKMARK', 'var(--success)')}
-    ${message}
+    ${safeMessage}
   `.replace('stroke="currentColor"', 'stroke="var(--success)"');
 }
 
@@ -351,9 +379,10 @@ function createSuccessMessage(message) {
  * @returns {string} HTML string with error icon
  */
 function createErrorMessage(message) {
+  const safeMessage = formatMessageWithBreaks(message);
   return `
     ${renderIcon('ERROR_CIRCLE', 'var(--danger)')}
-    ${message}
+    ${safeMessage}
   `.replace('stroke="currentColor"', 'stroke="var(--danger)"');
 }
 
@@ -850,4 +879,3 @@ function clearAllInvoiceCache() {
     });
   });
 }
-

@@ -33,6 +33,16 @@ const CollectionState = {
 
 // Cache expiration time (24 hours in milliseconds) - use shared constant
 const CACHE_EXPIRATION = 24 * 60 * 60 * 1000; // Matches CONSTANTS.TIMING.CACHE_EXPIRATION
+const RATING_HINT_DISMISSED_KEY = "ratingHintDismissed";
+
+// Reset rating hint per browser session (stored in local, cleared on startup)
+chrome.runtime.onStartup.addListener(() => {
+  chrome.storage.local.remove(RATING_HINT_DISMISSED_KEY);
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.local.remove(RATING_HINT_DISMISSED_KEY);
+});
 
 // Open side panel when extension icon is clicked
 chrome.action.onClicked.addListener((tab) => {
@@ -47,14 +57,14 @@ chrome.action.onClicked.addListener((tab) => {
 // Function to load cached order data
 function loadCachedOrderNumbers() {
   return new Promise((resolve) => {
-    chrome.storage.session.get([CollectionState.cacheKey], (result) => {
+    chrome.storage.local.get([CollectionState.cacheKey], (result) => {
       if (result[CollectionState.cacheKey]) {
         const cachedData = result[CollectionState.cacheKey];
 
         // Check if cache is expired
         if (Date.now() - cachedData.timestamp > CACHE_EXPIRATION) {
           console.log("Cache is expired. Clearing.");
-          chrome.storage.session.remove(CollectionState.cacheKey);
+          chrome.storage.local.remove(CollectionState.cacheKey);
           CollectionState.clearAll();
         } else {
           CollectionState.allOrderNumbers = new Set(cachedData.orderNumbers);
@@ -77,7 +87,7 @@ function saveToCache() {
     timestamp: Date.now(),
   };
 
-  chrome.storage.session.set({ [CollectionState.cacheKey]: dataToCache }, () => {
+  chrome.storage.local.set({ [CollectionState.cacheKey]: dataToCache }, () => {
     console.log(`Saved ${CollectionState.allOrderNumbers.size} orders and ${Object.keys(CollectionState.pagesCached).length} pages to cache`);
   });
 }
@@ -90,6 +100,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       loadCachedOrderNumbers().then(() => {
         CollectionState.reset();
         CollectionState.pageLimit = request.pageLimit || 0;
+        // Always refresh the first page to avoid missing new orders within the cache window
+        if (CollectionState.pagesCached[1]) {
+          delete CollectionState.pagesCached[1];
+        }
         startCollection(request.url);
       });
     }
@@ -126,8 +140,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true; // Indicate async response
   } else if (request.action === "clearCache") {
-    chrome.storage.session.clear(() => {
-      // Clear all session storage
+    chrome.storage.local.remove(CollectionState.cacheKey, () => {
+      // Clear only collection cache (preserve other local storage data)
       console.log("Cache cleared");
       CollectionState.clearAll();
       sendResponse({ status: "cache_cleared" });
