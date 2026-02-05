@@ -3,6 +3,9 @@
  * Handles order collection, pagination, and caching
  */
 
+// Load shared constants and utilities
+importScripts('utils.js');
+
 // Encapsulate state to reduce global namespace pollution
 const CollectionState = {
   allOrderNumbers: new Set(),
@@ -13,8 +16,8 @@ const CollectionState = {
   maxRetries: 3,
   retryCount: 0,
   pageLimit: 0,
-  timeout: 100,
-  cacheKey: "walmart_order_cache",
+  pageLoadDelay: 100,
+  cacheKey: CONSTANTS.CACHE_KEYS.ORDER_COLLECTION,
   pagesCached: {},
   
   // Reset state for new collection
@@ -32,16 +35,15 @@ const CollectionState = {
 };
 
 // Cache expiration time (24 hours in milliseconds) - use shared constant
-const CACHE_EXPIRATION = 24 * 60 * 60 * 1000; // Matches CONSTANTS.TIMING.CACHE_EXPIRATION
-const RATING_HINT_DISMISSED_KEY = "ratingHintDismissed";
+const CACHE_EXPIRATION = CONSTANTS.TIMING.CACHE_EXPIRATION;
 
 // Reset rating hint per browser session (stored in local, cleared on startup)
 chrome.runtime.onStartup.addListener(() => {
-  chrome.storage.local.remove(RATING_HINT_DISMISSED_KEY);
+  chrome.storage.local.remove(CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISSED);
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.remove(RATING_HINT_DISMISSED_KEY);
+  chrome.storage.local.remove(CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISSED);
 });
 
 // Open side panel when extension icon is clicked
@@ -93,63 +95,82 @@ function saveToCache() {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "startCollection") {
-    if (!CollectionState.isCollecting) {
-      CollectionState.isCollecting = true;
-      // Load cached order numbers before starting collection
-      loadCachedOrderNumbers().then(() => {
-        CollectionState.reset();
-        CollectionState.pageLimit = request.pageLimit || 0;
-        // Always refresh the first page to avoid missing new orders within the cache window
-        if (CollectionState.pagesCached[1]) {
-          delete CollectionState.pagesCached[1];
-        }
-        startCollection(request.url);
-      });
-    }
-    sendResponse({ status: "started" });
-    return false; // Synchronous response
-  } else if (request.action === "stopCollection") {
-    if (CollectionState.isCollecting) {
-      CollectionState.isCollecting = false;
-      if (CollectionState.tabId) {
-        chrome.tabs.remove(CollectionState.tabId).catch(() => {
-          // Tab may already be closed
-        });
-        chrome.tabs.onUpdated.removeListener(onTabUpdated);
-      }
-      // Save to cache before sending response
-      saveToCache();
-      sendResponse({
-        status: "stopped",
-        currentPage: CollectionState.currentPage,
-        orderNumbers: Array.from(CollectionState.allOrderNumbers),
-      });
-    }
-    return false; // Synchronous response
-  } else if (request.action === "getProgress") {
-    loadCachedOrderNumbers().then(() => {
-      sendResponse({
-        currentPage: CollectionState.currentPage,
-        pageLimit: CollectionState.pageLimit,
-        orderNumbers: Array.from(CollectionState.allOrderNumbers),
-        additionalFields: CollectionState.allAdditionalFields,
-        isCollecting: CollectionState.isCollecting,
-        pagesCached: CollectionState.pagesCached,
-      });
-    });
-    return true; // Indicate async response
-  } else if (request.action === "clearCache") {
-    chrome.storage.local.remove(CollectionState.cacheKey, () => {
-      // Clear only collection cache (preserve other local storage data)
-      console.log("Cache cleared");
-      CollectionState.clearAll();
-      sendResponse({ status: "cache_cleared" });
-    });
-    return true; // Indicate async response
+  const handlers = {
+    [CONSTANTS.MESSAGES.START_COLLECTION]: handleStartCollection,
+    [CONSTANTS.MESSAGES.STOP_COLLECTION]: handleStopCollection,
+    [CONSTANTS.MESSAGES.GET_PROGRESS]: handleGetProgress,
+    [CONSTANTS.MESSAGES.CLEAR_CACHE]: handleClearCache,
+  };
+
+  const handler = handlers[request.action];
+  if (!handler) {
+    return false;
   }
-  return false; // Default: synchronous (no response needed)
+
+  return handler(request, sendResponse);
 });
+
+function handleStartCollection(request, sendResponse) {
+  if (!CollectionState.isCollecting) {
+    CollectionState.isCollecting = true;
+    // Load cached order numbers before starting collection
+    loadCachedOrderNumbers().then(() => {
+      CollectionState.reset();
+      CollectionState.pageLimit = request.pageLimit || 0;
+      // Always refresh the first page to avoid missing new orders within the cache window
+      if (CollectionState.pagesCached[1]) {
+        delete CollectionState.pagesCached[1];
+      }
+      startCollection(request.url);
+    });
+  }
+  sendResponse({ status: "started" });
+  return false; // Synchronous response
+}
+
+function handleStopCollection(_request, sendResponse) {
+  if (CollectionState.isCollecting) {
+    CollectionState.isCollecting = false;
+    if (CollectionState.tabId) {
+      chrome.tabs.remove(CollectionState.tabId).catch(() => {
+        // Tab may already be closed
+      });
+      chrome.tabs.onUpdated.removeListener(onTabUpdated);
+    }
+    // Save to cache before sending response
+    saveToCache();
+    sendResponse({
+      status: "stopped",
+      currentPage: CollectionState.currentPage,
+      orderNumbers: Array.from(CollectionState.allOrderNumbers),
+    });
+  }
+  return false; // Synchronous response
+}
+
+function handleGetProgress(_request, sendResponse) {
+  loadCachedOrderNumbers().then(() => {
+    sendResponse({
+      currentPage: CollectionState.currentPage,
+      pageLimit: CollectionState.pageLimit,
+      orderNumbers: Array.from(CollectionState.allOrderNumbers),
+      additionalFields: CollectionState.allAdditionalFields,
+      isCollecting: CollectionState.isCollecting,
+      pagesCached: CollectionState.pagesCached,
+    });
+  });
+  return true; // Indicate async response
+}
+
+function handleClearCache(_request, sendResponse) {
+  chrome.storage.local.remove(CollectionState.cacheKey, () => {
+    // Clear only collection cache (preserve other local storage data)
+    console.log("Cache cleared");
+    CollectionState.clearAll();
+    sendResponse({ status: "cache_cleared" });
+  });
+  return true; // Indicate async response
+}
 
 function startCollection(url) {
   console.log("Starting collection from URL:", url);
@@ -167,7 +188,7 @@ function startCollection(url) {
 function onTabUpdated(updatedTabId, changeInfo, tab) {
   if (CollectionState.tabId && updatedTabId === CollectionState.tabId && changeInfo.status === "complete") {
     console.log("Tab updated, collecting order numbers for page:", CollectionState.currentPage);
-    setTimeout(() => collectOrderNumbers(), CollectionState.timeout);
+    setTimeout(() => collectOrderNumbers(), CollectionState.pageLoadDelay);
   }
 }
 
@@ -188,7 +209,7 @@ function collectOrderNumbers() {
   // Always collect order numbers to ensure cache is up to date with any changes
 
 
-  chrome.tabs.sendMessage(CollectionState.tabId, { action: "collectOrderNumbers" }, (response) => {
+  chrome.tabs.sendMessage(CollectionState.tabId, { action: CONSTANTS.MESSAGES.COLLECT_ORDER_NUMBERS }, (response) => {
     if (chrome.runtime.lastError) {
       console.error("Error collecting order numbers:", chrome.runtime.lastError);
       retryCollection();
@@ -239,7 +260,7 @@ function goToNextPage() {
   }
 
   console.log("Attempting to go to next page:", CollectionState.currentPage);
-  chrome.tabs.sendMessage(CollectionState.tabId, { action: "clickNextButton" }, (response) => {
+  chrome.tabs.sendMessage(CollectionState.tabId, { action: CONSTANTS.MESSAGES.CLICK_NEXT_BUTTON }, (response) => {
     if (chrome.runtime.lastError) {
       console.error("Error clicking next button:", chrome.runtime.lastError);
       retryCollection();
@@ -261,7 +282,7 @@ function retryCollection() {
   if (CollectionState.retryCount < CollectionState.maxRetries) {
     CollectionState.retryCount++;
     console.log(`Retrying collection. Attempt ${CollectionState.retryCount} of ${CollectionState.maxRetries}`);
-    setTimeout(() => collectOrderNumbers(), CollectionState.timeout);
+    setTimeout(() => collectOrderNumbers(), CollectionState.pageLoadDelay);
   } else {
     console.log("Max retries reached. Finishing collection.");
     finishCollection();

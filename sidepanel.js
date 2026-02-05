@@ -1,9 +1,8 @@
-let allOrderNumbers = new Set();
-let downloadInProgress = false;
-let collectionInProgress = false;
-let exportMode = 'multiple'; // 'multiple' | 'single'
-let lastWalmartOrdersTabId = null; // Track the last known Walmart orders tab
-let currentView = 'main'; // 'main' | 'faq'
+const AppState = {
+  downloadInProgress: false,
+  collectionInProgress: false,
+  exportMode: CONSTANTS.EXPORT_MODES.MULTIPLE,
+};
 
 // Global error handler for unhandled promise rejections
 window.addEventListener('unhandledrejection', (event) => {
@@ -34,18 +33,16 @@ document.addEventListener("DOMContentLoaded", function () {
     if (viewName === 'faq') {
       mainView.classList.remove('active');
       faqView.classList.add('active');
-      currentView = 'faq';
     } else {
       faqView.classList.remove('active');
       mainView.classList.add('active');
-      currentView = 'main';
       // Refresh the main view state
       checkCurrentTab();
     }
   }
 
   function isOperationRunning() {
-    return downloadInProgress || collectionInProgress;
+    return AppState.downloadInProgress || AppState.collectionInProgress;
   }
 
   function showConfirmDialog(message) {
@@ -62,7 +59,7 @@ document.addEventListener("DOMContentLoaded", function () {
     e.preventDefault();
     
     if (isOperationRunning()) {
-      const opType = collectionInProgress ? 'collection' : 'download';
+      const opType = AppState.collectionInProgress ? 'collection' : 'download';
       showConfirmDialog(`A ${opType} is currently running. Navigating to FAQ will stop the operation. Your collected data will be preserved.`);
     } else {
       showView('faq');
@@ -84,9 +81,9 @@ document.addEventListener("DOMContentLoaded", function () {
     hideConfirmDialog();
     
     // Stop any running operations
-    if (collectionInProgress) {
-      chrome.runtime.sendMessage({ action: "stopCollection" }, function (response) {
-        collectionInProgress = false;
+    if (AppState.collectionInProgress) {
+      chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.STOP_COLLECTION }, function (response) {
+        AppState.collectionInProgress = false;
         // Update UI
         document.getElementById("stopCollection").style.display = "none";
         document.getElementById("startCollection").style.display = "inline-flex";
@@ -96,7 +93,7 @@ document.addEventListener("DOMContentLoaded", function () {
     
     // Note: downloadInProgress will naturally stop when we switch views
     // as the download loop checks state
-    downloadInProgress = false;
+    AppState.downloadInProgress = false;
     
     showView('faq');
   });
@@ -116,18 +113,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Initialize export mode from storage
   chrome.storage.local.get(['exportMode'], (res) => {
-    exportMode = res.exportMode || 'multiple';
-    if (exportModeSelect) exportModeSelect.value = exportMode;
+    AppState.exportMode = res.exportMode || CONSTANTS.EXPORT_MODES.MULTIPLE;
+    if (exportModeSelect) exportModeSelect.value = AppState.exportMode;
   });
 
   if (exportModeSelect) {
     exportModeSelect.addEventListener('change', () => {
-      exportMode = exportModeSelect.value;
-      chrome.storage.local.set({ exportMode });
+      AppState.exportMode = exportModeSelect.value;
+      chrome.storage.local.set({ exportMode: AppState.exportMode });
       // Update button label if present
       const btn = document.getElementById('downloadButton');
       if (btn) {
-        const label = exportMode === 'single' ? 'Download as Single File' : 'Download Selected Orders';
+        const label = AppState.exportMode === CONSTANTS.EXPORT_MODES.SINGLE ? 'Download as Single File' : 'Download Selected Orders';
         btn.lastChild.nodeValue = ` ${label}`; // Keep icon, change text
       }
     });
@@ -148,10 +145,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const existingBanner = document.getElementById("offTabWarning");
       if (existingBanner) existingBanner.remove();
 
-      if (url && url.startsWith("https://www.walmart.com/orders")) {
-        // Track this tab as a valid Walmart orders tab
-        lastWalmartOrdersTabId = tab.id;
-        
+      if (url && url.startsWith(CONSTANTS.URLS.WALMART_ORDERS)) {
         const cleanUrl = url.replace(/\/$/, "");
         const orderPath = cleanUrl.split("/orders/")[1];
 
@@ -222,7 +216,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // If we have no cached orders loaded yet, load them now
-    chrome.runtime.sendMessage({ action: "getProgress" }, function (response) {
+    chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.GET_PROGRESS }, function (response) {
       if (response && response.orderNumbers && response.orderNumbers.length > 0) {
         // Only update if we don't already have orders displayed
         const container = document.getElementById("orderNumbersContainer");
@@ -249,17 +243,13 @@ document.addEventListener("DOMContentLoaded", function () {
       downloadButton.style.cursor = enabled ? "pointer" : "not-allowed";
     }
 
-    // Disable/enable all checkboxes and buttons within the card
-    const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-    checkboxes.forEach(cb => {
-      cb.disabled = !enabled;
-    });
+    setCheckboxesDisabled(!enabled);
   }
 
   // Switch to existing Walmart orders tab or open a new one
   function switchToWalmartOrdersTab() {
     // First, try to find an existing Walmart orders tab
-    chrome.tabs.query({ url: "https://www.walmart.com/orders*" }, function(tabs) {
+    chrome.tabs.query({ url: `${CONSTANTS.URLS.WALMART_ORDERS}*` }, function(tabs) {
       if (tabs && tabs.length > 0) {
         // Switch to the first matching tab
         chrome.tabs.update(tabs[0].id, { active: true });
@@ -300,7 +290,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       chrome.runtime.sendMessage(
         {
-          action: "startCollection",
+          action: CONSTANTS.MESSAGES.START_COLLECTION,
           url: url,
           pageLimit: pageLimit,
         },
@@ -315,7 +305,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     newStopButton.addEventListener("click", function () {
       setButtonLoading(newStopButton, true);
-      chrome.runtime.sendMessage({ action: "stopCollection" }, function (response) {
+      chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.STOP_COLLECTION }, function (response) {
         if (response && response.status === "stopped") {
           newStopButton.style.display = "none";
           newStartButton.style.display = "inline-flex";
@@ -369,7 +359,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // Clear invoice cache
     await clearAllInvoiceCache();
     
-    chrome.runtime.sendMessage({ action: "clearCache" }, function (response) {
+    chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.CLEAR_CACHE }, function (response) {
       if (response && response.status === "cache_cleared") {
         setButtonLoading(clearCacheButton, false);
 
@@ -397,7 +387,7 @@ document.addEventListener("DOMContentLoaded", function () {
 // Function to load cache only on the main orders page
 function loadCacheOnMainPage() {
   // Check for cached data on panel open
-  chrome.runtime.sendMessage({ action: "getProgress" }, function (response) {
+  chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.GET_PROGRESS }, function (response) {
     if (response && response.orderNumbers && response.orderNumbers.length > 0) {
       displayOrderNumbers(response.orderNumbers, response.additionalFields);
 
@@ -445,25 +435,21 @@ function loadCacheOnMainPage() {
 }
 
 function updateProgress() {
-  chrome.runtime.sendMessage({ action: "getProgress" }, function (response) {
+  chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.GET_PROGRESS }, function (response) {
     if (response && response.isCollecting) {
-      collectionInProgress = true;
+      AppState.collectionInProgress = true;
       updateProgressUI(response.currentPage, response.pageLimit, true);
       displayOrderNumbers(response.orderNumbers, response.additionalFields);
       setTimeout(updateProgress, 1000);
-      // set all checkboxes to disabled
-      const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-      checkboxes.forEach((cb) => (cb.disabled = true));
+      setCheckboxesDisabled(true);
     } else if (response) {
-      collectionInProgress = false;
+      AppState.collectionInProgress = false;
       updateProgressUI(response.currentPage, response.pageLimit, false);
       displayOrderNumbers(response.orderNumbers, response.additionalFields);
       document.getElementById("startCollection").style.display = "inline-flex";
       document.getElementById("stopCollection").style.display = "none";
       document.getElementById("startCollection").querySelector(".btn-text").textContent = "Start Collection";
-      // set all checkboxes to enabled
-      const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-      checkboxes.forEach((cb) => (cb.disabled = false));
+      setCheckboxesDisabled(false);
     }
   });
 }
@@ -607,7 +593,7 @@ async function displayOrderNumbers(orderNumbers, additionalFields = {}) {
     const downloadButton = document.createElement("button");
     downloadButton.id = "downloadButton";
     downloadButton.className = CONSTANTS.CSS_CLASSES.BTN_SUCCESS;
-    const label = exportMode === CONSTANTS.EXPORT_MODES.SINGLE ? 'Download as Single File' : 'Download Selected Orders';
+    const label = AppState.exportMode === CONSTANTS.EXPORT_MODES.SINGLE ? 'Download as Single File' : 'Download Selected Orders';
     downloadButton.innerHTML = `
       ${renderIcon('DOWNLOAD')}
       ${label}
@@ -679,326 +665,239 @@ function updateOrderCacheStatus(orderNumber) {
   updateClearCacheVisibility();
 }
 
-async function downloadSelectedOrders() {
-  if (downloadInProgress) {
-    alert("Downloads are already in progress. Please wait.");
-    return;
-  }
-
-  const selectedOrders = getSelectedOrderNumbers();
-
-  if (selectedOrders.length === 0) {
-    alert("Please select at least one order to download.");
-    return;
-  }
-
-  const downloadButton = document.getElementById("downloadButton");
-  downloadButton.disabled = true;
-  setButtonLoading(downloadButton, true);
-  downloadInProgress = true;
-  const failedOrders = [];
-
-  // Route based on export mode
-  if (exportMode === CONSTANTS.EXPORT_MODES.SINGLE) {
-    try {
-      await downloadCombinedSelectedOrders(selectedOrders, failedOrders);
-    } catch (e) {
-      console.error('Combined export failed:', e);
-      alert('An error occurred creating the combined spreadsheet.');
-    } finally {
-      downloadButton.disabled = false;
-      setButtonLoading(downloadButton, false);
-      downloadInProgress = false;
-    }
-    return;
-  }
-
-  // Multiple files flow (existing)
+const OrderDataFetcher = (() => {
   let downloadTab = null;
 
-  // Helper function to check if tab still exists
-  async function isTabValid(tabId) {
-    try {
-      await chrome.tabs.get(tabId);
-      return true;
-    } catch {
-      return false;
+  const buildOrderUrls = (orderNumber) => {
+    const baseUrl = `${CONSTANTS.URLS.WALMART_ORDERS}/${orderNumber}`;
+    const isLongOrderNumber = orderNumber.length >= 20;
+    if (isLongOrderNumber) {
+      return [`${baseUrl}?storePurchase=true`, baseUrl];
     }
-  }
+    return [baseUrl, `${baseUrl}?storePurchase=true`];
+  };
 
-  // Helper function to attempt download with specific URL
-  async function attemptDownload(orderNumber, url, attempt) {
+  const ensureTab = async (url) => {
+    if (!downloadTab) {
+      downloadTab = await ChromeApi.tabsCreate({ url, active: false });
+      return downloadTab;
+    }
+
     try {
-      // Check cache first - if cached, use it and create Excel file directly
-      const cachedData = await getCachedInvoice(orderNumber);
-      if (cachedData) {
-        console.log(`Using cached data for order ${orderNumber}`);
-        // Convert cached data to Excel directly without opening tab
-        convertToXlsx(cachedData, ExcelJS, { mode: 'single' });
-        return true;
-      }
-
-      // Not cached, so fetch from page
-      // Create or reuse tab (check if existing tab is still valid)
-      if (!downloadTab || !(await isTabValid(downloadTab.id))) {
-        downloadTab = await new Promise((resolve) => {
-          chrome.tabs.create({ url: url, active: false }, resolve);
-        });
-      } else {
-        await new Promise((resolve, reject) => {
-          chrome.tabs.update(downloadTab.id, { url: url }, (tab) => {
-            if (chrome.runtime.lastError) {
-              // Tab was closed, create a new one
-              chrome.tabs.create({ url: url, active: false }, (newTab) => {
-                downloadTab = newTab;
-                resolve();
-              });
-            } else {
-              resolve();
-            }
-          });
-        });
-      }
-
-      // Wait for page load and trigger download with timeout
-      await Promise.race([
-        new Promise((resolve, reject) => {
-          async function handleDownload(tabId, info) {
-            if (downloadTab && tabId === downloadTab.id && info.status === "complete") {
-              chrome.tabs.onUpdated.removeListener(handleDownload);
-
-              try {
-                // First, block images
-                await new Promise((blockResolve) => {
-                  chrome.tabs.sendMessage(downloadTab.id, { action: "blockImagesForDownload" }, (response) => {
-                    if (chrome.runtime.lastError) {
-                      console.error("Error blocking images:", chrome.runtime.lastError);
-                    }
-                    // Continue even if blocking fails
-                    blockResolve();
-                  });
-                });
-
-                // Wait a bit longer for the page to stabilize
-                await new Promise((r) => setTimeout(r, 1000));
-
-                // Get the order data and cache it
-                chrome.tabs.sendMessage(downloadTab.id, { method: "getOrderData" }, async (response) => {
-                  if (chrome.runtime.lastError) {
-                    reject(new Error(`Failed to download order #${orderNumber}: ${chrome.runtime.lastError.message}`));
-                  } else if (response && response.data) {
-                    // Cache the data
-                    await cacheInvoice(orderNumber, response.data);
-                    
-                    // Update cache status UI immediately
-                    updateOrderCacheStatus(orderNumber);
-
-                    // Convert to Excel
-                    convertToXlsx(response.data, ExcelJS, { mode: 'single' });
-                    resolve();
-                  } else {
-                    reject(new Error(`No data received for order #${orderNumber}`));
-                  }
-                });
-              } catch (error) {
-                reject(error);
-              }
-            }
-          }
-
-          chrome.tabs.onUpdated.addListener(handleDownload);
-        }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout downloading order #${orderNumber}`)), CONSTANTS.TIMING.DOWNLOAD_TIMEOUT)),
-      ]);
-
-      return true; // Download successful
+      await ChromeApi.tabsGet(downloadTab.id);
+      await ChromeApi.tabsUpdate(downloadTab.id, { url });
     } catch (error) {
-      console.error(`Error downloading order #${orderNumber} (attempt ${attempt}):`, error);
-      return false; // Download failed
+      downloadTab = await ChromeApi.tabsCreate({ url, active: false });
     }
-  }
 
-  try {
-    // Create progress indicator
-    const progressDiv = document.createElement("div");
+    return downloadTab;
+  };
+
+  const createTabLoadWaiter = (tabId) => {
+    let listener = null;
+    const promise = new Promise((resolve) => {
+      listener = (updatedTabId, info) => {
+        if (updatedTabId === tabId && info.status === "complete") {
+          chrome.tabs.onUpdated.removeListener(listener);
+          resolve();
+        }
+      };
+      chrome.tabs.onUpdated.addListener(listener);
+    });
+
+    const cleanup = () => {
+      if (listener) {
+        chrome.tabs.onUpdated.removeListener(listener);
+        listener = null;
+      }
+    };
+
+    return { promise, cleanup };
+  };
+
+  const fetchFromUrl = async (orderNumber, url, options = {}) => {
+    const { timeoutMs = CONSTANTS.TIMING.DOWNLOAD_TIMEOUT, stabilizeDelayMs = 1000 } = options;
+    const tab = await ensureTab(url);
+
+    const { promise, cleanup } = createTabLoadWaiter(tab.id);
+    try {
+      await promiseWithTimeout(promise, timeoutMs, `Timeout loading order #${orderNumber}`);
+    } finally {
+      cleanup();
+    }
+
+    try {
+      await ChromeApi.tabsSendMessage(tab.id, { action: CONSTANTS.MESSAGES.BLOCK_IMAGES });
+    } catch (error) {
+      console.error("Error blocking images:", error);
+    }
+
+    await delay(stabilizeDelayMs);
+
+    const response = await promiseWithTimeout(
+      ChromeApi.tabsSendMessage(tab.id, { method: CONSTANTS.MESSAGES.GET_ORDER_DATA }),
+      timeoutMs,
+      `Timeout getting data for order #${orderNumber}`
+    );
+
+    if (!response || !response.data) {
+      throw new Error(`No data received for order #${orderNumber}`);
+    }
+
+    await cacheInvoice(orderNumber, response.data);
+    updateOrderCacheStatus(orderNumber);
+    return response.data;
+  };
+
+  const fetchOrderData = async (orderNumber, options = {}) => {
+    const cachedData = await getCachedInvoice(orderNumber);
+    if (cachedData) {
+      console.log(`Using cached data for order ${orderNumber}`);
+      updateOrderCacheStatus(orderNumber);
+      return cachedData;
+    }
+
+    const [primaryUrl, fallbackUrl] = buildOrderUrls(orderNumber);
+    try {
+      return await fetchFromUrl(orderNumber, primaryUrl, options);
+    } catch (error) {
+      console.error(`Primary fetch failed for order #${orderNumber}:`, error);
+      return await fetchFromUrl(orderNumber, fallbackUrl, options);
+    }
+  };
+
+  const cleanup = async () => {
+    if (!downloadTab) return;
+    try {
+      await ChromeApi.tabsRemove(downloadTab.id);
+    } catch (error) {
+      // Tab may already be closed
+    }
+    downloadTab = null;
+  };
+
+  return { fetchOrderData, cleanup };
+})();
+
+function createDownloadProgressElement() {
+  let progressDiv = document.getElementById("downloadProgress");
+  if (!progressDiv) {
+    progressDiv = document.createElement("div");
     progressDiv.id = "downloadProgress";
     document.getElementById("progress").style.display = "none";
     document.getElementById("progress").insertAdjacentElement("afterend", progressDiv);
+  }
+  return progressDiv;
+}
 
-    for (let i = 0; i < selectedOrders.length; i++) {
-      const orderNumber = selectedOrders[i];
-      progressDiv.innerHTML = createProgressMessage(
-        i + 1,
-        selectedOrders.length,
-        CONSTANTS.TEXT.DOWNLOADING,
-        orderNumber
-      );
+async function downloadSelectedOrders() {
+  try {
+    if (AppState && AppState.downloadInProgress) {
+      alert("Downloads are already in progress. Please wait.");
+      return;
+    }
 
-      let downloadSuccess = false;
-      const isLongOrderNumber = orderNumber.length >= 20;
+    const selectedOrders = getSelectedOrderNumbers();
 
-      // First attempt with default parameter based on order number length
-      let firstAttemptUrl = `${CONSTANTS.URLS.WALMART_ORDERS}/${orderNumber}${isLongOrderNumber ? "?storePurchase=true" : ""}`;
-      downloadSuccess = await attemptDownload(orderNumber, firstAttemptUrl, 1);
+    if (selectedOrders.length === 0) {
+      alert("Please select at least one order to download.");
+      return;
+    }
 
-      // If first attempt fails, try with opposite parameter
-      if (!downloadSuccess) {
-        progressDiv.innerHTML = createProgressMessage(
-          i + 1,
-          selectedOrders.length,
-          CONSTANTS.TEXT.RETRY_PREFIX,
-          orderNumber
-        );
+    const downloadButton = document.getElementById("downloadButton");
+    downloadButton.disabled = true;
+    setButtonLoading(downloadButton, true);
+    
+    // Ensure AppState is properly initialized
+    if (AppState) {
+      AppState.downloadInProgress = true;
+    }
+    
+    const failedOrders = [];
+    const progressDiv = createDownloadProgressElement();
 
-        let secondAttemptUrl = `${CONSTANTS.URLS.WALMART_ORDERS}/${orderNumber}${isLongOrderNumber ? "" : "?storePurchase=true"}`;
-        downloadSuccess = await attemptDownload(orderNumber, secondAttemptUrl, 2);
+    // Route based on export mode
+    try {
+      if (AppState && AppState.exportMode === CONSTANTS.EXPORT_MODES.SINGLE) {
+        await downloadCombinedOrders(selectedOrders, failedOrders, progressDiv);
+      } else {
+        await downloadMultipleOrders(selectedOrders, failedOrders, progressDiv);
       }
-
-      // If both attempts fail, add to failed orders
-      if (!downloadSuccess) {
-        failedOrders.push(orderNumber);
+    } catch (error) {
+      console.error("Download error:", error);
+      alert("An error occurred during download process. Some orders may have failed.");
+    } finally {
+      await OrderDataFetcher.cleanup();
+      downloadButton.disabled = false;
+      setButtonLoading(downloadButton, false);
+      if (AppState) {
+        AppState.downloadInProgress = false;
       }
+    }
+  } catch (outerError) {
+    console.error("Error in downloadSelectedOrders:", outerError);
+  }
+}
 
-      await delay(500);
+async function downloadMultipleOrders(selectedOrders, failedOrders, progressDiv) {
+  const options = { timeoutMs: CONSTANTS.TIMING.DOWNLOAD_TIMEOUT, stabilizeDelayMs: 1000 };
+
+  for (let i = 0; i < selectedOrders.length; i++) {
+    // Check if download should continue
+    if (!AppState || !AppState.downloadInProgress) {
+      if (progressDiv && progressDiv.parentNode) {
+        progressDiv.remove();
+      }
+      return;
     }
 
-    // Cleanup
-    if (downloadTab) {
-      chrome.tabs.remove(downloadTab.id).catch(() => {
-        // Tab may already be closed
-      });
+    const orderNumber = selectedOrders[i];
+    progressDiv.innerHTML = createProgressMessage(
+      i + 1,
+      selectedOrders.length,
+      CONSTANTS.TEXT.DOWNLOADING,
+      orderNumber
+    );
+
+    try {
+      const data = await OrderDataFetcher.fetchOrderData(orderNumber, options);
+      convertToXlsx(data, ExcelJS, { mode: 'single' });
+    } catch (error) {
+      console.error(`Error downloading order #${orderNumber}:`, error);
+      failedOrders.push(orderNumber);
     }
 
-    // Show completion message with failed orders if any
-    if (failedOrders.length === 0) {
-      progressDiv.innerHTML = createSuccessMessage('All downloads completed successfully!');
-    } else {
-      progressDiv.innerHTML = createErrorMessage(
-        `Downloads completed with ${failedOrders.length} failed orders:\nFailed orders: ${failedOrders.map((order) => `#${order}`).join(", ")}`
-      );
-    }
-    setTimeout(() => progressDiv.remove(), failedOrders.length > 0 ? CONSTANTS.TIMING.ERROR_DISPLAY_DURATION : CONSTANTS.TIMING.SUCCESS_DISPLAY_DURATION);
+    await delay(CONSTANTS.TIMING.RETRY_DELAY);
+  }
 
-    // Show rating hint
-    if (failedOrders.length === 0) {
-      maybeShowRatingHint();
-    }
-  } catch (error) {
-    console.error("Download error:", error);
-    alert("An error occurred during download process. Some orders may have failed.");
-    if (downloadTab) {
-      chrome.tabs.remove(downloadTab.id).catch(() => {
-        // Tab may already be closed
-      });
-    }
-  } finally {
-    downloadButton.disabled = false;
-    setButtonLoading(downloadButton, false);
-    downloadInProgress = false;
+  if (failedOrders.length === 0) {
+    progressDiv.innerHTML = createSuccessMessage('All downloads completed successfully!');
+  } else {
+    progressDiv.innerHTML = createErrorMessage(
+      `Downloads completed with ${failedOrders.length} failed orders:\nFailed orders: ${failedOrders.map((order) => `#${order}`).join(", ")}`
+    );
+  }
+  setTimeout(() => progressDiv.remove(), failedOrders.length > 0 ? CONSTANTS.TIMING.ERROR_DISPLAY_DURATION : CONSTANTS.TIMING.SUCCESS_DISPLAY_DURATION);
+
+  if (failedOrders.length === 0) {
+    maybeShowRatingHint();
   }
 }
 
 // Combined export: build one workbook in panel with ExcelJS
-async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
-  // Create progress indicator
-  const progressDiv = document.createElement("div");
-  progressDiv.id = "downloadProgress";
-  document.getElementById("progress").style.display = "none";
-  document.getElementById("progress").insertAdjacentElement("afterend", progressDiv);
-
-  let downloadTab = null;
+async function downloadCombinedOrders(selectedOrders, failedOrders, progressDiv) {
   const collectedOrdersData = [];
+  const options = { timeoutMs: CONSTANTS.TIMING.COLLECTION_TIMEOUT, stabilizeDelayMs: CONSTANTS.TIMING.PAGE_LOAD_WAIT };
 
-  // Helper function to check if tab still exists
-  const isTabValidForCombined = async (tabId) => {
-    try {
-      await chrome.tabs.get(tabId);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  // Helper to navigate and get data with retry for storePurchase param
-  const getDataForOrder = async (orderNumber, attempt = 1) => {
-    // Check cache first
-    const cachedData = await getCachedInvoice(orderNumber);
-    if (cachedData) {
-      console.log(`Using cached data for order ${orderNumber}`);
-      return cachedData;
-    }
-
-    const isLongOrderNumber = orderNumber.length >= 20;
-    const firstAttemptUrl = `${CONSTANTS.URLS.WALMART_ORDERS}/${orderNumber}${isLongOrderNumber ? "?storePurchase=true" : ""}`;
-    const secondAttemptUrl = `${CONSTANTS.URLS.WALMART_ORDERS}/${orderNumber}${isLongOrderNumber ? "" : "?storePurchase=true"}`;
-
-    const tryUrl = async (url) => {
-      // Create or reuse tab (check if existing tab is still valid)
-      if (!downloadTab || !(await isTabValidForCombined(downloadTab.id))) {
-        downloadTab = await new Promise((resolve) => {
-          chrome.tabs.create({ url, active: false }, resolve);
-        });
-      } else {
-        await new Promise((resolve) => {
-          chrome.tabs.update(downloadTab.id, { url }, (tab) => {
-            if (chrome.runtime.lastError) {
-              // Tab was closed, create a new one
-              chrome.tabs.create({ url, active: false }, (newTab) => {
-                downloadTab = newTab;
-                resolve();
-              });
-            } else {
-              resolve();
-            }
-          });
-        });
-      }
-
-      // Wait for load and request data
-      return await Promise.race([
-        new Promise((resolve, reject) => {
-          const handle = async (tabId, info) => {
-            if (downloadTab && tabId === downloadTab.id && info.status === 'complete') {
-              chrome.tabs.onUpdated.removeListener(handle);
-              try {
-                // Block images then request data
-                await new Promise((r) => {
-                  chrome.tabs.sendMessage(downloadTab.id, { action: 'blockImagesForDownload' }, () => r());
-                });
-                await new Promise((r) => setTimeout(r, 800));
-                chrome.tabs.sendMessage(downloadTab.id, { method: 'getOrderData' }, async (resp) => {
-                  if (chrome.runtime.lastError || !resp || !resp.data) {
-                    reject(new Error('Failed to get data'));
-                  } else {
-                    // Cache the data
-                    await cacheInvoice(orderNumber, resp.data);
-                    
-                    // Update cache status UI immediately
-                    updateOrderCacheStatus(orderNumber);
-
-                    resolve(resp.data);
-                  }
-                });
-              } catch (err) {
-                reject(err);
-              }
-            }
-          };
-          chrome.tabs.onUpdated.addListener(handle);
-        }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout getting data')), CONSTANTS.TIMING.COLLECTION_TIMEOUT)),
-      ]);
-    };
-
-    try {
-      return await tryUrl(firstAttemptUrl);
-    } catch (_) {
-      return await tryUrl(secondAttemptUrl);
-    }
-  };
-
-  // Collect data for all selected orders
   for (let i = 0; i < selectedOrders.length; i++) {
+    // Check if download should continue
+    if (!AppState || !AppState.downloadInProgress) {
+      if (progressDiv && progressDiv.parentNode) {
+        progressDiv.remove();
+      }
+      return;
+    }
+
     const orderNumber = selectedOrders[i];
     progressDiv.innerHTML = createProgressMessage(
       i + 1,
@@ -1008,7 +907,7 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
     );
 
     try {
-      const data = await getDataForOrder(orderNumber);
+      const data = await OrderDataFetcher.fetchOrderData(orderNumber, options);
       collectedOrdersData.push(data);
     } catch (e) {
       console.error('Failed to collect data for', orderNumber, e);
@@ -1018,14 +917,6 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
     await delay(CONSTANTS.TIMING.RETRY_DELAY);
   }
 
-  // Close the download tab
-  if (downloadTab) {
-    chrome.tabs.remove(downloadTab.id).catch(() => {
-      // Tab may already be closed
-    });
-  }
-
-  // Convert collected orders to XLSX using shared utility
   try {
     await convertMultipleOrdersToXlsx(collectedOrdersData, ExcelJS, 'Walmart_Orders.xlsx');
   } catch (e) {
@@ -1035,7 +926,6 @@ async function downloadCombinedSelectedOrders(selectedOrders, failedOrders) {
     return;
   }
 
-  // Completion message
   if (failedOrders.length === 0) {
     progressDiv.innerHTML = createSuccessMessage(CONSTANTS.TEXT.EXPORT_SUCCESS);
   } else {
@@ -1074,12 +964,12 @@ function maybeShowRatingHint() {
   if (Math.random() > 0.8) return;
 
   // First check if hint has been dismissed in current session
-  chrome.storage.local.get(["ratingHintDismissed"], function (sessionResult) {
-    if (sessionResult.ratingHintDismissed) return;
+  chrome.storage.local.get([CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISSED], function (sessionResult) {
+    if (sessionResult[CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISSED]) return;
 
     // Then check if hint has been dismissed 5 times in total (using local storage)
-    chrome.storage.local.get(["ratingHintDismissCount"], function (localResult) {
-      const dismissCount = localResult.ratingHintDismissCount || 0;
+    chrome.storage.local.get([CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT], function (localResult) {
+      const dismissCount = localResult[CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT] || 0;
 
       // If dismissed 7 or more times, never show again
       if (dismissCount >= 7) return;
@@ -1109,12 +999,12 @@ function maybeShowRatingHint() {
           ratingHint.classList.remove("show");
 
           // Mark dismissed for current browser session (cleared on startup)
-          chrome.storage.local.set({ ratingHintDismissed: true });
+          chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISSED]: true });
 
           // Increment dismiss count in local storage
-          chrome.storage.local.get(["ratingHintDismissCount"], function (result) {
-            const newCount = (result.ratingHintDismissCount || 0) + 1;
-            chrome.storage.local.set({ ratingHintDismissCount: newCount });
+          chrome.storage.local.get([CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT], function (result) {
+            const newCount = (result[CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT] || 0) + 1;
+            chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT]: newCount });
 
             console.log(`Rating hint dismissed ${newCount} times in total`);
           });

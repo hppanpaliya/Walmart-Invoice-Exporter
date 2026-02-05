@@ -3,141 +3,165 @@
  * Handles DOM extraction and image blocking on Walmart order pages
  */
 
-function removeAllImages() {
-  // Remove background images from elements
-  const allElements = document.getElementsByTagName("*");
-  for (let element of allElements) {
-    if (element.style) {
-      element.style.backgroundImage = "none";
-    }
-  }
+const ImageBlocker = (() => {
+  let observer = null;
+  let errorHandlerBound = false;
+  const originalSetAttribute = HTMLImageElement.prototype.setAttribute;
+  const CSP_META_SELECTOR = 'meta[data-wie-img-csp="true"]';
 
-  // Remove all img elements
-  const images = document.querySelectorAll("img");
-  images.forEach((img) => {
-    img.remove();
-  });
-
-  // Remove picture elements
-  const pictures = document.querySelectorAll("picture");
-  pictures.forEach((pic) => {
-    pic.remove();
-  });
-
-  // Remove CSS background images
-  const styleSheets = Array.from(document.styleSheets);
-  styleSheets.forEach((sheet) => {
-    try {
-      const rules = Array.from(sheet.cssRules || sheet.rules);
-      rules.forEach((rule) => {
-        if (rule.style && rule.style.backgroundImage) {
-          rule.style.backgroundImage = "none";
-        }
-      });
-    } catch (e) {
-      // Handle cross-origin stylesheet errors silently
-    }
-  });
-}
-
-// Store observer reference for cleanup
-let imageBlockingObserver = null;
-
-// Store original prototypes for potential restoration
-const originalImage = window.Image;
-const originalSetAttribute = HTMLImageElement.prototype.setAttribute;
-
-function blockImageLoading() {
-  // Override Image constructor to prevent new image loading
-  window.Image = function () {
-    const dummyImage = {};
-    Object.defineProperty(dummyImage, "src", {
-      set: function () {
-        return "";
-      },
-      get: function () {
-        return "";
-      },
-    });
-    return dummyImage;
-  };
-
-  // Block image loading using Content-Security-Policy
-  const meta = document.createElement("meta");
-  meta.setAttribute("http-equiv", "Content-Security-Policy");
-  meta.setAttribute("content", "img-src 'none'"); // Fixed CSP directive
-  document.head.appendChild(meta);
-
-  // Prevent loading through srcset
-  HTMLImageElement.prototype.setAttribute = new Proxy(originalSetAttribute, {
-    apply(target, thisArg, argumentsList) {
-      const [attr] = argumentsList;
-      if (attr === "src" || attr === "srcset") {
-        return;
+  function removeAllImages() {
+    // Remove background images from elements
+    const allElements = document.getElementsByTagName("*");
+    for (let element of allElements) {
+      if (element.style) {
+        element.style.backgroundImage = "none";
       }
-      return Reflect.apply(target, thisArg, argumentsList);
-    },
-  });
+    }
 
-  // Disconnect existing observer if any to prevent memory leaks
-  if (imageBlockingObserver) {
-    imageBlockingObserver.disconnect();
+    // Remove all img elements
+    const images = document.querySelectorAll("img");
+    images.forEach((img) => {
+      img.remove();
+    });
+
+    // Remove picture elements
+    const pictures = document.querySelectorAll("picture");
+    pictures.forEach((pic) => {
+      pic.remove();
+    });
+
+    // Remove CSS background images
+    const styleSheets = Array.from(document.styleSheets);
+    styleSheets.forEach((sheet) => {
+      try {
+        const rules = Array.from(sheet.cssRules || sheet.rules);
+        rules.forEach((rule) => {
+          if (rule.style && rule.style.backgroundImage) {
+            rule.style.backgroundImage = "none";
+          }
+        });
+      } catch (e) {
+        // Handle cross-origin stylesheet errors silently
+      }
+    });
   }
 
-  // Intercept image loading with optimized MutationObserver
-  // Only monitor childList changes to reduce CPU overhead
-  imageBlockingObserver = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeName === "IMG" || node.nodeName === "PICTURE") {
-          node.remove();
+  function ensureCspMeta() {
+    if (document.querySelector(CSP_META_SELECTOR)) {
+      return;
+    }
+    const meta = document.createElement("meta");
+    meta.setAttribute("http-equiv", "Content-Security-Policy");
+    meta.setAttribute("content", "img-src 'none'");
+    meta.setAttribute("data-wie-img-csp", "true");
+    document.head.appendChild(meta);
+  }
+
+  function blockImageLoading() {
+    // Override Image constructor to prevent new image loading
+    window.Image = function () {
+      const dummyImage = {};
+      Object.defineProperty(dummyImage, "src", {
+        set: function () {
+          return "";
+        },
+        get: function () {
+          return "";
+        },
+      });
+      return dummyImage;
+    };
+
+    // Block image loading using Content-Security-Policy
+    ensureCspMeta();
+
+    // Prevent loading through srcset
+    HTMLImageElement.prototype.setAttribute = new Proxy(originalSetAttribute, {
+      apply(target, thisArg, argumentsList) {
+        const [attr] = argumentsList;
+        if (attr === "src" || attr === "srcset") {
+          return;
         }
-        if (node.getElementsByTagName) {
-          const images = node.getElementsByTagName("img");
-          const pictures = node.getElementsByTagName("picture");
-          Array.from(images).forEach((img) => img.remove());
-          Array.from(pictures).forEach((pic) => pic.remove());
-        }
+        return Reflect.apply(target, thisArg, argumentsList);
+      },
+    });
+
+    // Disconnect existing observer if any to prevent memory leaks
+    if (observer) {
+      observer.disconnect();
+    }
+
+    // Intercept image loading with optimized MutationObserver
+    // Only monitor childList changes to reduce CPU overhead
+    observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeName === "IMG" || node.nodeName === "PICTURE") {
+            node.remove();
+          }
+          if (node.getElementsByTagName) {
+            const images = node.getElementsByTagName("img");
+            const pictures = node.getElementsByTagName("picture");
+            Array.from(images).forEach((img) => img.remove());
+            Array.from(pictures).forEach((pic) => pic.remove());
+          }
+        });
       });
     });
-  });
 
-  // Disable attribute and characterData monitoring to reduce observer firing frequency
-  imageBlockingObserver.observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-    attributes: false,
-    characterData: false
-  });
-}
+    // Disable attribute and characterData monitoring to reduce observer firing frequency
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: false,
+      characterData: false
+    });
+  }
+
+  function aggressive() {
+    // Handle failed image loads by hiding them
+    if (!errorHandlerBound) {
+      document.addEventListener('error', (e) => {
+        if (e.target.tagName === 'IMG' || e.target.tagName === 'PICTURE') {
+          e.target.style.display = 'none';
+        }
+      }, true);
+      errorHandlerBound = true;
+    }
+
+    removeAllImages();
+    blockImageLoading();
+
+    // Additional cleanup passes
+    setTimeout(removeAllImages, CONSTANTS.TIMING.IMAGE_BLOCK_DELAY);
+    setTimeout(removeAllImages, CONSTANTS.TIMING.IMAGE_BLOCK_DELAY * 2);
+  }
+
+  function cleanup() {
+    if (observer) {
+      observer.disconnect();
+      observer = null;
+    }
+  }
+
+  return {
+    aggressive,
+    cleanup,
+  };
+})();
 
 // Cleanup observer when page unloads to prevent memory leaks
 window.addEventListener('beforeunload', () => {
-  if (imageBlockingObserver) {
-    imageBlockingObserver.disconnect();
-    imageBlockingObserver = null;
-  }
+  ImageBlocker.cleanup();
 });
-
-function aggressiveImageBlocking() {
-  // Handle failed image loads by hiding them
-  document.addEventListener('error', (e) => {
-    if (e.target.tagName === 'IMG' || e.target.tagName === 'PICTURE') {
-      e.target.style.display = 'none';
-    }
-  }, true);
-
-  removeAllImages();
-  blockImageLoading();
-
-  // Additional cleanup passes
-  setTimeout(removeAllImages, 500);
-  setTimeout(removeAllImages, 1000);
-}
 
 // Function to wait for an element to appear
 // Timeout reduced to 10s with 200ms polling for faster response
-async function waitForElement(selector, timeout = 10000) {
+async function waitForElement(
+  selector,
+  timeout = CONSTANTS.TIMING.COLLECTION_TIMEOUT,
+  pollInterval = CONSTANTS.TIMING.ELEMENT_POLL_INTERVAL
+) {
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeout) {
@@ -145,38 +169,44 @@ async function waitForElement(selector, timeout = 10000) {
     if (element) {
       return element;
     }
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, pollInterval));
   }
 
   throw new Error(`Element ${selector} not found after ${timeout}ms`);
 }
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "collectOrderNumbers") {
-    // Handle collection asynchronously
-    aggressiveImageBlocking();
-    handleCollectOrderNumbers().then(sendResponse);
-    return true; // Indicates we'll send response asynchronously
-  } else if (request.action === "clickNextButton") {
-    // Handle next button click asynchronously
-    aggressiveImageBlocking();
-    handleClickNextButton().then(sendResponse);
-    return true;
-  } else if (request.action === "blockImagesForDownload") {
-    aggressiveImageBlocking();
-    sendResponse({ success: true });
-    return true;
-  } else if (request.method === "downloadXLSX") {
-    aggressiveImageBlocking();
+const withImageBlocking = (handler) => async (request) => {
+  ImageBlocker.aggressive();
+  return handler(request);
+};
+
+const MessageHandlers = {
+  [CONSTANTS.MESSAGES.COLLECT_ORDER_NUMBERS]: withImageBlocking(handleCollectOrderNumbers),
+  [CONSTANTS.MESSAGES.CLICK_NEXT_BUTTON]: withImageBlocking(handleClickNextButton),
+  [CONSTANTS.MESSAGES.BLOCK_IMAGES]: withImageBlocking(async () => ({ success: true })),
+  [CONSTANTS.MESSAGES.DOWNLOAD_XLSX]: withImageBlocking(async () => {
     const data = scrapeOrderData();
     // Convert the order details to an XLSX file using the shared convertToXlsx function
     convertToXlsx(data, ExcelJS, { mode: 'single' });
-    sendResponse({ data });
-  } else if (request.method === 'getOrderData') {
-    aggressiveImageBlocking();
-    const data = scrapeOrderData();
-    sendResponse({ data });
+    return { data };
+  }),
+  [CONSTANTS.MESSAGES.GET_ORDER_DATA]: withImageBlocking(async () => ({ data: scrapeOrderData() })),
+};
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  const action = request.action || request.method;
+  const handler = MessageHandlers[action];
+  if (!handler) {
+    return false;
   }
+
+  handler(request)
+    .then(sendResponse)
+    .catch((error) => {
+      console.error(`Error handling message ${action}:`, error);
+      sendResponse({ success: false, error: error.message });
+    });
+
   return true;
 });
 
@@ -272,7 +302,7 @@ function scrapeOrderData() {
   }
 
   const tip =
-    document.querySelector(".print-bill-payment-section .flex.justify-between.pb2.pt3 .w_U9_0.w_U0S3.w_QcqU:last-child")?.innerText || "$0.00";
+    document.querySelector(CONSTANTS.SELECTORS.TIP)?.innerText || "$0.00";
 
   // Extract payment metadata
   const paymentMethods = [];
