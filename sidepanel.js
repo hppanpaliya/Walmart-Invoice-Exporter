@@ -2,7 +2,13 @@ const AppState = {
   downloadInProgress: false,
   collectionInProgress: false,
   exportMode: CONSTANTS.EXPORT_MODES.MULTIPLE,
+  currentOrdersUrl: null,
 };
+
+let initialOrderPlaceholderHtml = "";
+
+const CACHE_INDICATOR_STYLE = 'cursor: pointer; margin-left: 6px; color: var(--primary); display: inline-flex; align-items: center; gap: 2px; font-size: 10px;';
+const CACHE_INDICATOR_SELECTOR = '[data-cache-indicator="true"]';
 
 // Global error handler for unhandled promise rejections
 window.addEventListener('unhandledrejection', (event) => {
@@ -17,6 +23,9 @@ document.addEventListener("DOMContentLoaded", function () {
   const pageLimitInput = document.getElementById("pageLimit");
   const exportModeSelect = document.getElementById("exportMode");
   progressElement.style.display = "none";
+  if (!initialOrderPlaceholderHtml) {
+    initialOrderPlaceholderHtml = orderNumbersContainer.innerHTML;
+  }
 
   // View elements
   const mainView = document.getElementById("mainView");
@@ -84,10 +93,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (AppState.collectionInProgress) {
       chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.STOP_COLLECTION }, function (response) {
         AppState.collectionInProgress = false;
-        // Update UI
-        document.getElementById("stopCollection").style.display = "none";
-        document.getElementById("startCollection").style.display = "inline-flex";
-        document.getElementById("startCollection").querySelector(".btn-text").textContent = "Restart Collection";
+        setCollectionButtonsState({ running: false, startLabel: "Restart Collection" });
       });
     }
     
@@ -148,6 +154,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (url && url.startsWith(CONSTANTS.URLS.WALMART_ORDERS)) {
         const cleanUrl = url.replace(/\/$/, "");
         const orderPath = cleanUrl.split("/orders/")[1];
+        AppState.currentOrdersUrl = null;
 
         // Re-enable all interactive elements
         setUIEnabled(true);
@@ -173,12 +180,12 @@ document.addEventListener("DOMContentLoaded", function () {
           document.getElementById("pageLimitGroup").style.display = "block";
           document.getElementById("buttonGroup").style.display = "flex";
           document.querySelector(".card").style.display = "block";
-          
-          setupCollectionButtons(url);
+          AppState.currentOrdersUrl = url;
           loadCacheOnMainPage();
         }
       } else {
         // Not on Walmart orders - show warning but keep existing data
+        AppState.currentOrdersUrl = null;
         showOffTabWarning();
       }
     });
@@ -261,60 +268,44 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  function showNotOnWalmartMessage() {
-    document.querySelector(".card").style.display = "none";
-    orderNumbersContainer.innerHTML = `
-      <div class="card" style="text-align: center; padding: 24px;">
-        ${renderIcon('ERROR_LARGE')}
-        <p style="color: var(--text); font-size: 16px; margin-bottom: 8px;">Please navigate to</p>
-        <p style="color: var(--primary); font-weight: 500; margin-bottom: 16px;"><a href="${CONSTANTS.URLS.WALMART_ORDERS}" target="_blank">walmart.com/orders</a></p>
-        <p style="color: var(--text-secondary); font-size: 14px;">to use this extension.</p>
-      </div>`;
+  function handleStartCollection() {
+    if (!AppState.currentOrdersUrl) {
+      showOffTabWarning();
+      return;
+    }
+
+    const pageLimit = parseInt(pageLimitInput.value, 10);
+    setCollectionButtonsState({ running: true });
+    setButtonLoading(startButton, true);
+
+    chrome.runtime.sendMessage(
+      {
+        action: CONSTANTS.MESSAGES.START_COLLECTION,
+        url: AppState.currentOrdersUrl,
+        pageLimit: pageLimit,
+      },
+      function (response) {
+        if (response && response.status === "started") {
+          updateProgress();
+        }
+        setButtonLoading(startButton, false);
+      }
+    );
   }
 
-  function setupCollectionButtons(url) {
-    // Remove old event listeners by cloning
-    const oldStartButton = document.getElementById("startCollection");
-    const newStartButton = oldStartButton.cloneNode(true);
-    oldStartButton.parentNode.replaceChild(newStartButton, oldStartButton);
-
-    const oldStopButton = document.getElementById("stopCollection");
-    const newStopButton = oldStopButton.cloneNode(true);
-    oldStopButton.parentNode.replaceChild(newStopButton, oldStopButton);
-
-    newStartButton.addEventListener("click", function () {
-      const pageLimit = parseInt(pageLimitInput.value, 10);
-      newStartButton.style.display = "none";
-      newStopButton.style.display = "inline-flex";
-      setButtonLoading(newStartButton, true);
-
-      chrome.runtime.sendMessage(
-        {
-          action: CONSTANTS.MESSAGES.START_COLLECTION,
-          url: url,
-          pageLimit: pageLimit,
-        },
-        function (response) {
-          if (response && response.status === "started") {
-            updateProgress();
-          }
-          setButtonLoading(newStartButton, false);
-        }
-      );
-    });
-
-    newStopButton.addEventListener("click", function () {
-      setButtonLoading(newStopButton, true);
-      chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.STOP_COLLECTION }, function (response) {
-        if (response && response.status === "stopped") {
-          newStopButton.style.display = "none";
-          newStartButton.style.display = "inline-flex";
-          newStartButton.querySelector(".btn-text").textContent = "Restart Collection";
-          setButtonLoading(newStopButton, false);
-        }
-      });
+  function handleStopCollection() {
+    setButtonLoading(stopButton, true);
+    chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.STOP_COLLECTION }, function (response) {
+      if (response && response.status === "stopped") {
+        AppState.collectionInProgress = false;
+        setCollectionButtonsState({ running: false, startLabel: "Restart Collection" });
+      }
+      setButtonLoading(stopButton, false);
     });
   }
+
+  startButton.addEventListener("click", handleStartCollection);
+  stopButton.addEventListener("click", handleStopCollection);
 
   // Initial check
   checkCurrentTab();
@@ -384,6 +375,20 @@ document.addEventListener("DOMContentLoaded", function () {
 
 });
 
+function setCollectionButtonsState({ running, startLabel = "Start Collection" }) {
+  const startButton = document.getElementById("startCollection");
+  const stopButton = document.getElementById("stopCollection");
+  if (!startButton || !stopButton) return;
+
+  startButton.style.display = running ? "none" : "inline-flex";
+  stopButton.style.display = running ? "inline-flex" : "none";
+
+  if (!running) {
+    const label = startButton.querySelector(".btn-text");
+    if (label) label.textContent = startLabel;
+  }
+}
+
 // Function to load cache only on the main orders page
 function loadCacheOnMainPage() {
   // Check for cached data on panel open
@@ -438,6 +443,7 @@ function updateProgress() {
   chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.GET_PROGRESS }, function (response) {
     if (response && response.isCollecting) {
       AppState.collectionInProgress = true;
+      setCollectionButtonsState({ running: true });
       updateProgressUI(response.currentPage, response.pageLimit, true);
       displayOrderNumbers(response.orderNumbers, response.additionalFields);
       setTimeout(updateProgress, 1000);
@@ -446,9 +452,7 @@ function updateProgress() {
       AppState.collectionInProgress = false;
       updateProgressUI(response.currentPage, response.pageLimit, false);
       displayOrderNumbers(response.orderNumbers, response.additionalFields);
-      document.getElementById("startCollection").style.display = "inline-flex";
-      document.getElementById("stopCollection").style.display = "none";
-      document.getElementById("startCollection").querySelector(".btn-text").textContent = "Start Collection";
+      setCollectionButtonsState({ running: false, startLabel: "Start Collection" });
       setCheckboxesDisabled(false);
     }
   });
@@ -457,7 +461,7 @@ function updateProgress() {
 function updateProgressUI(currentPage, pageLimit, inProgress) {
   const progressElement = document.getElementById("progress") || createProgressElement();
   const pageLimitText = pageLimit > 0 ? ` of ${pageLimit}` : "";
-  document.getElementById("progress").style.display = "block";
+  progressElement.style.display = "block";
 
   // Hide placeholder when collection starts
   const placeholder = document.getElementById("collectionPlaceholder");
@@ -486,10 +490,28 @@ function createProgressElement() {
 
 function updateCheckboxCount(container) {
   const heading = container.querySelector("h3");
-  const total = container.querySelectorAll('input[type="checkbox"]:not(#selectAll)').length;
   const checked = container.querySelectorAll('input[type="checkbox"]:not(#selectAll):checked').length;
   const totalOrders = container.querySelectorAll('input[type="checkbox"]:not(#selectAll)').length;
   heading.textContent = `${CONSTANTS.TEXT.SELECT_ORDERS} (${totalOrders}) - Selected: ${checked}`;
+}
+
+function createCacheIndicator(orderNumber, onDelete) {
+  const cacheIndicator = document.createElement("span");
+  cacheIndicator.dataset.cacheIndicator = "true";
+  cacheIndicator.style.cssText = CACHE_INDICATOR_STYLE;
+  cacheIndicator.title = "Click to delete this order's cache";
+  cacheIndicator.innerHTML = renderIcon('CACHE', 'var(--primary)');
+  cacheIndicator.style.display = "inline-flex";
+
+  cacheIndicator.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    await deleteInvoiceCache(orderNumber);
+    cacheIndicator.style.display = "none";
+    if (onDelete) onDelete();
+    updateClearCacheVisibility();
+  });
+
+  return cacheIndicator;
 }
 
 async function displayOrderNumbers(orderNumbers, additionalFields = {}) {
@@ -497,23 +519,8 @@ async function displayOrderNumbers(orderNumbers, additionalFields = {}) {
   
   // If no orders, show placeholder
   if (orderNumbers.length === 0) {
-    container.innerHTML = `
-      <div id="collectionPlaceholder">
-        <p class="placeholder-status">Collection has not started. Total pages: 0</p>
-        <h3>Select orders to download (0) - Selected: 0</h3>
-        <div class="checkbox-container">
-          <input type="checkbox" id="selectAllPlaceholder" disabled>
-          <label for="selectAllPlaceholder">Select All</label>
-        </div>
-        <div class="order-list placeholder-list">
-          <p class="no-orders-message">No orders collected yet.</p>
-        </div>
-        <button id="downloadButtonPlaceholder" class="btn btn-success" disabled>
-          ${renderIcon('DOWNLOAD')}
-          Download as Single File
-        </button>
-      </div>
-    `;
+    container.innerHTML = initialOrderPlaceholderHtml || "";
+    updateClearCacheVisibility();
     return;
   }
   
@@ -552,20 +559,7 @@ async function displayOrderNumbers(orderNumbers, additionalFields = {}) {
 
     // Add cache indicator if cached
     if (cachedSet.has(orderNumber)) {
-      const cacheIndicator = document.createElement("span");
-      cacheIndicator.style.cssText = 'cursor: pointer; margin-left: 6px; color: var(--primary); display: inline-flex; align-items: center; gap: 2px; font-size: 10px;';
-      cacheIndicator.title = 'Click to delete this order\'s cache';
-      cacheIndicator.innerHTML = renderIcon('CACHE', 'var(--primary)');
-      cacheIndicator.style.display = 'inline-flex';
-      
-      cacheIndicator.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        await deleteInvoiceCache(orderNumber);
-        cachedSet.delete(orderNumber);
-        cacheIndicator.style.display = 'none';
-        updateClearCacheVisibility();
-      });
-
+      const cacheIndicator = createCacheIndicator(orderNumber, () => cachedSet.delete(orderNumber));
       checkboxDiv.appendChild(cacheIndicator);
     }
 
@@ -638,28 +632,14 @@ function updateOrderCacheStatus(orderNumber) {
   const checkboxDiv = checkbox.closest('.checkbox-container');
   if (!checkboxDiv) return;
 
-  const existingIndicator = checkboxDiv.querySelector('span[title="Click to delete this order\'s cache"]');
+  const existingIndicator = checkboxDiv.querySelector(CACHE_INDICATOR_SELECTOR);
   if (existingIndicator) {
     existingIndicator.style.display = 'inline-flex';
     updateClearCacheVisibility();
     return;
   }
 
-  // Create cache indicator
-  const cacheIndicator = document.createElement("span");
-  cacheIndicator.style.cssText = 'cursor: pointer; margin-left: 6px; color: var(--primary); display: inline-flex; align-items: center; gap: 2px; font-size: 10px;';
-  cacheIndicator.title = 'Click to delete this order\'s cache';
-  cacheIndicator.innerHTML = renderIcon('CACHE', 'var(--primary)');
-  cacheIndicator.style.display = 'inline-flex';
-  
-  cacheIndicator.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    await deleteInvoiceCache(orderNumber);
-    cacheIndicator.style.display = 'none';
-    updateClearCacheVisibility();
-  });
-
-  checkboxDiv.appendChild(cacheIndicator);
+  checkboxDiv.appendChild(createCacheIndicator(orderNumber));
   
   // Update global clear cache button when new item is cached
   updateClearCacheVisibility();
@@ -784,8 +764,9 @@ function createDownloadProgressElement() {
   if (!progressDiv) {
     progressDiv = document.createElement("div");
     progressDiv.id = "downloadProgress";
-    document.getElementById("progress").style.display = "none";
-    document.getElementById("progress").insertAdjacentElement("afterend", progressDiv);
+    const progressElement = document.getElementById("progress");
+    progressElement.style.display = "none";
+    progressElement.insertAdjacentElement("afterend", progressDiv);
   }
   return progressDiv;
 }
