@@ -480,6 +480,18 @@ const CONSTANTS = {
     GET_ORDER_DATA: 'getOrderData',
   },
 
+  // Storage Keys
+  STORAGE_KEYS: {
+    RATING_HINT_DISMISSED: 'ratingHintDismissed',
+    RATING_HINT_DISMISS_COUNT: 'ratingHintDismissCount',
+  },
+
+  // Cache Keys
+  CACHE_KEYS: {
+    ORDER_COLLECTION: 'walmart_order_cache',
+    INVOICE: 'walmart_invoice_cache',
+  },
+
   // URL Parameters
   URLS: {
     WALMART_ORDERS: 'https://www.walmart.com/orders',
@@ -687,6 +699,27 @@ function hideElements(elements) {
  */
 
 /**
+ * Wrap a Chrome callback-style API in a Promise
+ * @param {Function} invoker - Function that accepts a callback
+ * @returns {Promise<any>} Promise resolving the callback result
+ */
+function chromeCallbackPromise(invoker) {
+  return new Promise((resolve, reject) => {
+    try {
+      invoker((result) => {
+        if (chrome?.runtime?.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve(result);
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+/**
  * Create a promise that resolves after a delay
  * @param {number} ms - Delay in milliseconds
  * @returns {Promise}
@@ -712,6 +745,81 @@ function promiseWithTimeout(promise, timeoutMs, errorMessage) {
 }
 
 /**
+ * Minimal Promise wrappers for Chrome APIs used across the extension
+ */
+const ChromeApi = {
+  runtimeSendMessage(message) {
+    if (!chrome?.runtime?.sendMessage) {
+      return Promise.reject(new Error('chrome.runtime.sendMessage not available'));
+    }
+    return chromeCallbackPromise((cb) => chrome.runtime.sendMessage(message, cb));
+  },
+
+  tabsQuery(queryInfo) {
+    if (!chrome?.tabs?.query) {
+      return Promise.reject(new Error('chrome.tabs.query not available'));
+    }
+    return chromeCallbackPromise((cb) => chrome.tabs.query(queryInfo, cb));
+  },
+
+  tabsCreate(createProperties) {
+    if (!chrome?.tabs?.create) {
+      return Promise.reject(new Error('chrome.tabs.create not available'));
+    }
+    return chromeCallbackPromise((cb) => chrome.tabs.create(createProperties, cb));
+  },
+
+  tabsUpdate(tabId, updateProperties) {
+    if (!chrome?.tabs?.update) {
+      return Promise.reject(new Error('chrome.tabs.update not available'));
+    }
+    return chromeCallbackPromise((cb) => chrome.tabs.update(tabId, updateProperties, cb));
+  },
+
+  tabsGet(tabId) {
+    if (!chrome?.tabs?.get) {
+      return Promise.reject(new Error('chrome.tabs.get not available'));
+    }
+    return chromeCallbackPromise((cb) => chrome.tabs.get(tabId, cb));
+  },
+
+  tabsRemove(tabId) {
+    if (!chrome?.tabs?.remove) {
+      return Promise.reject(new Error('chrome.tabs.remove not available'));
+    }
+    return chromeCallbackPromise((cb) => chrome.tabs.remove(tabId, cb));
+  },
+
+  tabsSendMessage(tabId, message) {
+    if (!chrome?.tabs?.sendMessage) {
+      return Promise.reject(new Error('chrome.tabs.sendMessage not available'));
+    }
+    return chromeCallbackPromise((cb) => chrome.tabs.sendMessage(tabId, message, cb));
+  },
+
+  storageGet(keys) {
+    if (!chrome?.storage?.local?.get) {
+      return Promise.reject(new Error('chrome.storage.local.get not available'));
+    }
+    return chromeCallbackPromise((cb) => chrome.storage.local.get(keys, cb));
+  },
+
+  storageSet(items) {
+    if (!chrome?.storage?.local?.set) {
+      return Promise.reject(new Error('chrome.storage.local.set not available'));
+    }
+    return chromeCallbackPromise((cb) => chrome.storage.local.set(items, cb));
+  },
+
+  storageRemove(keys) {
+    if (!chrome?.storage?.local?.remove) {
+      return Promise.reject(new Error('chrome.storage.local.remove not available'));
+    }
+    return chromeCallbackPromise((cb) => chrome.storage.local.remove(keys, cb));
+  },
+};
+
+/**
  * Text Processing Utilities
  */
 
@@ -731,8 +839,8 @@ function truncateText(text, maxLength = 60, suffix = '...') {
  * Invoice Caching Utilities
  */
 
-const INVOICE_CACHE_KEY = 'walmart_invoice_cache';
-const INVOICE_CACHE_EXPIRATION = 24 * 60 * 60 * 1000; // 24 hours
+const INVOICE_CACHE_KEY = CONSTANTS.CACHE_KEYS.INVOICE;
+const INVOICE_CACHE_EXPIRATION = CONSTANTS.TIMING.CACHE_EXPIRATION;
 
 /**
  * Get cached invoice data for an order
