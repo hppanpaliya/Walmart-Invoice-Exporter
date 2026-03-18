@@ -379,25 +379,32 @@ function scrapeOrderData() {
   }
 
 
-  // Extract payment metadata
+  // Extract payment methods
+  // Each card entry has: img[alt="American Express"] + span[aria-labelledby="card-description-N"]>Ending in 1001
+  // Walmart renders cards twice (mobile + desktop), so deduplicate by aria-labelledby id.
   const paymentMethods = [];
+  const seenCardIds = new Set();
   const paymentElements = document.querySelectorAll(CONSTANTS.SELECTORS.PAYMENT_METHODS);
   paymentElements.forEach(el => {
-    const text = el.innerText.trim();
-    if (text && (
-      text.includes('Ending in') || 
-      text.includes('Visa') || 
-      text.includes('Mastercard') || 
-      text.includes('Amex') || 
-      text.includes('Discover') ||
-      text.toLowerCase().includes('benefit card')
-    )) {
-      // Avoid duplicates
-      if (!paymentMethods.includes(text)) {
-        paymentMethods.push(text);
-      }
-    }
+    const labelId = el.getAttribute('aria-labelledby');
+    if (seenCardIds.has(labelId)) return;
+    seenCardIds.add(labelId);
+
+    const cardText = el.innerText.trim();
+    if (!cardText) return;
+
+    // Try to get the card brand from the nearest img[alt] sibling
+    const cardRow = el.closest('.flex.items-center');
+    const brandImg = cardRow?.querySelector('img[alt]');
+    const brand = brandImg?.alt?.trim();
+
+    const label = brand && brand !== cardText
+      ? `${brand} - ${cardText}`
+      : cardText;
+
+    paymentMethods.push(label);
   });
+
 
   // Extract address - join lines with comma
   const addressParts = [];

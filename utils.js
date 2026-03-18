@@ -433,7 +433,7 @@ const CONSTANTS = {
 
     PRINT_BILL_GROUP: '.print-bill-group',
     PRINT_ITEM_ROW: '.dn.print-items-list > .flex.justify-between',
-    PAYMENT_METHODS: '.print-bill-payment-section .w_U9_0.w_sD6D.w_QcqU',
+    PAYMENT_METHODS: '[aria-labelledby^="card-description-"]',
     ADDRESS: '.print-bill-payment-section .w_U9_0.w_sD6D.w_QcqU span, .print-bill-payment-section .w_yTSq.w_0aYG.w_MwbK',
     ORDER_NUMBER_BAR: '.f-subheadline-m.dark-gray-m.print-bill-bar-id',
     ORDER_INFO_CARD: "[data-testid='orderInfoCard'] .dark-gray",
