@@ -283,26 +283,101 @@ function scrapeOrderData() {
   const orderNumber = findOrderNumber();
   let orderDate = document.querySelector(CONSTANTS.SELECTORS.ORDER_DATE)?.innerText || '';
   orderDate = orderDate.replace("order", "").trim();
-  const orderSubtotal = document.querySelector(CONSTANTS.SELECTORS.ORDER_SUBTOTAL)?.innerText || '';
-  const orderTotal = document.querySelector(CONSTANTS.SELECTORS.ORDER_TOTAL)?.innerText || '';
-  const deliveryCharges = document.querySelector(CONSTANTS.SELECTORS.DELIVERY_CHARGES)?.innerText || "$0.00";
+  // ----- Extract order totals -----
 
-  // Find tax by searching for "Tax" label and extracting the corresponding amount
-  let tax = "$0.00";
-  const taxElements = document.querySelectorAll(CONSTANTS.SELECTORS.TAX_ELEMENTS);
-  for (const element of taxElements) {
-    if (element.textContent.includes('Tax')) {
-      const taxItem = element.closest('.print-fees-item');
-      const taxAmount = taxItem?.querySelector('.w_U9_0.w_sD6D.w_QcqU.ml2');
-      if (taxAmount) {
-        tax = taxAmount.innerText;
-        break;
-      }
+  // Subtotal: grab the last span inside the subtotal row
+  let orderSubtotal = '';
+  const subtotalEl = document.querySelector(CONSTANTS.SELECTORS.ORDER_SUBTOTAL);
+  if (subtotalEl) {
+    const spans = subtotalEl.querySelectorAll('span');
+    if (spans.length > 0) {
+      orderSubtotal = spans[spans.length - 1].innerText.trim();
+    }
+    if (!orderSubtotal) {
+      orderSubtotal = subtotalEl.innerText.trim();
     }
   }
 
-  const tip =
-    document.querySelector(CONSTANTS.SELECTORS.TIP)?.innerText || "$0.00";
+  // Order total: grab the last span inside the total row
+  let orderTotal = '';
+  const totalEl = document.querySelector(CONSTANTS.SELECTORS.ORDER_TOTAL);
+  if (totalEl) {
+    const spans = totalEl.querySelectorAll('span');
+    if (spans.length > 0) {
+      orderTotal = spans[spans.length - 1].innerText.trim();
+    }
+    if (!orderTotal) {
+      orderTotal = totalEl.innerText.trim();
+    }
+  }
+
+  // Helper: find a dollar amount from an ld_FS (or ld_FS-equivalent) screen-reader label
+  // The labels look like:  " Tax $5.66"  or  " Bag fee $0.16"
+  function extractAmountFromFeeLabel(keyword) {
+    const feeLabels = document.querySelectorAll(CONSTANTS.SELECTORS.FEE_LABEL);
+    for (const el of feeLabels) {
+      const text = el.textContent || '';
+      if (text.toLowerCase().includes(keyword.toLowerCase())) {
+        const match = text.match(/\$(\d+\.\d{2})/);
+        if (match) return `$${match[1]}`;
+      }
+    }
+    return null;
+  }
+
+  // Helper: find amount from a .print-fees-item by looking for a visible label text
+  function extractAmountFromFeeItem(keyword) {
+    const feeItems = document.querySelectorAll(CONSTANTS.SELECTORS.DELIVERY_CHARGES);
+    for (const item of feeItems) {
+      const labelText = item.textContent || '';
+      if (labelText.toLowerCase().includes(keyword.toLowerCase())) {
+        // The actual charged amount is always the LAST span inside the
+        // "flex justify-between items-end" price row (the first span may be
+        // struck-through original price, e.g. "$9.95" crossed out → "$0" actual).
+        const priceRow = item.querySelector('.flex.justify-between.items-end');
+        if (priceRow) {
+          const spans = priceRow.querySelectorAll('span');
+          if (spans.length > 0) {
+            const t = spans[spans.length - 1].innerText.trim();
+            if (t) return t.startsWith('$') ? t : `$${t}`;
+          }
+        }
+        // Fallback: last aria-hidden span with a dollar value
+        const spans = Array.from(item.querySelectorAll('span[aria-hidden="true"]'));
+        for (let i = spans.length - 1; i >= 0; i--) {
+          const t = spans[i].innerText && spans[i].innerText.trim();
+          if (t && t.match(/^\$\d/)) return t;
+        }
+      }
+    }
+    return null;
+  }
+
+  // Tax
+  let tax = extractAmountFromFeeItem('Tax') ||
+             extractAmountFromFeeLabel('Tax') ||
+             '$0.00';
+
+  // Delivery charges (look for "Delivery" fee; Walmart+ shows it as Free/$0)
+  let deliveryCharges = extractAmountFromFeeItem('Delivery') ||
+                        extractAmountFromFeeLabel('Delivery') ||
+                        '$0.00';
+
+  // Tip: look for "Driver tip" or "Tip" in a flex justify-between row
+  let tip = '$0.00';
+  const tipRows = document.querySelectorAll(CONSTANTS.SELECTORS.TIP);
+  for (const row of tipRows) {
+    const rowText = row.textContent || '';
+    if (rowText.toLowerCase().includes('tip')) {
+      const spans = Array.from(row.querySelectorAll('span'));
+      for (let i = spans.length - 1; i >= 0; i--) {
+        const t = spans[i].innerText && spans[i].innerText.trim();
+        if (t && t.match(/^\$\d/)) { tip = t; break; }
+      }
+      if (tip !== '$0.00') break;
+    }
+  }
+
 
   // Extract payment metadata
   const paymentMethods = [];
