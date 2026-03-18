@@ -525,6 +525,67 @@ const CONSTANTS = {
 };
 
 /**
+ * Sidepanel UI helpers
+ */
+const CACHE_INDICATOR_STYLE = 'cursor: pointer; margin-left: 6px; color: var(--primary); display: inline-flex; align-items: center; gap: 2px; font-size: 10px;';
+const CACHE_INDICATOR_SELECTOR = '[data-cache-indicator="true"]';
+
+function setCollectionButtonsState({ running, startLabel = "Start Collection" }) {
+  const startButton = document.getElementById("startCollection");
+  const stopButton = document.getElementById("stopCollection");
+  if (!startButton || !stopButton) return;
+
+  startButton.style.display = running ? "none" : "inline-flex";
+  stopButton.style.display = running ? "inline-flex" : "none";
+
+  if (!running) {
+    const label = startButton.querySelector(".btn-text");
+    if (label) label.textContent = startLabel;
+  }
+}
+
+function updateCheckboxCount(container) {
+  const heading = container.querySelector("h3");
+  const checked = container.querySelectorAll('input[type="checkbox"]:not(#selectAll):checked').length;
+  const totalOrders = container.querySelectorAll('input[type="checkbox"]:not(#selectAll)').length;
+  heading.textContent = `${CONSTANTS.TEXT.SELECT_ORDERS} (${totalOrders}) - Selected: ${checked}`;
+}
+
+function createCacheIndicator(orderNumber, options = {}) {
+  const { onDelete = null, onAfterDelete = null } = options;
+  const cacheIndicator = document.createElement("span");
+  cacheIndicator.dataset.cacheIndicator = "true";
+  cacheIndicator.style.cssText = CACHE_INDICATOR_STYLE;
+  cacheIndicator.title = "Click to delete this order's cache";
+  cacheIndicator.innerHTML = renderIcon('CACHE', 'var(--primary)');
+  cacheIndicator.style.display = "inline-flex";
+
+  cacheIndicator.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    await deleteInvoiceCache(orderNumber);
+    cacheIndicator.style.display = "none";
+    if (onDelete) onDelete(orderNumber);
+    if (onAfterDelete) onAfterDelete(orderNumber);
+  });
+
+  return cacheIndicator;
+}
+
+function createDownloadProgressElement() {
+  let progressDiv = document.getElementById("downloadProgress");
+  if (!progressDiv) {
+    progressDiv = document.createElement("div");
+    progressDiv.id = "downloadProgress";
+    const progressElement = document.getElementById("progress");
+    if (progressElement) {
+      progressElement.style.display = "none";
+      progressElement.insertAdjacentElement("afterend", progressDiv);
+    }
+  }
+  return progressDiv;
+}
+
+/**
  * DOM Factory Functions - Reusable DOM element creation
  */
 
