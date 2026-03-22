@@ -16,7 +16,7 @@ const CollectionState = {
   maxRetries: 3,
   retryCount: 0,
   pageLimit: 0,
-  pageLoadDelay: 100,
+  pageLoadDelay: 1000,
   initialPageLoaded: false,
   cacheKey: CONSTANTS.CACHE_KEYS.ORDER_COLLECTION,
   pagesCached: {},
