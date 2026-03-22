@@ -17,7 +17,6 @@ const CollectionState = {
   retryCount: 0,
   pageLimit: 0,
   pageLoadDelay: 100,
-  initialPageLoaded: false,
   cacheKey: CONSTANTS.CACHE_KEYS.ORDER_COLLECTION,
   pagesCached: {},
   
@@ -25,7 +24,6 @@ const CollectionState = {
   reset() {
     this.currentPage = 1;
     this.retryCount = 0;
-    this.initialPageLoaded = false;
   },
   
   // Clear all collected data
@@ -131,30 +129,22 @@ function handleStartCollection(request, sendResponse) {
 }
 
 function handleStopCollection(_request, sendResponse) {
-  if (!CollectionState.isCollecting) {
+  if (CollectionState.isCollecting) {
+    CollectionState.isCollecting = false;
+    if (CollectionState.tabId) {
+      chrome.tabs.remove(CollectionState.tabId).catch(() => {
+        // Tab may already be closed
+      });
+      chrome.tabs.onUpdated.removeListener(onTabUpdated);
+    }
+    // Save to cache before sending response
+    saveToCache();
     sendResponse({
-      status: "idle",
+      status: "stopped",
       currentPage: CollectionState.currentPage,
       orderNumbers: Array.from(CollectionState.allOrderNumbers),
     });
-    return false; // Synchronous response
   }
-
-  CollectionState.isCollecting = false;
-  if (CollectionState.tabId) {
-    chrome.tabs.remove(CollectionState.tabId).catch(() => {
-      // Tab may already be closed
-    });
-    chrome.tabs.onUpdated.removeListener(onTabUpdated);
-  }
-  // Save to cache before sending response
-  saveToCache();
-  sendResponse({
-    status: "stopped",
-    currentPage: CollectionState.currentPage,
-    orderNumbers: Array.from(CollectionState.allOrderNumbers),
-  });
-
   return false; // Synchronous response
 }
 
@@ -197,10 +187,6 @@ function startCollection(url) {
 
 function onTabUpdated(updatedTabId, changeInfo, tab) {
   if (CollectionState.tabId && updatedTabId === CollectionState.tabId && changeInfo.status === "complete") {
-    if (CollectionState.initialPageLoaded) {
-      return;
-    }
-    CollectionState.initialPageLoaded = true;
     console.log("Tab updated, collecting order numbers for page:", CollectionState.currentPage);
     setTimeout(() => collectOrderNumbers(), CollectionState.pageLoadDelay);
   }
@@ -253,6 +239,8 @@ function collectOrderNumbers() {
       saveToCache();
 
       if (response.hasNextPage && (CollectionState.pageLimit === 0 || CollectionState.currentPage < CollectionState.pageLimit)) {
+        CollectionState.currentPage++;
+        CollectionState.retryCount = 0;
         goToNextPage();
       } else {
         console.log("No more pages to collect or reached limit. Finishing collection.");
@@ -271,16 +259,13 @@ function goToNextPage() {
     return;
   }
 
-  console.log("Attempting to go to next page:", CollectionState.currentPage + 1);
+  console.log("Attempting to go to next page:", CollectionState.currentPage);
   chrome.tabs.sendMessage(CollectionState.tabId, { action: CONSTANTS.MESSAGES.CLICK_NEXT_BUTTON }, (response) => {
     if (chrome.runtime.lastError) {
       console.error("Error clicking next button:", chrome.runtime.lastError);
       retryCollection();
     } else if (response && response.success) {
-      CollectionState.currentPage++;
-      CollectionState.retryCount = 0;
-      console.log("Successfully clicked next button. Collecting page:", CollectionState.currentPage);
-      setTimeout(() => collectOrderNumbers(), CollectionState.pageLoadDelay);
+      console.log("Successfully clicked next button. Waiting for page to load.");
     } else {
       console.log("Failed to click next button. Retrying.");
       retryCollection();

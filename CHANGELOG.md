@@ -1,21 +1,5 @@
 # Changelog
 
-## [6.0] - March 17, 2026
-
-### Fixes
-- **Fix:** Corrected extraction of all financial fields — subtotal, order total, tax, delivery charges, and tip — which were broken due to Walmart updating their DOM from `w_*` CSS classes to `ld_*` classes
-- **Fix:** Tax amount now reliably extracted from the `.print-fees-item` price row instead of defunct class selectors
-- **Fix:** Tip (`Driver tip`) now correctly extracted using text-based lookup on flex rows
-- **Fix:** Order total now reads from `span` elements inside `.bill-order-total-payment` (Walmart changed from `h2` to `span`)
-- **Fix:** Subtotal now extracts just the dollar amount from the last span in the row instead of the entire div `innerText` (which included the "Subtotal" label)
-- **Fix:** Payment method extraction completely fixed — was returning empty due to defunct `.print-bill-payment-section` selector; now uses `[aria-labelledby^="card-description-"]` which matches the actual card spans
-
-### Refactor
-- **Refactor:** Modularized side panel logic into separate focused modules: `sidepanel.state.js`, `sidepanel.view.js`, `sidepanel.actions.js`, `sidepanel.download.js` — greatly improving maintainability
-- **Refactor:** Improved image blocking logic with better error handling and MutationObserver optimizations
-- **Enhancement:** Collection button and cache indicator handling improved for more reliable UI state management
-- **Enhancement:** `ORDER_SUBTOTAL` selector now also matches `span[aria-label^="Subtotal after savings"]` for discount scenarios
-
 ## [5.2] - February 3, 2026
 
 ### Features

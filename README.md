@@ -95,11 +95,13 @@ Install the Walmart Invoice Exporter directly from the [Chrome Web Store](https:
 
 ## What's New
 
-### Version 6.0 (March 17, 2026)
-- **Fixed all financial field extraction** — subtotal, total, tax, delivery, and tip were broken due to Walmart's UI update changing CSS classes from `w_*` to `ld_*`
-- **Payment method** extraction completely rewritten — now shows card brand 
-- **Side panel** refactored into separate modules (`state`, `view`, `actions`, `download`) for easier future maintenance
-- **Image blocking** and error handling improved
+### Version 5.2 (February 3, 2026)
+- Added shipping address and payment method to exported invoices
+- Added Order Total to multiple files export mode
+- Improved clear cache button visibility logic
+- Fixed tax and tip parsing in multiple file exports
+- Enhanced cache system with better persistence
+- Updated to Chrome 120 minimum version
 
 ### [Changelog](./CHANGELOG.md)
 
@@ -267,21 +269,16 @@ The extension is built with a modular design for maintainability:
 
 **Core Files:**
 - `manifest.json` - Extension configuration and permissions
-- `sidepanel.html` / `sidepanel.css` - Side panel UI structure and styles
-- `sidepanel.js` - Side panel entry point and orchestration
-- `sidepanel.state.js` - Shared UI state management
-- `sidepanel.view.js` - DOM rendering and view helpers
-- `sidepanel.actions.js` - User action handlers (collection, cache, etc.)
-- `sidepanel.download.js` - Download orchestration and progress tracking
+- `sidepanel.html/sidepanel.js/sidepanel.css` - User interface and main logic
 - `background.js` - Background service worker for collection and caching
-- `content.js` - Content script for DOM extraction on Walmart order pages
-- `utils.js` - Shared constants, Excel generation, and UI utilities
+- `content.js` - Content script for DOM manipulation on Walmart pages
+- `utils.js` - Shared utility functions for Excel generation and styling
 
 **Key Components:**
 1. **Cache System** - Manages order number caching and invoice storage
 2. **Collection Engine** - Crawls Walmart pages to extract order numbers
 3. **Export Engines** - Handles both single and multiple file export modes
-4. **UI Controller** - Modular side panel (state / view / actions / download)
+4. **UI Controller** - Manages popup interface and user interactions
 5. **Performance Optimizer** - Implements image blocking and throttling
 
 **Data Flow:**
@@ -297,9 +294,11 @@ The extension is built with a modular design for maintainability:
 
 For a complete list of changes, see [CHANGELOG.md](./CHANGELOG.md)
 
-**Latest Fixes (v6.0):**
-- All financial fields (tax, tip, delivery, subtotal, total) extraction fixed for Walmart's updated DOM
-- Side panel refactored into modular files for maintainability
+**Latest Features (v5.2):**
+- Shipping address and payment method in exported invoices
+- Order Total in multiple files export mode
+- Enhanced cache system with local storage persistence
+- Dynamic clear cache button visibility
 
 ## Support
 
