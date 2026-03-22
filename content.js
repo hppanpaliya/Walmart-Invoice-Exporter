@@ -235,8 +235,136 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  * Extracts product details, pricing, and order metadata from the print view.
  * @returns {Object} Order data including items, totals, and order info
  */
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeLookupText(value) {
+  return cleanText(value)
+    .toLowerCase()
+    .replace(/[’]/g, "'");
+}
+
+function normalizeOrderNumberValue(value) {
+  return String(value || "").replace(/[^\d]/g, "");
+}
+
+function buildProductLinkLookup() {
+  const lookup = new Map();
+  const itemStacks = document.querySelectorAll(CONSTANTS.SELECTORS.ITEM_STACK);
+
+  itemStacks.forEach((stack) => {
+    const productName = cleanText(
+      stack.querySelector('[data-testid="productName"] span')?.textContent ||
+      stack.querySelector('[data-testid="productName"]')?.textContent
+    );
+    const productLink = stack.querySelector(CONSTANTS.SELECTORS.PRODUCT_LINK)?.href;
+
+    if (!productName || !productLink) {
+      return;
+    }
+
+    const normalizedName = normalizeLookupText(productName);
+    if (!lookup.has(normalizedName)) {
+      lookup.set(normalizedName, productLink);
+    }
+  });
+
+  return lookup;
+}
+
+function resolveProductLink(productName, productLinkLookup) {
+  const fallback = "N/A";
+  if (!productName || !productLinkLookup || productLinkLookup.size === 0) {
+    return fallback;
+  }
+
+  const normalizedName = normalizeLookupText(productName);
+  if (productLinkLookup.has(normalizedName)) {
+    return productLinkLookup.get(normalizedName);
+  }
+
+  for (const [name, href] of productLinkLookup.entries()) {
+    if (name.includes(normalizedName) || normalizedName.includes(name)) {
+      return href;
+    }
+  }
+
+  return fallback;
+}
+
+function extractPrintItem(item) {
+  const row = item.querySelector('.flex.justify-between');
+  const primaryColumn = row?.querySelector(':scope > :first-child');
+
+  const productName = cleanText(
+    primaryColumn?.textContent ||
+    item.querySelector(CONSTANTS.SELECTORS.PRINT_ITEM_NAME)?.textContent
+  );
+
+  const deliveryStatus = cleanText(
+    item.querySelector('.print-bill-type')?.textContent ||
+    item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_TYPE)?.textContent
+  ) || CONSTANTS.TEXT.DELIVERY_LABEL;
+
+  const quantity = cleanText(
+    item.querySelector('.print-bill-qty')?.textContent ||
+    item.querySelector('.print-bill-qty-mobile-view')?.textContent ||
+    item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_QTY)?.textContent
+  );
+
+  const price = cleanText(
+    item.querySelector('.print-bill-price')?.textContent ||
+    item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_PRICE)?.textContent
+  );
+
+  return {
+    productName,
+    deliveryStatus,
+    quantity,
+    price,
+  };
+}
+
+function extractAddressFromOrderPage() {
+  // Newer Walmart layout: address lines are inside the payment section under a
+  // `.flex.flex-column.mid-gray` container with data-sensitivity metadata.
+  const addressContainers = Array.from(
+    document.querySelectorAll('.print-bill-payment-section .flex.flex-column.mid-gray')
+  );
+
+  const parts = [];
+  const seen = new Set();
+
+  addressContainers.forEach((container) => {
+    const lines = Array.from(container.querySelectorAll('[data-sensitivity="medium"], span'))
+      .map((el) => cleanText(el.textContent))
+      .filter(Boolean);
+
+    lines.forEach((line) => {
+      const key = line.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        parts.push(line);
+      }
+    });
+  });
+
+  if (parts.length > 0) {
+    return parts.slice(0, 2).join(', ');
+  }
+
+  // Legacy fallback selectors
+  const fallbackParts = Array.from(document.querySelectorAll(CONSTANTS.SELECTORS.ADDRESS))
+    .map((el) => cleanText(el.textContent))
+    .filter(Boolean);
+
+  return Array.from(new Set(fallbackParts)).slice(0, 2).join(', ');
+}
+
 function scrapeOrderData() {
   const orderItems = [];
+  const productLinkLookup = buildProductLinkLookup();
 
   // Query the hidden print items list which contains reliable product data
   // This list is always present in the DOM (hidden via .dn class) and is populated on page load.
@@ -244,24 +372,12 @@ function scrapeOrderData() {
   const printItemsList = document.querySelectorAll(CONSTANTS.SELECTORS.PRINT_ITEMS);
 
   printItemsList.forEach((item) => {
-    const productName = item.querySelector(CONSTANTS.SELECTORS.PRINT_ITEM_NAME)?.innerText;
-    // Fall back to default delivery label if status element not found
-    const deliveryStatus = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_TYPE)?.innerText || CONSTANTS.TEXT.DELIVERY_LABEL;
-    const quantity = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_QTY)?.innerText;
-    const price = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_PRICE)?.innerText;
-
-    // Find the corresponding visible item to get the product link
-    let productLink = "N/A";
-    const visibleItems = document.querySelectorAll(CONSTANTS.SELECTORS.VISIBLE_ITEMS);
-    for (const visibleItem of visibleItems) {
-      if (visibleItem?.innerText.trim() === (productName || '').trim()) {
-        const linkElement = visibleItem.closest(CONSTANTS.SELECTORS.ITEM_STACK)?.querySelector(CONSTANTS.SELECTORS.PRODUCT_LINK);
-        if (linkElement) {
-          productLink = linkElement.href;
-          break;
-        }
-      }
+    const { productName, deliveryStatus, quantity, price } = extractPrintItem(item);
+    if (!productName && !quantity && !price) {
+      return;
     }
+
+    const productLink = resolveProductLink(productName, productLinkLookup);
 
     orderItems.push({
       productName,
@@ -290,8 +406,19 @@ function scrapeOrderData() {
         const text = element.textContent;
         const match = text.match(CONSTANTS.ORDER_NUMBER_REGEX);
         if (match) {
-          return match[1];
+          const normalized = normalizeOrderNumberValue(match[1]);
+          if (normalized) {
+            return normalized;
+          }
         }
+      }
+    }
+
+    const pathMatch = window.location.pathname.match(/\/orders\/([\d-]+)/);
+    if (pathMatch?.[1]) {
+      const normalized = normalizeOrderNumberValue(pathMatch[1]);
+      if (normalized) {
+        return normalized;
       }
     }
 
@@ -426,15 +553,7 @@ function scrapeOrderData() {
   });
 
 
-  // Extract address - join lines with comma
-  const addressParts = [];
-  const addressElements = document.querySelectorAll(CONSTANTS.SELECTORS.ADDRESS);
-  addressElements.forEach(el => {
-    if (el.innerText && el.innerText.trim()) {
-      addressParts.push(el.innerText.trim());
-    }
-  });
-  const address = addressParts.slice(0, 2).join(', ');
+  const address = extractAddressFromOrderPage();
 
   return {
     orderNumber,

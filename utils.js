@@ -442,10 +442,10 @@ const CONSTANTS = {
   // DOM Selectors (content.js)
   SELECTORS: {
     PRINT_ITEMS: '.dn.print-items-list',
-    PRINT_ITEM_NAME: '.flex.justify-between > .w_U9_0.w_sD6D.w_QcqU',
-    PRINT_BILL_TYPE: '.print-bill-type .w_U9_0.w_sD6D.w_QcqU',
-    PRINT_BILL_QTY: '.print-bill-qty .w_U9_0.w_sD6D.w_QcqU',
-    PRINT_BILL_PRICE: '.print-bill-price .w_U9_0.w_sD6D.w_QcqU',
+    PRINT_ITEM_NAME: '.flex.justify-between > .w_U9_0.w_sD6D.w_QcqU, .flex.justify-between > div:first-child',
+    PRINT_BILL_TYPE: '.print-bill-type .w_U9_0.w_sD6D.w_QcqU, .print-bill-type > div',
+    PRINT_BILL_QTY: '.print-bill-qty .w_U9_0.w_sD6D.w_QcqU, .print-bill-qty > div',
+    PRINT_BILL_PRICE: '.print-bill-price .w_U9_0.w_sD6D.w_QcqU, .print-bill-price > div',
     VISIBLE_ITEMS: '[data-testid="itemtile-stack"] [data-testid="productName"] span',
     ITEM_STACK: '[data-testid="itemtile-stack"]',
     PRODUCT_LINK: 'a[link-identifier="itemClick"]',
@@ -453,7 +453,7 @@ const CONSTANTS = {
     PRINT_BILL_GROUP: '.print-bill-group',
     PRINT_ITEM_ROW: '.dn.print-items-list > .flex.justify-between',
     PAYMENT_METHODS: '[aria-labelledby^="card-description-"]',
-    ADDRESS: '.print-bill-payment-section .w_U9_0.w_sD6D.w_QcqU span, .print-bill-payment-section .w_yTSq.w_0aYG.w_MwbK',
+    ADDRESS: '.print-bill-payment-section .w_U9_0.w_sD6D.w_QcqU span, .print-bill-payment-section .w_yTSq.w_0aYG.w_MwbK, .print-bill-payment-section .flex.flex-column.mid-gray [data-sensitivity="medium"], .print-bill-payment-section .flex.flex-column.mid-gray span',
     ORDER_NUMBER_BAR: '.f-subheadline-m.dark-gray-m.print-bill-bar-id',
     ORDER_INFO_CARD: "[data-testid='orderInfoCard'] .dark-gray",
     ORDER_NUMBER_HEADING: '.print-bill-heading .dark-gray',

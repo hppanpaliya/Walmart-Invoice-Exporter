@@ -6,6 +6,30 @@
   const OrderDataFetcher = (() => {
     let downloadTab = null;
 
+    const hasUsableOrderItems = (data) => {
+      if (!Array.isArray(data?.items) || data.items.length === 0) {
+        return false;
+      }
+
+      return data.items.some((item) => {
+        const productName = String(item?.productName || "").trim();
+        const quantity = String(item?.quantity || "").trim();
+        const price = String(item?.price || "").trim();
+        return Boolean(productName) && (Boolean(quantity) || Boolean(price));
+      });
+    };
+
+    const isValidInvoiceData = (data) => {
+      if (!data || typeof data !== "object") {
+        return false;
+      }
+
+      const normalizedOrderNumber = String(data.orderNumber || "").replace(/[^\d]/g, "");
+      const orderTotal = String(data.orderTotal || "").trim();
+
+      return hasUsableOrderItems(data) && (Boolean(normalizedOrderNumber) || Boolean(orderTotal));
+    };
+
     const buildOrderUrls = (orderNumber) => {
       const baseUrl = `${CONSTANTS.URLS.WALMART_ORDERS}/${orderNumber}`;
       const isLongOrderNumber = orderNumber.length >= 20;
@@ -129,8 +153,13 @@
     const fetchOrderData = async (orderNumber, options = {}) => {
       const cachedData = await getCachedInvoice(orderNumber);
       if (cachedData) {
-        view.updateOrderCacheStatus(orderNumber);
-        return cachedData;
+        if (isValidInvoiceData(cachedData)) {
+          view.updateOrderCacheStatus(orderNumber);
+          return cachedData;
+        }
+
+        // Auto-heal stale cache entries created with outdated selectors.
+        await deleteInvoiceCache(orderNumber);
       }
 
       const [primaryUrl, fallbackUrl] = buildOrderUrls(orderNumber);
