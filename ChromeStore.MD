@@ -91,10 +91,6 @@ Transform your Walmart order management experience with the Walmart Invoice Expo
 
 ★ What's New:
 
- ✦ Version 6.0 - March 17, 2026
-   • Fixed extraction of all financial fields (tax, delivery, tip, subtotal, total, payment method) broken by Walmart's DOM update
-   • Improved image blocking stability and error handling during order collection
-
  ✦ Version 5.2 - February 3, 2026
    • Added shipping address and payment method to exported invoice details
    • Added Order Total column to multiple files export mode for consistency

@@ -53,10 +53,6 @@ jobs:
           cp sidepanel.html temp/Walmart-Invoice-Exporter/
           cp sidepanel.js temp/Walmart-Invoice-Exporter/
           cp sidepanel.css temp/Walmart-Invoice-Exporter/
-          cp sidepanel.state.js temp/Walmart-Invoice-Exporter/
-          cp sidepanel.view.js temp/Walmart-Invoice-Exporter/
-          cp sidepanel.actions.js temp/Walmart-Invoice-Exporter/
-          cp sidepanel.download.js temp/Walmart-Invoice-Exporter/
 
           # Helpful documentation files (optional)
           cp README.md temp/Walmart-Invoice-Exporter/ || true

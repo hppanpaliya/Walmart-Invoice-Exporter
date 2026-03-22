@@ -65,13 +65,11 @@ function configureMultipleOrdersColumns(worksheet) {
  */
 function addItemsToWorksheet(worksheet, items) {
   items.forEach((item) => {
-    const productName = item.productName || "";
-    const productLink = item.productLink || "";
     const row = worksheet.addRow({
-      productName,
+      productName: item.productName,
       productLink: {
-        text: truncateText(productName),
-        hyperlink: productLink
+        text: truncateText(item.productName),
+        hyperlink: item.productLink
       },
       quantity: parseNumericValue(item.quantity),
       price: parseNumericValue(item.price),
@@ -88,8 +86,6 @@ function addItemsToWorksheet(worksheet, items) {
  */
 function addMultipleOrderItemsToWorksheet(worksheet, items) {
   items.forEach((item) => {
-    const productName = item.productName || "";
-    const productLink = item.productLink || "";
     worksheet.addRow({
       orderNumber: item.orderNumber || '',
       orderDate: item.orderDate || '',
@@ -97,13 +93,13 @@ function addMultipleOrderItemsToWorksheet(worksheet, items) {
       paymentMethods: item.paymentMethods || '',
       orderSubtotal: parseNumericValue(item.orderSubtotal),
       orderTotal: parseNumericValue(item.orderTotal),
-      productName,
+      productName: item.productName || '',
       quantity: parseNumericValue(item.quantity),
       price: parseNumericValue(item.price),
       deliveryStatus: item.deliveryStatus || '',
       productLink: {
-        text: truncateText(productName),
-        hyperlink: productLink
+        text: truncateText(item.productName),
+        hyperlink: item.productLink
       },
       deliveryCharges: parseNumericValue(item.deliveryCharges),
       tax: parseNumericValue(item.tax),
@@ -117,32 +113,20 @@ function addMultipleOrderItemsToWorksheet(worksheet, items) {
  * @param {ExcelJS.Worksheet} worksheet - The worksheet to style
  */
 function styleSingleOrderWorksheet(worksheet) {
-  const currencyLabels = new Set(['Subtotal', 'Delivery Charges', 'Tax', 'Tip', 'Order Total']);
-
   // Apply product font to all cells
   worksheet.eachRow((row) => {
     row.eachCell((cell) => {
       cell.font = STYLES.productFont;
     });
-    const linkCell = row.getCell(5);
-    if (linkCell && linkCell.value) {
-      linkCell.font = STYLES.linkFont;
+    const cell = row.getCell("productLink");
+    if (cell) {
+      cell.font = STYLES.linkFont;
     }
   });
 
   // Apply header font to first row
   worksheet.getRow(1).eachCell((cell) => {
     cell.font = STYLES.headerFont;
-  });
-
-  // Keep only the monetary summary rows formatted as currency.
-  worksheet.eachRow((row, rowNumber) => {
-    if (rowNumber <= 1) return;
-    const label = row.getCell(1).value;
-    if (currencyLabels.has(label)) {
-      row.getCell(2).numFmt = "$#,##0.00";
-      row.getCell(2).alignment = { horizontal: "center" };
-    }
   });
 }
 
@@ -182,11 +166,8 @@ function addOrderSummary(worksheet, orderDetails) {
     return row;
   });
 
-  // Apply currency formatting only to money fields.
-  const currencyLabels = new Set(['Subtotal', 'Delivery Charges', 'Tax', 'Tip', 'Order Total']);
-  summaryRows.forEach((row) => {
-    const label = row.getCell(1).value;
-    if (!currencyLabels.has(label)) return;
+  // Apply currency formatting to numeric values
+  summaryRows.slice(2).forEach((row) => {
     row.getCell(2).numFmt = "$#,##0.00";
     row.getCell(2).font = { ...STYLES.productFont, bold: true };
     row.getCell(1).font = { ...STYLES.productFont, bold: true };
@@ -292,7 +273,7 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null)
         price: item.price,
         deliveryStatus: item.deliveryStatus || '',
         productLink: item.productLink || '',
-        deliveryCharges: parseNumericValue(orderDetails.deliveryCharges),
+        deliveryCharges: parseNumericValue(item.deliveryCharges),
         tax: parseNumericValue(orderDetails.tax),
         tip: parseNumericValue(orderDetails.tip),
       });
@@ -452,7 +433,7 @@ const CONSTANTS = {
 
     PRINT_BILL_GROUP: '.print-bill-group',
     PRINT_ITEM_ROW: '.dn.print-items-list > .flex.justify-between',
-    PAYMENT_METHODS: '[aria-labelledby^="card-description-"]',
+    PAYMENT_METHODS: '.print-bill-payment-section .w_U9_0.w_sD6D.w_QcqU',
     ADDRESS: '.print-bill-payment-section .w_U9_0.w_sD6D.w_QcqU span, .print-bill-payment-section .w_yTSq.w_0aYG.w_MwbK',
     ORDER_NUMBER_BAR: '.f-subheadline-m.dark-gray-m.print-bill-bar-id',
     ORDER_INFO_CARD: "[data-testid='orderInfoCard'] .dark-gray",
@@ -460,11 +441,10 @@ const CONSTANTS = {
     PRINT_BILL_ID: '.print-bill-bar-id',
     ORDER_DATE: '.print-bill-date',
     ORDER_SUBTOTAL: '.flex.justify-between.pb3.bill-order-payment-subtotal, span[aria-label^="Subtotal after savings"]',
-    ORDER_TOTAL: '.bill-order-total-payment',
-    DELIVERY_CHARGES: '.print-fees-item',
-    TAX_ELEMENTS: '.print-fees-item',
-    TIP: '.flex.justify-between.pb2.pt3',
-    FEE_LABEL: '.ld_FS',
+    ORDER_TOTAL: '.bill-order-total-payment h2:last-child',
+    DELIVERY_CHARGES: '.print-fees',
+    TAX_ELEMENTS: '.w_iUH7',
+    TIP: '.print-bill-payment-section .flex.justify-between.pb2.pt3 .w_U9_0.w_U0S3.w_QcqU:last-child',
     ORDER_CARDS: '[data-testid^="order-"], div.ld_V.mv4',
     NEXT_BUTTON: 'button[data-automation-id="next-pages-button"]:not([disabled])',
     MAIN_HEADING: 'h1, .ld_FM.ld_FQ.ld_FO',
@@ -543,67 +523,6 @@ const CONSTANTS = {
     MULTIPLE: 'multiple',
   },
 };
-
-/**
- * Sidepanel UI helpers
- */
-const CACHE_INDICATOR_STYLE = 'cursor: pointer; margin-left: 6px; color: var(--primary); display: inline-flex; align-items: center; gap: 2px; font-size: 10px;';
-const CACHE_INDICATOR_SELECTOR = '[data-cache-indicator="true"]';
-
-function setCollectionButtonsState({ running, startLabel = "Start Collection" }) {
-  const startButton = document.getElementById("startCollection");
-  const stopButton = document.getElementById("stopCollection");
-  if (!startButton || !stopButton) return;
-
-  startButton.style.display = running ? "none" : "inline-flex";
-  stopButton.style.display = running ? "inline-flex" : "none";
-
-  if (!running) {
-    const label = startButton.querySelector(".btn-text");
-    if (label) label.textContent = startLabel;
-  }
-}
-
-function updateCheckboxCount(container) {
-  const heading = container.querySelector("h3");
-  const checked = container.querySelectorAll('input[type="checkbox"]:not(#selectAll):checked').length;
-  const totalOrders = container.querySelectorAll('input[type="checkbox"]:not(#selectAll)').length;
-  heading.textContent = `${CONSTANTS.TEXT.SELECT_ORDERS} (${totalOrders}) - Selected: ${checked}`;
-}
-
-function createCacheIndicator(orderNumber, options = {}) {
-  const { onDelete = null, onAfterDelete = null } = options;
-  const cacheIndicator = document.createElement("span");
-  cacheIndicator.dataset.cacheIndicator = "true";
-  cacheIndicator.style.cssText = CACHE_INDICATOR_STYLE;
-  cacheIndicator.title = "Click to delete this order's cache";
-  cacheIndicator.innerHTML = renderIcon('CACHE', 'var(--primary)');
-  cacheIndicator.style.display = "inline-flex";
-
-  cacheIndicator.addEventListener("click", async (e) => {
-    e.stopPropagation();
-    await deleteInvoiceCache(orderNumber);
-    cacheIndicator.style.display = "none";
-    if (onDelete) onDelete(orderNumber);
-    if (onAfterDelete) onAfterDelete(orderNumber);
-  });
-
-  return cacheIndicator;
-}
-
-function createDownloadProgressElement() {
-  let progressDiv = document.getElementById("downloadProgress");
-  if (!progressDiv) {
-    progressDiv = document.createElement("div");
-    progressDiv.id = "downloadProgress";
-    const progressElement = document.getElementById("progress");
-    if (progressElement) {
-      progressElement.style.display = "none";
-      progressElement.insertAdjacentElement("afterend", progressDiv);
-    }
-  }
-  return progressDiv;
-}
 
 /**
  * DOM Factory Functions - Reusable DOM element creation
