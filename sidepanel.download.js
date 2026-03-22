@@ -15,33 +15,12 @@
       return [baseUrl, `${baseUrl}?storePurchase=true`];
     };
 
-    const ensureTab = async (url) => {
-      if (!downloadTab) {
-        downloadTab = await ChromeApi.tabsCreate({ url, active: false });
-        return downloadTab;
-      }
-
-      try {
-        await ChromeApi.tabsGet(downloadTab.id);
-        await ChromeApi.tabsUpdate(downloadTab.id, { url });
-      } catch (error) {
-        downloadTab = await ChromeApi.tabsCreate({ url, active: false });
-      }
-
-      return downloadTab;
-    };
-
-    const createTabLoadWaiter = (tabId) => {
+    const createTabLoadWaiter = (tabId, expectedUrl = "") => {
       let listener = null;
-      const promise = new Promise((resolve) => {
-        listener = (updatedTabId, info) => {
-          if (updatedTabId === tabId && info.status === "complete") {
-            chrome.tabs.onUpdated.removeListener(listener);
-            resolve();
-          }
-        };
-        chrome.tabs.onUpdated.addListener(listener);
-      });
+      let resolved = false;
+      let resolvePromise = () => {};
+
+      const normalizeUrl = (value) => String(value || "").replace(/\/$/, "");
 
       const cleanup = () => {
         if (listener) {
@@ -50,19 +29,79 @@
         }
       };
 
+      const finish = () => {
+        if (resolved) {
+          return;
+        }
+        resolved = true;
+        cleanup();
+        resolvePromise();
+      };
+
+      const promise = new Promise((resolve) => {
+        resolvePromise = resolve;
+        listener = (updatedTabId, info) => {
+          if (updatedTabId === tabId && info.status === "complete") {
+            finish();
+          }
+        };
+        chrome.tabs.onUpdated.addListener(listener);
+      });
+
+      ChromeApi.tabsGet(tabId)
+        .then((tab) => {
+          if (
+            tab?.status === "complete" &&
+            (!expectedUrl || normalizeUrl(tab.url) === normalizeUrl(expectedUrl))
+          ) {
+            finish();
+          }
+        })
+        .catch(() => {
+          if (!resolved) {
+            cleanup();
+          }
+        });
+
       return { promise, cleanup };
+    };
+
+    const waitForTabLoad = async (tab, url, timeoutMs) => {
+      const { promise, cleanup } = createTabLoadWaiter(tab.id, url);
+      try {
+        await promiseWithTimeout(promise, timeoutMs, `Timeout loading ${url}`);
+      } finally {
+        cleanup();
+      }
+    };
+
+    const ensureTab = async (url, timeoutMs) => {
+      if (!downloadTab) {
+        downloadTab = await ChromeApi.tabsCreate({ url, active: false });
+        await waitForTabLoad(downloadTab, url, timeoutMs);
+        return downloadTab;
+      }
+
+      try {
+        await ChromeApi.tabsGet(downloadTab.id);
+        const { promise, cleanup } = createTabLoadWaiter(downloadTab.id, url);
+        try {
+          downloadTab = await ChromeApi.tabsUpdate(downloadTab.id, { url });
+          await promiseWithTimeout(promise, timeoutMs, `Timeout loading ${url}`);
+        } finally {
+          cleanup();
+        }
+      } catch (error) {
+        downloadTab = await ChromeApi.tabsCreate({ url, active: false });
+        await waitForTabLoad(downloadTab, url, timeoutMs);
+      }
+
+      return downloadTab;
     };
 
     const fetchFromUrl = async (orderNumber, url, options = {}) => {
       const { timeoutMs = CONSTANTS.TIMING.DOWNLOAD_TIMEOUT, stabilizeDelayMs = 1000 } = options;
-      const tab = await ensureTab(url);
-
-      const { promise, cleanup } = createTabLoadWaiter(tab.id);
-      try {
-        await promiseWithTimeout(promise, timeoutMs, `Timeout loading order #${orderNumber}`);
-      } finally {
-        cleanup();
-      }
+      const tab = await ensureTab(url, timeoutMs);
 
       try {
         await ChromeApi.tabsSendMessage(tab.id, { action: CONSTANTS.MESSAGES.BLOCK_IMAGES });
@@ -243,7 +282,7 @@
             errorPrefix: "Error downloading order",
             onOrder: async (orderNumber, options) => {
               const data = await OrderDataFetcher.fetchOrderData(orderNumber, options);
-              convertToXlsx(data, ExcelJS, { mode: "single" });
+              await convertToXlsx(data, ExcelJS, { mode: "single" });
             },
           });
 

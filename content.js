@@ -175,6 +175,26 @@ async function waitForElement(
   throw new Error(`Element ${selector} not found after ${timeout}ms`);
 }
 
+async function waitForAnyElement(
+  selectors,
+  timeout = CONSTANTS.TIMING.COLLECTION_TIMEOUT,
+  pollInterval = CONSTANTS.TIMING.ELEMENT_POLL_INTERVAL
+) {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeout) {
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (element) {
+        return element;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+  }
+
+  throw new Error(`None of the selectors matched after ${timeout}ms: ${selectors.join(", ")}`);
+}
+
 const withImageBlocking = (handler) => async (request) => {
   ImageBlocker.aggressive();
   return handler(request);
@@ -430,17 +450,71 @@ function scrapeOrderData() {
   };
 }
 
+function extractOrderNumberFromText(text) {
+  if (!text) return null;
+
+  const hashMatch = String(text).match(CONSTANTS.ORDER_NUMBER_REGEX);
+  if (hashMatch?.[1]) {
+    return hashMatch[1];
+  }
+
+  const looseMatch = String(text).match(/\b(\d[\d-]{9,})\b/);
+  return looseMatch?.[1] || null;
+}
+
+function getOrderCardTitle(card) {
+  const titleSelectors = [
+    "h2",
+    "h3",
+    "[data-testid*='title']",
+    "[class*='title']",
+    "button[data-automation-id^='view-order-details-link-']",
+  ];
+
+  for (const selector of titleSelectors) {
+    const element = card.querySelector(selector);
+    const text = element?.textContent?.trim();
+    if (text) {
+      return text;
+    }
+  }
+
+  return card.textContent?.trim() || "";
+}
+
+function extractOrderNumberFromButton(button, fallbackContainer = null) {
+  const automationId = button?.getAttribute?.("data-automation-id") || "";
+  const automationMatch = automationId.match(/view-order-details-link-([\d-]+)/);
+  if (automationMatch?.[1]) {
+    return automationMatch[1];
+  }
+
+  const buttonText = button?.textContent?.trim();
+  const buttonFallback = extractOrderNumberFromText(buttonText);
+  if (buttonFallback) {
+    return buttonFallback;
+  }
+
+  if (fallbackContainer) {
+    return extractOrderNumberFromText(fallbackContainer.textContent || "");
+  }
+
+  return null;
+}
+
 /**
  * Handles order number collection from order history page.
  * Waits for page elements to load, then extracts order data.
  */
 async function handleCollectOrderNumbers() {
   try {
-    // Wait for the main heading, which should be present on all pages
-    await waitForElement(CONSTANTS.SELECTORS.MAIN_HEADING);
-    
-    // Wait for order cards to render after page navigation
-    await waitForElement('[data-testid^="order-"]');
+    // Wait for the page to settle on either the standard card layout or the
+    // button fallback layout Walmart sometimes renders.
+    await waitForAnyElement([
+      CONSTANTS.SELECTORS.ORDER_CARDS,
+      'button[data-automation-id^="view-order-details-link-"]',
+      CONSTANTS.SELECTORS.MAIN_HEADING,
+    ]);
 
     const { orderNumbers, additionalFields } = extractOrderNumbers();
     const hasNextPage = await checkForNextPage();
@@ -450,7 +524,10 @@ async function handleCollectOrderNumbers() {
   } catch (error) {
     console.error("Error during collection:", error);
     // Timeout errors indicate no more orders on this page
-    if (error.message.includes("not found after")) {
+    if (
+      error.message.includes("not found after") ||
+      error.message.includes("None of the selectors matched")
+    ) {
       console.log("No order cards found. Assuming end of orders.");
       return { orderNumbers: [], additionalFields: {}, hasNextPage: false };
     }
@@ -464,14 +541,124 @@ async function handleCollectOrderNumbers() {
  */
 async function handleClickNextButton() {
   try {
-    await waitForElement(CONSTANTS.SELECTORS.MAIN_HEADING);
-    const nextButton = await waitForElement(CONSTANTS.SELECTORS.NEXT_BUTTON);
+    await waitForAnyElement([
+      CONSTANTS.SELECTORS.NEXT_BUTTON,
+      'button[aria-label*="Next"]',
+      'button[data-automation-id*="next-pages-button"]',
+    ]);
+
+    const nextButton = findNextPageButton();
+    if (!nextButton) {
+      console.warn("Next page button not found or is disabled");
+      return { success: false };
+    }
+
+    const previousSignature = getOrderListSignature();
+    const previousUrl = window.location.href;
+
+    nextButton.scrollIntoView({ block: "center", inline: "center" });
     nextButton.click();
+
+    const pageChanged = await waitForOrdersListTransition(previousSignature, previousUrl);
+    if (!pageChanged) {
+      console.warn("Next page click did not trigger a visible page transition");
+      return { success: false };
+    }
+
     return { success: true };
   } catch (error) {
     console.error("Error clicking next button:", error);
     return { success: false };
   }
+}
+
+function isButtonDisabled(button) {
+  if (!button) return true;
+  return (
+    button.disabled ||
+    button.hasAttribute("disabled") ||
+    button.getAttribute("aria-disabled") === "true"
+  );
+}
+
+function isElementVisible(element) {
+  if (!element) return false;
+  const rect = element.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
+
+function findNextPageButton() {
+  const selectors = [
+    CONSTANTS.SELECTORS.NEXT_BUTTON,
+    'button[data-automation-id="next-pages-button"]',
+    'button[data-automation-id*="next-pages-button"]',
+    'button[aria-label*="Next page"]',
+    'button[aria-label*="Next"]',
+  ];
+
+  for (const selector of selectors) {
+    const buttons = Array.from(document.querySelectorAll(selector));
+    const candidate = buttons.find((button) => !isButtonDisabled(button) && isElementVisible(button));
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function getOrderListSignature() {
+  const detailButtonIds = Array.from(
+    document.querySelectorAll('button[data-automation-id^="view-order-details-link-"]')
+  )
+    .slice(0, 3)
+    .map((button) => button.getAttribute("data-automation-id"))
+    .filter(Boolean);
+
+  if (detailButtonIds.length > 0) {
+    return detailButtonIds.join("|");
+  }
+
+  const cards = Array.from(document.querySelectorAll(CONSTANTS.SELECTORS.ORDER_CARDS)).slice(0, 2);
+  const fallback = cards
+    .map((card) => {
+      const keyNode = card.querySelector("[id^='caption-'], h2, h3");
+      const text = keyNode?.textContent || card.textContent || "";
+      return text.replace(/\s+/g, " ").trim().slice(0, 120);
+    })
+    .filter(Boolean);
+
+  return fallback.join("|");
+}
+
+async function waitForOrdersListTransition(
+  previousSignature,
+  previousUrl,
+  timeout = CONSTANTS.TIMING.COLLECTION_TIMEOUT,
+  pollInterval = CONSTANTS.TIMING.ELEMENT_POLL_INTERVAL
+) {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeout) {
+    const currentUrl = window.location.href;
+    const currentSignature = getOrderListSignature();
+
+    if (currentUrl !== previousUrl) {
+      return true;
+    }
+
+    if (currentSignature && previousSignature && currentSignature !== previousSignature) {
+      return true;
+    }
+
+    if (currentSignature && !previousSignature) {
+      return true;
+    }
+
+    await delay(pollInterval);
+  }
+
+  return false;
 }
 
 /**
@@ -482,27 +669,38 @@ async function handleClickNextButton() {
 function extractOrderNumbers() {
   const orderNumbers = [];
   const additionalFields = {};
+  const seenOrderNumbers = new Set();
 
-  // Single DOM query for all order cards
-  const orderCards = document.querySelectorAll(CONSTANTS.SELECTORS.ORDER_CARDS);
-  
-  if (orderCards.length === 0) {
-    console.warn("No order cards found with selector '[data-testid^=\"order-\"]'");
+  // Prefer the current card wrapper, but fall back to the order details button
+  // when Walmart reshuffles the surrounding DOM structure.
+  const orderCards = Array.from(document.querySelectorAll(CONSTANTS.SELECTORS.ORDER_CARDS));
+  const detailButtons = Array.from(
+    document.querySelectorAll('button[data-automation-id^="view-order-details-link-"]')
+  );
+
+  const cardSources = orderCards.length > 0
+    ? orderCards
+    : detailButtons.map((button) => button.closest('[data-testid^="order-"], article, section, li, div') || button);
+
+  if (cardSources.length === 0) {
+    console.warn("No order cards or order detail buttons found on the page");
     return { orderNumbers, additionalFields };
   }
 
   // Single-pass traversal: query within each card to avoid redundant global queries
-  orderCards.forEach((card, index) => {
+  cardSources.forEach((card, index) => {
     try {
-      const title = card.querySelector('h2');
-      const button = card.querySelector('button[data-automation-id^="view-order-details-link-"]');
-      
-      if (title && button) {
-        const orderNumber = button.getAttribute('data-automation-id').replace('view-order-details-link-', '');
-        if (orderNumber) {
-          orderNumbers.push(orderNumber);
-          additionalFields[orderNumber] = title.textContent.trim();
-        }
+      const button = card.querySelector('button[data-automation-id^="view-order-details-link-"]')
+        || (card.matches?.('button[data-automation-id^="view-order-details-link-"]') ? card : null)
+        || detailButtons[index]
+        || null;
+      const title = getOrderCardTitle(card);
+      const orderNumber = extractOrderNumberFromButton(button, card);
+
+      if (orderNumber && !seenOrderNumbers.has(orderNumber)) {
+        seenOrderNumbers.add(orderNumber);
+        orderNumbers.push(orderNumber);
+        additionalFields[orderNumber] = title;
       }
     } catch (e) {
       console.error(`Error processing order card ${index}:`, e);
@@ -518,9 +716,7 @@ function extractOrderNumbers() {
  */
 async function checkForNextPage() {
   try {
-    await waitForElement(CONSTANTS.SELECTORS.MAIN_HEADING);
-    const nextButton = document.querySelector(CONSTANTS.SELECTORS.NEXT_BUTTON);
-    return !!nextButton;
+    return !!findNextPageButton();
   } catch (error) {
     console.error("Error checking for next page:", error);
     return false;

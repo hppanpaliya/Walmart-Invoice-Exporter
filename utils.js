@@ -65,11 +65,13 @@ function configureMultipleOrdersColumns(worksheet) {
  */
 function addItemsToWorksheet(worksheet, items) {
   items.forEach((item) => {
+    const productName = item.productName || "";
+    const productLink = item.productLink || "";
     const row = worksheet.addRow({
-      productName: item.productName,
+      productName,
       productLink: {
-        text: truncateText(item.productName),
-        hyperlink: item.productLink
+        text: truncateText(productName),
+        hyperlink: productLink
       },
       quantity: parseNumericValue(item.quantity),
       price: parseNumericValue(item.price),
@@ -86,6 +88,8 @@ function addItemsToWorksheet(worksheet, items) {
  */
 function addMultipleOrderItemsToWorksheet(worksheet, items) {
   items.forEach((item) => {
+    const productName = item.productName || "";
+    const productLink = item.productLink || "";
     worksheet.addRow({
       orderNumber: item.orderNumber || '',
       orderDate: item.orderDate || '',
@@ -93,13 +97,13 @@ function addMultipleOrderItemsToWorksheet(worksheet, items) {
       paymentMethods: item.paymentMethods || '',
       orderSubtotal: parseNumericValue(item.orderSubtotal),
       orderTotal: parseNumericValue(item.orderTotal),
-      productName: item.productName || '',
+      productName,
       quantity: parseNumericValue(item.quantity),
       price: parseNumericValue(item.price),
       deliveryStatus: item.deliveryStatus || '',
       productLink: {
-        text: truncateText(item.productName),
-        hyperlink: item.productLink
+        text: truncateText(productName),
+        hyperlink: productLink
       },
       deliveryCharges: parseNumericValue(item.deliveryCharges),
       tax: parseNumericValue(item.tax),
@@ -113,20 +117,32 @@ function addMultipleOrderItemsToWorksheet(worksheet, items) {
  * @param {ExcelJS.Worksheet} worksheet - The worksheet to style
  */
 function styleSingleOrderWorksheet(worksheet) {
+  const currencyLabels = new Set(['Subtotal', 'Delivery Charges', 'Tax', 'Tip', 'Order Total']);
+
   // Apply product font to all cells
   worksheet.eachRow((row) => {
     row.eachCell((cell) => {
       cell.font = STYLES.productFont;
     });
-    const cell = row.getCell("productLink");
-    if (cell) {
-      cell.font = STYLES.linkFont;
+    const linkCell = row.getCell(5);
+    if (linkCell && linkCell.value) {
+      linkCell.font = STYLES.linkFont;
     }
   });
 
   // Apply header font to first row
   worksheet.getRow(1).eachCell((cell) => {
     cell.font = STYLES.headerFont;
+  });
+
+  // Keep only the monetary summary rows formatted as currency.
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber <= 1) return;
+    const label = row.getCell(1).value;
+    if (currencyLabels.has(label)) {
+      row.getCell(2).numFmt = "$#,##0.00";
+      row.getCell(2).alignment = { horizontal: "center" };
+    }
   });
 }
 
@@ -166,8 +182,11 @@ function addOrderSummary(worksheet, orderDetails) {
     return row;
   });
 
-  // Apply currency formatting to numeric values
-  summaryRows.slice(2).forEach((row) => {
+  // Apply currency formatting only to money fields.
+  const currencyLabels = new Set(['Subtotal', 'Delivery Charges', 'Tax', 'Tip', 'Order Total']);
+  summaryRows.forEach((row) => {
+    const label = row.getCell(1).value;
+    if (!currencyLabels.has(label)) return;
     row.getCell(2).numFmt = "$#,##0.00";
     row.getCell(2).font = { ...STYLES.productFont, bold: true };
     row.getCell(1).font = { ...STYLES.productFont, bold: true };
@@ -273,7 +292,7 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null)
         price: item.price,
         deliveryStatus: item.deliveryStatus || '',
         productLink: item.productLink || '',
-        deliveryCharges: parseNumericValue(item.deliveryCharges),
+        deliveryCharges: parseNumericValue(orderDetails.deliveryCharges),
         tax: parseNumericValue(orderDetails.tax),
         tip: parseNumericValue(orderDetails.tip),
       });
@@ -446,9 +465,9 @@ const CONSTANTS = {
     TAX_ELEMENTS: '.print-fees-item',
     TIP: '.flex.justify-between.pb2.pt3',
     FEE_LABEL: '.ld_FS',
-    ORDER_CARDS: '[data-testid^="order-"]',
+    ORDER_CARDS: '[data-testid^="order-"], div.ld_V.mv4',
     NEXT_BUTTON: 'button[data-automation-id="next-pages-button"]:not([disabled])',
-    MAIN_HEADING: 'h1.w_kV33.w_LD4J.w_mvVb',
+    MAIN_HEADING: 'h1, .ld_FM.ld_FQ.ld_FO',
   },
 
   // Text Strings
