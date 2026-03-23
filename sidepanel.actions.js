@@ -85,6 +85,7 @@
         action: CONSTANTS.MESSAGES.START_COLLECTION,
         url: app.currentOrdersUrl,
         pageLimit: pageLimit,
+        collectionSourceMode: normalizeCollectionSourceMode(app.collectionSourceMode),
       },
       function (response) {
         if (response && response.status === "started") {

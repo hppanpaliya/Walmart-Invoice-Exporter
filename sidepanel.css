@@ -97,6 +97,13 @@ body {
   background: white;
 }
 
+.input-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
 .input-group input:focus {
   outline: none;
   border-color: var(--primary);
