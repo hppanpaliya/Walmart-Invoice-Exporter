@@ -15,9 +15,16 @@ document.addEventListener("DOMContentLoaded", function () {
   if (progressElement) progressElement.style.display = "none";
 
   const exportModeSelect = document.getElementById("exportMode");
-  chrome.storage.local.get(["exportMode"], (res) => {
+  const collectionSourceSelect = document.getElementById("collectionSourceMode");
+  chrome.storage.local.get(["exportMode", "collectionSourceMode"], (res) => {
     app.exportMode = res.exportMode || CONSTANTS.EXPORT_MODES.MULTIPLE;
+    app.collectionSourceMode = normalizeCollectionSourceMode(res.collectionSourceMode);
     if (exportModeSelect) exportModeSelect.value = app.exportMode;
+    if (collectionSourceSelect) collectionSourceSelect.value = app.collectionSourceMode;
+
+    if (res.collectionSourceMode !== app.collectionSourceMode) {
+      chrome.storage.local.set({ collectionSourceMode: app.collectionSourceMode });
+    }
   });
 
   if (exportModeSelect) {
@@ -25,6 +32,13 @@ document.addEventListener("DOMContentLoaded", function () {
       app.exportMode = exportModeSelect.value;
       chrome.storage.local.set({ exportMode: app.exportMode });
       view.updateDownloadButtonLabel(app.exportMode);
+    });
+  }
+
+  if (collectionSourceSelect) {
+    collectionSourceSelect.addEventListener("change", () => {
+      app.collectionSourceMode = collectionSourceSelect.value;
+      chrome.storage.local.set({ collectionSourceMode: app.collectionSourceMode });
     });
   }
 

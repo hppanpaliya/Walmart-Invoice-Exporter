@@ -18,6 +18,7 @@ const CollectionState = {
   pageLimit: 0,
   pageLoadDelay: 1000,
   initialPageLoaded: false,
+  collectionSourceMode: CONSTANTS.COLLECTION_SOURCE_MODES.HTML_NETWORK,
   cacheKey: CONSTANTS.CACHE_KEYS.ORDER_COLLECTION,
   pagesCached: {},
   
@@ -119,6 +120,7 @@ function handleStartCollection(request, sendResponse) {
     loadCachedOrderNumbers().then(() => {
       CollectionState.reset();
       CollectionState.pageLimit = request.pageLimit || 0;
+      CollectionState.collectionSourceMode = normalizeCollectionSourceMode(request.collectionSourceMode);
       // Always refresh the first page to avoid missing new orders within the cache window
       if (CollectionState.pagesCached[1]) {
         delete CollectionState.pagesCached[1];
@@ -221,9 +223,14 @@ function collectOrderNumbers() {
   }
 
   // Always collect order numbers to ensure cache is up to date with any changes
-
-
-  chrome.tabs.sendMessage(CollectionState.tabId, { action: CONSTANTS.MESSAGES.COLLECT_ORDER_NUMBERS }, (response) => {
+  chrome.tabs.sendMessage(
+    CollectionState.tabId,
+    {
+      action: CONSTANTS.MESSAGES.COLLECT_ORDER_NUMBERS,
+      currentPage: CollectionState.currentPage,
+      collectionSourceMode: CollectionState.collectionSourceMode,
+    },
+    (response) => {
     if (chrome.runtime.lastError) {
       console.error("Error collecting order numbers:", chrome.runtime.lastError);
       retryCollection();
@@ -262,7 +269,8 @@ function collectOrderNumbers() {
       console.log("No order numbers received. Retrying.");
       retryCollection();
     }
-  });
+    }
+  );
 }
 
 function goToNextPage() {

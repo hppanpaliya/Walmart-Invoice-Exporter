@@ -5,6 +5,7 @@
     downloadInProgress: false,
     collectionInProgress: false,
     exportMode: CONSTANTS.EXPORT_MODES.MULTIPLE,
+    collectionSourceMode: CONSTANTS.COLLECTION_SOURCE_MODES.HTML_NETWORK,
     currentOrdersUrl: null,
   };
 

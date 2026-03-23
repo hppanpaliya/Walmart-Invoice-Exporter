@@ -195,6 +195,348 @@ async function waitForAnyElement(
   throw new Error(`None of the selectors matched after ${timeout}ms: ${selectors.join(", ")}`);
 }
 
+const PurchaseHistoryDataSource = (() => {
+  const MESSAGE_SOURCE = "WIE_PURCHASE_HISTORY_BRIDGE";
+  const MESSAGE_TYPE = "PURCHASE_HISTORY_SNAPSHOT";
+  const NEXT_DATA_SELECTOR = 'script#__NEXT_DATA__';
+  const SNAPSHOT_MAX_AGE_MS = 30000;
+
+  let latestSnapshot = null;
+  let consumedSnapshotTimestamp = 0;
+  let messageListenerAttached = false;
+
+  const normalizeOrderNumber = (value) => String(value || "").replace(/[^\d]/g, "");
+
+  function extractPurchaseHistoryNode(payload) {
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+
+    return (
+      payload.purchaseHistory ||
+      payload.data?.purchaseHistory ||
+      payload.props?.pageProps?.phRedesignInitialData?.data?.purchaseHistory ||
+      payload.pageProps?.phRedesignInitialData?.data?.purchaseHistory ||
+      payload.props?.pageProps?.initialData?.data?.purchaseHistory ||
+      payload.pageProps?.initialData?.data?.purchaseHistory ||
+      null
+    );
+  }
+
+  function buildSnapshot(purchaseHistory, source = "unknown") {
+    const orders = Array.isArray(purchaseHistory?.orders) ? purchaseHistory.orders : [];
+    if (orders.length === 0) {
+      return null;
+    }
+
+    const orderNumbers = [];
+    const additionalFields = {};
+    const seen = new Set();
+
+    orders.forEach((order) => {
+      const rawOrderNumber =
+        order?.id ||
+        order?.orderId ||
+        order?.displayId ||
+        order?.groups?.[0]?.orderId ||
+        "";
+
+      const normalizedOrderNumber = normalizeOrderNumber(rawOrderNumber);
+      if (!normalizedOrderNumber || seen.has(normalizedOrderNumber)) {
+        return;
+      }
+
+      seen.add(normalizedOrderNumber);
+      orderNumbers.push(normalizedOrderNumber);
+
+      const title = cleanText(
+        order?.title ||
+        order?.shortTitle ||
+        order?.displayId ||
+        order?.groups?.[0]?.status?.message?.parts?.[0]?.text ||
+        ""
+      );
+      additionalFields[normalizedOrderNumber] = title;
+    });
+
+    if (orderNumbers.length === 0) {
+      return null;
+    }
+
+    const nextPageCursor = purchaseHistory?.pageInfo?.nextPageCursor || null;
+    const signature = `${orderNumbers.slice(0, 3).join("|")}|${nextPageCursor || ""}`;
+
+    return {
+      orderNumbers,
+      additionalFields,
+      hasNextPage: Boolean(nextPageCursor),
+      nextPageCursor,
+      source,
+      signature,
+      timestamp: Date.now(),
+    };
+  }
+
+  function parseSnapshotFromNextData() {
+    try {
+      const script = document.querySelector(NEXT_DATA_SELECTOR);
+      const text = script?.textContent;
+      if (!text) {
+        return null;
+      }
+
+      const parsed = JSON.parse(text);
+      const purchaseHistory = extractPurchaseHistoryNode(parsed);
+      return buildSnapshot(purchaseHistory, "next-data");
+    } catch (error) {
+      console.warn("Failed to parse __NEXT_DATA__ purchase history payload", error);
+      return null;
+    }
+  }
+
+  function updateLatestSnapshot(snapshot) {
+    if (!snapshot) {
+      return;
+    }
+
+    if (
+      latestSnapshot &&
+      latestSnapshot.signature === snapshot.signature &&
+      snapshot.timestamp <= latestSnapshot.timestamp
+    ) {
+      return;
+    }
+
+    latestSnapshot = snapshot;
+  }
+
+  function getLatestSnapshotTimestamp() {
+    return latestSnapshot?.timestamp || 0;
+  }
+
+  function getFreshUnconsumedNetworkSnapshot() {
+    if (!latestSnapshot || latestSnapshot.source !== "network") {
+      return null;
+    }
+
+    if (Date.now() - latestSnapshot.timestamp > SNAPSHOT_MAX_AGE_MS) {
+      return null;
+    }
+
+    if (latestSnapshot.timestamp <= consumedSnapshotTimestamp) {
+      return null;
+    }
+
+    consumedSnapshotTimestamp = latestSnapshot.timestamp;
+    return latestSnapshot;
+  }
+
+  function handleBridgeMessage(event) {
+    if (event.source !== window) {
+      return;
+    }
+
+    const message = event.data;
+    if (
+      !message ||
+      message.source !== MESSAGE_SOURCE ||
+      message.type !== MESSAGE_TYPE ||
+      !message.payload
+    ) {
+      return;
+    }
+
+    const purchaseHistory = extractPurchaseHistoryNode(message.payload) || message.payload;
+    const snapshot = buildSnapshot(purchaseHistory, "network");
+    updateLatestSnapshot(snapshot);
+  }
+
+  function attachBridgeMessageListener() {
+    if (messageListenerAttached) {
+      return;
+    }
+    window.addEventListener("message", handleBridgeMessage);
+    messageListenerAttached = true;
+  }
+
+  function injectNetworkBridgeScript() {
+    if (!document.documentElement || document.documentElement.dataset.wiePhBridgeInjected === "true") {
+      return;
+    }
+    document.documentElement.dataset.wiePhBridgeInjected = "true";
+
+    const bridgeScript = document.createElement("script");
+    bridgeScript.setAttribute("data-wie-bridge", "purchase-history");
+    bridgeScript.textContent = `(() => {
+      const SOURCE = ${JSON.stringify(MESSAGE_SOURCE)};
+      const TYPE = ${JSON.stringify(MESSAGE_TYPE)};
+      const hasOwn = Object.prototype.hasOwnProperty;
+
+      if (window.__wiePurchaseHistoryBridgeInstalled) return;
+      window.__wiePurchaseHistoryBridgeInstalled = true;
+
+      const extractPurchaseHistoryNode = (payload) => {
+        if (!payload || typeof payload !== "object") return null;
+        return (
+          payload.purchaseHistory ||
+          (payload.data && payload.data.purchaseHistory) ||
+          (payload.props && payload.props.pageProps && payload.props.pageProps.phRedesignInitialData && payload.props.pageProps.phRedesignInitialData.data && payload.props.pageProps.phRedesignInitialData.data.purchaseHistory) ||
+          (payload.pageProps && payload.pageProps.phRedesignInitialData && payload.pageProps.phRedesignInitialData.data && payload.pageProps.phRedesignInitialData.data.purchaseHistory) ||
+          null
+        );
+      };
+
+      const emit = (purchaseHistory) => {
+        if (!purchaseHistory || !Array.isArray(purchaseHistory.orders) || purchaseHistory.orders.length === 0) {
+          return;
+        }
+
+        window.postMessage(
+          {
+            source: SOURCE,
+            type: TYPE,
+            payload: {
+              purchaseHistory: {
+                orders: purchaseHistory.orders,
+                pageInfo: purchaseHistory.pageInfo || null,
+              },
+            },
+          },
+          "*"
+        );
+      };
+
+      const handlePayload = (payload) => {
+        const purchaseHistory = extractPurchaseHistoryNode(payload);
+        if (purchaseHistory) {
+          emit(purchaseHistory);
+        }
+      };
+
+      const maybeParseJsonText = (text) => {
+        if (!text || typeof text !== "string") return;
+        if (text.indexOf("purchaseHistory") === -1) return;
+
+        try {
+          const parsed = JSON.parse(text);
+          handlePayload(parsed);
+        } catch (_) {
+          // Not a JSON payload we care about
+        }
+      };
+
+      const patchFetch = () => {
+        if (typeof window.fetch !== "function" || window.fetch.__wiePurchaseHistoryWrapped) {
+          return;
+        }
+
+        const originalFetch = window.fetch.bind(window);
+        const wrappedFetch = (...args) =>
+          originalFetch(...args).then((response) => {
+            try {
+              const cloned = response.clone();
+              cloned.text().then(maybeParseJsonText).catch(() => {});
+            } catch (_) {
+              // Ignore clone/read errors
+            }
+            return response;
+          });
+
+        wrappedFetch.__wiePurchaseHistoryWrapped = true;
+        window.fetch = wrappedFetch;
+      };
+
+      const patchXHR = () => {
+        if (XMLHttpRequest.prototype.__wiePurchaseHistoryWrapped) {
+          return;
+        }
+
+        const originalSend = XMLHttpRequest.prototype.send;
+
+        XMLHttpRequest.prototype.send = function(...args) {
+          this.addEventListener(
+            "load",
+            function () {
+              try {
+                if (this.responseType && this.responseType !== "" && this.responseType !== "text") {
+                  return;
+                }
+                maybeParseJsonText(this.responseText);
+              } catch (_) {
+                // Ignore XHR read errors
+              }
+            },
+            { once: true }
+          );
+
+          return originalSend.apply(this, args);
+        };
+
+        XMLHttpRequest.prototype.__wiePurchaseHistoryWrapped = true;
+      };
+
+      const captureInitialNextData = () => {
+        const script = document.getElementById("__NEXT_DATA__");
+        if (!script || !script.textContent) return;
+        maybeParseJsonText(script.textContent);
+      };
+
+      patchFetch();
+      patchXHR();
+      captureInitialNextData();
+    })();`;
+
+    (document.head || document.documentElement).appendChild(bridgeScript);
+    bridgeScript.remove();
+  }
+
+  function initialize() {
+    attachBridgeMessageListener();
+    injectNetworkBridgeScript();
+
+    // Prime the snapshot cache from initial HTML payload when available.
+    updateLatestSnapshot(parseSnapshotFromNextData());
+  }
+
+  function getBestSnapshot({ currentPage = 1, collectionSourceMode = CONSTANTS.COLLECTION_SOURCE_MODES.HTML_NETWORK } = {}) {
+    const mode = normalizeCollectionSourceMode(collectionSourceMode);
+
+    if (mode === CONSTANTS.COLLECTION_SOURCE_MODES.DOM) {
+      return null;
+    }
+
+    if (currentPage <= 1) {
+      const nextDataSnapshot = parseSnapshotFromNextData();
+      if (nextDataSnapshot) {
+        updateLatestSnapshot(nextDataSnapshot);
+        return nextDataSnapshot;
+      }
+
+      const networkSnapshot = getFreshUnconsumedNetworkSnapshot();
+      if (networkSnapshot) {
+        return networkSnapshot;
+      }
+
+      return null;
+    }
+
+    const networkSnapshot = getFreshUnconsumedNetworkSnapshot();
+    if (networkSnapshot) {
+      return networkSnapshot;
+    }
+
+    return null;
+  }
+
+  return {
+    initialize,
+    getBestSnapshot,
+    getLatestSnapshotTimestamp,
+  };
+})();
+
+PurchaseHistoryDataSource.initialize();
+
 const withImageBlocking = (handler) => async (request) => {
   ImageBlocker.aggressive();
   return handler(request);
@@ -625,15 +967,33 @@ function extractOrderNumberFromButton(button, fallbackContainer = null) {
  * Handles order number collection from order history page.
  * Waits for page elements to load, then extracts order data.
  */
-async function handleCollectOrderNumbers() {
+async function handleCollectOrderNumbers(request = {}) {
+  const currentPage = Number(request.currentPage || 1);
+  const collectionSourceMode = normalizeCollectionSourceMode(request.collectionSourceMode);
+
   try {
-    // Wait for the page to settle on either the standard card layout or the
-    // button fallback layout Walmart sometimes renders.
+    // Wait for either hydrated JSON payload or rendered UI before attempting extraction.
     await waitForAnyElement([
+      'script#__NEXT_DATA__',
       CONSTANTS.SELECTORS.ORDER_CARDS,
       'button[data-automation-id^="view-order-details-link-"]',
       CONSTANTS.SELECTORS.MAIN_HEADING,
     ]);
+
+    const sourceSnapshot = PurchaseHistoryDataSource.getBestSnapshot({
+      currentPage,
+      collectionSourceMode,
+    });
+    if (sourceSnapshot) {
+      console.log(
+        `Collected ${sourceSnapshot.orderNumbers.length} order numbers from ${sourceSnapshot.source} on page ${currentPage}. Has next page: ${sourceSnapshot.hasNextPage}`
+      );
+      return {
+        orderNumbers: sourceSnapshot.orderNumbers,
+        additionalFields: sourceSnapshot.additionalFields,
+        hasNextPage: sourceSnapshot.hasNextPage,
+      };
+    }
 
     const { orderNumbers, additionalFields } = extractOrderNumbers();
     const hasNextPage = await checkForNextPage();
@@ -674,11 +1034,16 @@ async function handleClickNextButton() {
 
     const previousSignature = getOrderListSignature();
     const previousUrl = window.location.href;
+    const previousSnapshotTimestamp = PurchaseHistoryDataSource.getLatestSnapshotTimestamp();
 
     nextButton.scrollIntoView({ block: "center", inline: "center" });
     nextButton.click();
 
-    const pageChanged = await waitForOrdersListTransition(previousSignature, previousUrl);
+    const pageChanged = await waitForOrdersListTransition(
+      previousSignature,
+      previousUrl,
+      previousSnapshotTimestamp
+    );
     if (!pageChanged) {
       console.warn("Next page click did not trigger a visible page transition");
       return { success: false };
@@ -753,14 +1118,20 @@ function getOrderListSignature() {
 async function waitForOrdersListTransition(
   previousSignature,
   previousUrl,
+  previousSnapshotTimestamp = 0,
   timeout = CONSTANTS.TIMING.COLLECTION_TIMEOUT,
   pollInterval = CONSTANTS.TIMING.ELEMENT_POLL_INTERVAL
 ) {
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeout) {
+    const latestSnapshotTimestamp = PurchaseHistoryDataSource.getLatestSnapshotTimestamp();
     const currentUrl = window.location.href;
     const currentSignature = getOrderListSignature();
+
+    if (latestSnapshotTimestamp > previousSnapshotTimestamp) {
+      return true;
+    }
 
     if (currentUrl !== previousUrl) {
       return true;
