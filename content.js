@@ -498,13 +498,7 @@ const PurchaseHistoryDataSource = (() => {
     updateLatestSnapshot(parseSnapshotFromNextData());
   }
 
-  function getBestSnapshot({ currentPage = 1, collectionSourceMode = CONSTANTS.COLLECTION_SOURCE_MODES.HTML_NETWORK } = {}) {
-    const mode = normalizeCollectionSourceMode(collectionSourceMode);
-
-    if (mode === CONSTANTS.COLLECTION_SOURCE_MODES.DOM) {
-      return null;
-    }
-
+  function getBestSnapshot({ currentPage = 1 } = {}) {
     if (currentPage <= 1) {
       const nextDataSnapshot = parseSnapshotFromNextData();
       if (nextDataSnapshot) {
@@ -969,21 +963,32 @@ function extractOrderNumberFromButton(button, fallbackContainer = null) {
  */
 async function handleCollectOrderNumbers(request = {}) {
   const currentPage = Number(request.currentPage || 1);
-  const collectionSourceMode = normalizeCollectionSourceMode(request.collectionSourceMode);
 
   try {
-    // Wait for either hydrated JSON payload or rendered UI before attempting extraction.
-    await waitForAnyElement([
-      'script#__NEXT_DATA__',
-      CONSTANTS.SELECTORS.ORDER_CARDS,
-      'button[data-automation-id^="view-order-details-link-"]',
-      CONSTANTS.SELECTORS.MAIN_HEADING,
-    ]);
+    // Page 1 can use server-hydrated HTML payload; later pages should rely on
+    // network snapshots or updated DOM after pagination.
+    const readinessSelectors = currentPage <= 1
+      ? [
+          'script#__NEXT_DATA__',
+          CONSTANTS.SELECTORS.ORDER_CARDS,
+          'button[data-automation-id^="view-order-details-link-"]',
+          CONSTANTS.SELECTORS.MAIN_HEADING,
+        ]
+      : [
+          CONSTANTS.SELECTORS.ORDER_CARDS,
+          'button[data-automation-id^="view-order-details-link-"]',
+          CONSTANTS.SELECTORS.MAIN_HEADING,
+        ];
 
-    const sourceSnapshot = PurchaseHistoryDataSource.getBestSnapshot({
-      currentPage,
-      collectionSourceMode,
-    });
+    await waitForAnyElement(readinessSelectors);
+
+    let sourceSnapshot = PurchaseHistoryDataSource.getBestSnapshot({ currentPage });
+    // Give page-2+ network payloads a short extra window before falling back to DOM.
+    if (!sourceSnapshot && currentPage > 1) {
+      await delay(300);
+      sourceSnapshot = PurchaseHistoryDataSource.getBestSnapshot({ currentPage });
+    }
+
     if (sourceSnapshot) {
       console.log(
         `Collected ${sourceSnapshot.orderNumbers.length} order numbers from ${sourceSnapshot.source} on page ${currentPage}. Has next page: ${sourceSnapshot.hasNextPage}`

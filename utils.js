@@ -504,7 +504,6 @@ const CONSTANTS = {
   STORAGE_KEYS: {
     RATING_HINT_DISMISSED: 'ratingHintDismissed',
     RATING_HINT_DISMISS_COUNT: 'ratingHintDismissCount',
-    COLLECTION_SOURCE_MODE: 'collectionSourceMode',
   },
 
   // Cache Keys
@@ -543,19 +542,7 @@ const CONSTANTS = {
     SINGLE: 'single',
     MULTIPLE: 'multiple',
   },
-
-  // Purchase history collection source modes
-  COLLECTION_SOURCE_MODES: {
-    HTML_NETWORK: 'htmlNetwork',
-    DOM: 'dom',
-  },
 };
-
-function normalizeCollectionSourceMode(value) {
-  return value === CONSTANTS.COLLECTION_SOURCE_MODES.DOM
-    ? CONSTANTS.COLLECTION_SOURCE_MODES.DOM
-    : CONSTANTS.COLLECTION_SOURCE_MODES.HTML_NETWORK;
-}
 
 /**
  * Sidepanel UI helpers

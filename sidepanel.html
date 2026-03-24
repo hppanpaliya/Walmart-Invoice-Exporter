@@ -54,14 +54,6 @@
                     <option value="single">Single file (all items)</option>
                 </select>
             </div>
-            <div class="input-group" id="collectionSourceGroup">
-                <label for="collectionSourceMode">Order data source</label>
-                <select id="collectionSourceMode">
-                    <option value="htmlNetwork">HTML + network (page 1 HTML, page 2+ requests)</option>
-                    <option value="dom">DOM selectors</option>
-                </select>
-                <p class="input-hint">HTML + network uses <code>__NEXT_DATA__</code> on the first page and the PurchaseHistoryV3 request payloads when paginating.</p>
-            </div>
             <div class="button-group" id="buttonGroup">
                 <button id="startCollection" class="btn btn-primary">
                     <span class="btn-text">Start Collection</span>
