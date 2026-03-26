@@ -39,31 +39,10 @@ function formatPaymentMethodDetails(orderDetails) {
     .map((entry) => {
       const primary = [entry.brand, entry.ending].filter(Boolean).join(' - ');
       const amount = entry.amount ? `Amount: ${entry.amount}` : '';
-      const message = entry.message ? `Note: ${entry.message}` : '';
-      return [primary, amount, message].filter(Boolean).join(' | ');
+      return [primary, amount].filter(Boolean).join(' | ');
     })
     .filter(Boolean)
     .join(' || ');
-}
-
-/**
- * Format fee breakdown array into a compact readable string
- * @param {Array} feeBreakdown - Fee rows extracted from order page
- * @returns {string}
- */
-function formatFeeBreakdown(feeBreakdown) {
-  if (!Array.isArray(feeBreakdown) || feeBreakdown.length === 0) {
-    return '';
-  }
-
-  return feeBreakdown
-    .map((fee) => {
-      const label = fee.label || 'Fee';
-      const amount = fee.amount || '';
-      const originalAmount = fee.originalAmount ? ` (was ${fee.originalAmount})` : '';
-      return `${label}: ${amount}${originalAmount}`.trim();
-    })
-    .join('; ');
 }
 
 /**
@@ -104,8 +83,6 @@ function configureMultipleOrdersColumns(worksheet) {
     { header: 'Tax', key: 'tax', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Tip', key: 'tip', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Order Total', key: 'orderTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
-    { header: 'Fee Breakdown', key: 'feeBreakdown', width: 52, style: { alignment: { horizontal: "center" } } },
-    { header: 'Charge History', key: 'chargeHistoryText', width: 52, style: { alignment: { horizontal: "center" } } },
     { header: 'Delivery Status', key: 'deliveryStatus', width: 20, style: { alignment: { horizontal: "center" } } },
     { header: 'Product Link', key: 'productLink', width: 60 , style: { font: STYLES.linkFont } },
   ];
@@ -167,8 +144,6 @@ function addMultipleOrderItemsToWorksheet(worksheet, items) {
       tax: parseNumericValue(item.tax),
       tip: parseNumericValue(item.tip),
       orderTotal: parseNumericValue(item.orderTotal),
-      feeBreakdown: item.feeBreakdown || '',
-      chargeHistoryText: item.chargeHistoryText || '',
     });
   });
 }
@@ -234,11 +209,6 @@ function addOrderSummary(worksheet, orderDetails) {
   worksheet.addRow([]);
 
   const paymentMethodsDetailed = formatPaymentMethodDetails(orderDetails);
-  const feeBreakdownText = formatFeeBreakdown(orderDetails.feeBreakdown);
-  const chargeHistoryText = orderDetails.chargeHistoryText || [
-    orderDetails.chargeHistoryTitle,
-    orderDetails.chargeHistoryDescription,
-  ].filter(Boolean).join(' - ');
 
   // Add order details
   const rows = [
@@ -257,8 +227,6 @@ function addOrderSummary(worksheet, orderDetails) {
     ['Tax', parseNumericValue(orderDetails.tax)],
     ['Tip', parseNumericValue(orderDetails.tip)],
     ['Order Total', parseNumericValue(orderDetails.orderTotal)],
-    ['Fee Breakdown', feeBreakdownText],
-    ['Charge History', chargeHistoryText],
   ];
 
   const summaryRows = rows.map(([label, value]) => {
@@ -374,11 +342,6 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null)
   
   ordersArray.forEach((orderDetails) => {
     const paymentMethodsDetailed = formatPaymentMethodDetails(orderDetails);
-    const feeBreakdownText = formatFeeBreakdown(orderDetails.feeBreakdown);
-    const chargeHistoryText = orderDetails.chargeHistoryText || [
-      orderDetails.chargeHistoryTitle,
-      orderDetails.chargeHistoryDescription,
-    ].filter(Boolean).join(' - ');
 
     (orderDetails.items || []).forEach((item) => {
       allItems.push({
@@ -402,8 +365,6 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null)
         bagFee: orderDetails.bagFee || '',
         tax: orderDetails.tax || '',
         tip: orderDetails.tip || '',
-        feeBreakdown: feeBreakdownText,
-        chargeHistoryText,
       });
     });
   });

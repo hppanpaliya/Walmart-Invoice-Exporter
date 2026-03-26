@@ -996,11 +996,6 @@ function extractOrderDataFromNextData() {
   );
 
   const addressDetails = extractNextDataAddressDetails(orderNode);
-  const chargeHistoryTitle = extractTextFromNextData(orderNode?.chargeHistory?.title);
-  const chargeHistoryDescription = extractTextFromNextData(orderNode?.chargeHistory?.message);
-  const chargeHistoryText = cleanText(
-    [chargeHistoryTitle, chargeHistoryDescription].filter(Boolean).join('. ')
-  );
 
   return {
     orderNumber: normalizeOrderNumberValue(orderNode?.id || orderNode?.displayId),
@@ -1022,11 +1017,6 @@ function extractOrderDataFromNextData() {
     paymentMethods,
     paymentMethodDetails,
     paymentMessages,
-    feeBreakdown,
-    chargeHistoryTitle,
-    chargeHistoryDescription,
-    chargeHistoryText,
-    hasChargeHistory: Boolean(chargeHistoryTitle || chargeHistoryDescription),
     items: extractItemsFromNextData(orderNode),
   };
 }
@@ -1354,9 +1344,6 @@ function scrapeOrderData() {
   }
 
   let feeBreakdown = extractFeeBreakdownFromOrderPage();
-  if ((!Array.isArray(feeBreakdown) || feeBreakdown.length === 0) && Array.isArray(nextDataOrder?.feeBreakdown)) {
-    feeBreakdown = nextDataOrder.feeBreakdown;
-  }
 
   let deliveryCharges = getFeeAmount(feeBreakdown, 'delivery') || '$0.00';
   let bagFee = getFeeAmount(feeBreakdown, 'bag fee') || getFeeAmount(feeBreakdown, 'bag') || '$0.00';
@@ -1452,35 +1439,12 @@ function scrapeOrderData() {
     deliveryInstructions = cleanText(nextDataOrder.deliveryInstructions);
   }
 
-  const chargeHistoryButton = document.querySelector('[data-testid="charge-history-cta"]');
-  const chargeHistoryTitle = cleanText(
-    chargeHistoryButton?.querySelector('.StyledText_large__afIjH')?.textContent ||
-    chargeHistoryButton?.querySelector('.black.f4')?.textContent ||
-    ''
-  );
-  const chargeHistoryDescription = cleanText(
-    chargeHistoryButton?.querySelector('.StyledText_small__qJ5Ut')?.textContent ||
-    ''
-  );
-  const chargeHistoryText = cleanText(
-    chargeHistoryButton?.getAttribute('aria-label') ||
-    [chargeHistoryTitle, chargeHistoryDescription].filter(Boolean).join('. ')
-  );
-
-  const resolvedChargeHistoryTitle = chargeHistoryTitle || cleanText(nextDataOrder?.chargeHistoryTitle || '');
-  const resolvedChargeHistoryDescription =
-    chargeHistoryDescription || cleanText(nextDataOrder?.chargeHistoryDescription || '');
-  const resolvedChargeHistoryText =
-    chargeHistoryText ||
-    cleanText(nextDataOrder?.chargeHistoryText || '') ||
-    cleanText([resolvedChargeHistoryTitle, resolvedChargeHistoryDescription].filter(Boolean).join('. '));
-
   const items = mergeOrderItems(orderItems, nextDataOrder?.items || []);
   const resolvedOrderNumber = orderNumber || nextDataOrder?.orderNumber || null;
   const resolvedOrderDate = orderDate || cleanText(nextDataOrder?.orderDate || '');
 
   return {
-    schemaVersion: 3,
+    schemaVersion: 1,
     orderNumber: resolvedOrderNumber,
     orderDate: resolvedOrderDate,
     orderSubtotal,
@@ -1499,11 +1463,6 @@ function scrapeOrderData() {
     paymentMethods: paymentMethods.join('; ') || cleanText(nextDataOrder?.paymentMethods || ''),
     paymentMethodDetails,
     paymentMessages: paymentMessages.join('; '),
-    feeBreakdown,
-    chargeHistoryTitle: resolvedChargeHistoryTitle,
-    chargeHistoryDescription: resolvedChargeHistoryDescription,
-    chargeHistoryText: resolvedChargeHistoryText,
-    hasChargeHistory: Boolean(chargeHistoryButton) || Boolean(nextDataOrder?.hasChargeHistory),
     items,
   };
 }
