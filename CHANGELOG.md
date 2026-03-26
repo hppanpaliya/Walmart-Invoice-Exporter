@@ -1,5 +1,13 @@
 # Changelog
 
+## [6.3] - March 25, 2026
+
+### Improvements
+- **Enhancement:** Added dual order-detail extraction (`__NEXT_DATA__` + DOM fallback) for more reliable exports
+- **Enhancement:** Simplified Excel output by removing duplicate/non-essential fields: `Order Number (Display)`, `Barcode Data`, `Fee Breakdown`, and `Charge History`
+- **Fix:** `Payment Method` no longer repeats message text; message content stays in `Payment Messages`
+- **Refactor:** Removed fee-breakdown and charge-history keys from the scraped payload
+
 ## [6.0] - March 17, 2026
 
 ### Fixes
