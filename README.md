@@ -95,6 +95,11 @@ Install the Walmart Invoice Exporter directly from the [Chrome Web Store](https:
 
 ## What's New
 
+### Version 6.3 (March 25, 2026)
+- **Improved reliability:** Added dual order-detail extraction (`__NEXT_DATA__` + DOM fallback)
+- **Cleaner exports:** Removed duplicate/non-essential fields (`Order Number (Display)`, `Barcode Data`, `Fee Breakdown`, `Charge History`)
+- **Better payment columns:** `Payment Method` no longer includes duplicated message text (kept in `Payment Messages`)
+
 ### Version 6.0 (March 17, 2026)
 - **Fixed all financial field extraction** — subtotal, total, tax, delivery, and tip were broken due to Walmart's UI update changing CSS classes from `w_*` to `ld_*`
 - **Payment method** extraction completely rewritten — now shows card brand 
@@ -297,9 +302,9 @@ The extension is built with a modular design for maintainability:
 
 For a complete list of changes, see [CHANGELOG.md](./CHANGELOG.md)
 
-**Latest Fixes (v6.0):**
-- All financial fields (tax, tip, delivery, subtotal, total) extraction fixed for Walmart's updated DOM
-- Side panel refactored into modular files for maintainability
+**Latest Fixes (v6.3):**
+- Added robust dual extraction for order details (`__NEXT_DATA__` + DOM fallback)
+- Removed duplicate/non-essential export fields and cleaned payment column formatting
 
 ## Support
 
