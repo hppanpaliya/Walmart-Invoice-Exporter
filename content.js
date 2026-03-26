@@ -684,6 +684,353 @@ function findElementByAriaLabel(fragment, root = document) {
   );
 }
 
+function parseOrderNextDataPayload() {
+  try {
+    const script = document.querySelector('script#__NEXT_DATA__');
+    const payloadText = script?.textContent;
+    if (!payloadText) {
+      return null;
+    }
+    return JSON.parse(payloadText);
+  } catch (error) {
+    console.warn("Unable to parse __NEXT_DATA__ payload for order detail", error);
+    return null;
+  }
+}
+
+function getOrderNodeFromNextDataPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  return (
+    payload?.props?.pageProps?.initialData?.data?.order ||
+    payload?.pageProps?.initialData?.data?.order ||
+    payload?.props?.pageProps?.order ||
+    payload?.pageProps?.order ||
+    payload?.order ||
+    null
+  );
+}
+
+function extractTextFromNextData(value) {
+  if (!value) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    return cleanText(value);
+  }
+
+  if (Array.isArray(value)) {
+    return cleanText(value.map((entry) => extractTextFromNextData(entry)).filter(Boolean).join(' '));
+  }
+
+  if (Array.isArray(value.parts)) {
+    return cleanText(
+      value.parts
+        .map((part) => cleanText(part?.text || ''))
+        .filter(Boolean)
+        .join(' ')
+    );
+  }
+
+  if (value.message) {
+    return extractTextFromNextData(value.message);
+  }
+
+  if (value.title) {
+    return extractTextFromNextData(value.title);
+  }
+
+  if (value.text) {
+    return cleanText(value.text);
+  }
+
+  return '';
+}
+
+function formatOrderDateFromIsoString(value) {
+  if (!value) {
+    return '';
+  }
+
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return cleanText(value);
+  }
+
+  return parsedDate.toLocaleDateString('en-US', {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+  });
+}
+
+function toAbsoluteWalmartUrl(value) {
+  const rawValue = cleanText(value);
+  if (!rawValue) {
+    return '';
+  }
+
+  try {
+    return new URL(rawValue, window.location.origin).href;
+  } catch (error) {
+    return rawValue;
+  }
+}
+
+function extractNextDataAddressDetails(orderNode) {
+  const groups = Array.isArray(orderNode?.groups_2101) ? orderNode.groups_2101 : [];
+
+  const groupWithAddress = groups.find((group) => group?.deliveryAddress?.address) || null;
+  const deliveryAddress = groupWithAddress?.deliveryAddress || orderNode?.deliveryAddress || null;
+
+  const addressNode = deliveryAddress?.address || {};
+  const recipient = cleanText(
+    deliveryAddress?.fullName ||
+      [deliveryAddress?.firstName, deliveryAddress?.lastName].filter(Boolean).join(' ') ||
+      [orderNode?.customer?.firstName, orderNode?.customer?.lastName].filter(Boolean).join(' ')
+  );
+
+  const line = cleanText(
+    addressNode?.addressString ||
+      [
+        addressNode?.addressLineOne,
+        addressNode?.addressLineTwo,
+        [addressNode?.city, addressNode?.state, addressNode?.postalCode].filter(Boolean).join(' '),
+      ]
+        .filter(Boolean)
+        .join(', ')
+  );
+
+  const address = cleanText([recipient, line].filter(Boolean).join(', ')) || line;
+  return {
+    recipient,
+    line,
+    address,
+  };
+}
+
+function extractNextDataPaymentMethods(orderNode) {
+  const paymentMethods = Array.isArray(orderNode?.paymentMethods) ? orderNode.paymentMethods : [];
+
+  return paymentMethods
+    .map((paymentMethod, index) => {
+      const brand = cleanText(paymentMethod?.cardType || paymentMethod?.paymentType || '');
+      const ending = cleanText(paymentMethod?.description || paymentMethod?.title || '');
+      const amount = cleanText(
+        paymentMethod?.displayValues?.[0]?.displayValue ||
+          paymentMethod?.displayValues?.[0] ||
+          ''
+      );
+      const message = extractTextFromNextData(paymentMethod?.message);
+
+      return {
+        cardId: cleanText(paymentMethod?.paymentPreferenceId || `nextdata-card-${index}`),
+        brand,
+        ending,
+        amount,
+        message,
+      };
+    })
+    .filter((entry) => entry.brand || entry.ending || entry.amount || entry.message);
+}
+
+function extractNextDataFeeBreakdown(orderNode) {
+  const fees = Array.isArray(orderNode?.priceDetails?.fees) ? orderNode.priceDetails.fees : [];
+
+  return fees
+    .map((fee) => {
+      const label = cleanText(fee?.label || fee?.info?.title || '');
+      const amount = cleanText(fee?.displayValue || '');
+      const originalAmount = cleanText(fee?.strikeThroughValue || fee?.strikeValue || '');
+
+      return {
+        label,
+        amount,
+        originalAmount,
+        rawText: cleanText([label, originalAmount, amount].filter(Boolean).join(' ')),
+      };
+    })
+    .filter((entry) => entry.label || entry.amount || entry.originalAmount);
+}
+
+function collectItemsFromNextDataGroups(groups, pushItem) {
+  if (!Array.isArray(groups)) {
+    return;
+  }
+
+  groups.forEach((group) => {
+    const groupStatus = extractTextFromNextData(group?.status?.message) || extractTextFromNextData(group?.status);
+
+    if (Array.isArray(group?.items) && group.items.length > 0) {
+      group.items.forEach((item) => pushItem(item, groupStatus));
+      return;
+    }
+
+    const subGroups = Array.isArray(group?.subGroups) ? group.subGroups : [];
+    subGroups.forEach((subGroup) => {
+      const categories = Array.isArray(subGroup?.categories) ? subGroup.categories : [];
+      categories.forEach((category) => {
+        const items = Array.isArray(category?.items) ? category.items : [];
+        items.forEach((item) => pushItem(item, groupStatus));
+      });
+    });
+  });
+}
+
+function extractItemsFromNextData(orderNode) {
+  const items = [];
+  const seen = new Set();
+
+  const pushItem = (item, groupStatus = '') => {
+    const productName = cleanText(item?.productInfo?.name || item?.name || '');
+    const quantity = item?.quantity === 0 || item?.quantity
+      ? String(item.quantity)
+      : '';
+    const price = cleanText(
+      item?.priceInfo?.linePrice?.displayValue ||
+        item?.priceInfo?.itemPrice?.displayValue ||
+        item?.linePrice?.displayValue ||
+        item?.price?.displayValue ||
+        ''
+    );
+
+    if (!productName && !quantity && !price) {
+      return;
+    }
+
+    const key = `${normalizeLookupText(productName)}|${quantity}|${price}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+
+    const canonicalUrl = cleanText(item?.productInfo?.canonicalUrl || item?.canonicalUrl || '');
+    const productLink = canonicalUrl ? toAbsoluteWalmartUrl(canonicalUrl) : 'N/A';
+
+    items.push({
+      productName,
+      productLink,
+      deliveryStatus: cleanText(groupStatus) || CONSTANTS.TEXT.DELIVERY_LABEL,
+      quantity,
+      price,
+    });
+  };
+
+  collectItemsFromNextDataGroups(orderNode?.groups_2101, pushItem);
+
+  if (items.length === 0) {
+    collectItemsFromNextDataGroups(orderNode?.groups, pushItem);
+  }
+
+  if (items.length === 0 && Array.isArray(orderNode?.items)) {
+    orderNode.items.forEach((item) => pushItem(item, ''));
+  }
+
+  return items;
+}
+
+function mergeOrderItems(domItems, nextDataItems) {
+  const primaryItems = Array.isArray(domItems) ? domItems : [];
+  const fallbackItems = Array.isArray(nextDataItems) ? nextDataItems : [];
+
+  if (primaryItems.length === 0) {
+    return fallbackItems;
+  }
+
+  if (fallbackItems.length === 0) {
+    return primaryItems;
+  }
+
+  const mergedItems = [...primaryItems];
+  const seen = new Set(
+    primaryItems.map((item) => {
+      const productName = normalizeLookupText(item?.productName || '');
+      const quantity = cleanText(item?.quantity || '');
+      const price = cleanText(item?.price || '');
+      return `${productName}|${quantity}|${price}`;
+    })
+  );
+
+  fallbackItems.forEach((item) => {
+    const productName = normalizeLookupText(item?.productName || '');
+    const quantity = cleanText(item?.quantity || '');
+    const price = cleanText(item?.price || '');
+    const key = `${productName}|${quantity}|${price}`;
+
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    mergedItems.push(item);
+  });
+
+  return mergedItems;
+}
+
+function extractOrderDataFromNextData() {
+  const payload = parseOrderNextDataPayload();
+  const orderNode = getOrderNodeFromNextDataPayload(payload);
+  if (!orderNode) {
+    return null;
+  }
+
+  const feeBreakdown = extractNextDataFeeBreakdown(orderNode);
+  const paymentMethodDetails = extractNextDataPaymentMethods(orderNode);
+  const paymentMethods = paymentMethodDetails
+    .map((method) => [method.brand, method.ending].filter(Boolean).join(' - '))
+    .filter(Boolean)
+    .join('; ');
+  const paymentMessages = Array.from(
+    new Set(paymentMethodDetails.map((method) => method.message).filter(Boolean))
+  ).join('; ');
+
+  const priceDetails = orderNode?.priceDetails || {};
+  const deliveryInstructions = cleanText(
+    orderNode?.groups_2101?.find((group) => group?.deliveryInstructions)?.deliveryInstructions?.text ||
+      orderNode?.deliveryInstructions?.text ||
+      ''
+  );
+
+  const addressDetails = extractNextDataAddressDetails(orderNode);
+  const chargeHistoryTitle = extractTextFromNextData(orderNode?.chargeHistory?.title);
+  const chargeHistoryDescription = extractTextFromNextData(orderNode?.chargeHistory?.message);
+  const chargeHistoryText = cleanText(
+    [chargeHistoryTitle, chargeHistoryDescription].filter(Boolean).join('. ')
+  );
+
+  return {
+    orderNumber: normalizeOrderNumberValue(orderNode?.id || orderNode?.displayId),
+    orderDate:
+      formatOrderDateFromIsoString(orderNode?.orderDate) ||
+      cleanText(orderNode?.shortTitle || orderNode?.title).replace(/order/i, '').trim(),
+    orderSubtotal: cleanText(priceDetails?.subTotal?.displayValue || ''),
+    subtotalBeforeSavings: cleanText(priceDetails?.strikethroughSubTotal?.displayValue || ''),
+    savings: cleanText(priceDetails?.savings?.displayValue || ''),
+    orderTotal: cleanText(priceDetails?.grandTotalWithTips?.displayValue || priceDetails?.grandTotal?.displayValue || ''),
+    deliveryCharges: getFeeAmount(feeBreakdown, 'delivery') || '',
+    bagFee: getFeeAmount(feeBreakdown, 'bag fee') || getFeeAmount(feeBreakdown, 'bag') || '',
+    tax: cleanText(priceDetails?.taxTotal?.displayValue || ''),
+    tip: cleanText(priceDetails?.driverTip?.displayValue || ''),
+    address: addressDetails.address,
+    addressRecipient: addressDetails.recipient,
+    addressLine: addressDetails.line,
+    deliveryInstructions,
+    paymentMethods,
+    paymentMethodDetails,
+    paymentMessages,
+    feeBreakdown,
+    chargeHistoryTitle,
+    chargeHistoryDescription,
+    chargeHistoryText,
+    hasChargeHistory: Boolean(chargeHistoryTitle || chargeHistoryDescription),
+    items: extractItemsFromNextData(orderNode),
+  };
+}
+
 function extractAddressDetailsFromOrderPage() {
   const addressContainers = Array.from(
     document.querySelectorAll('.print-bill-payment-section .flex.flex-column.mid-gray, .print-bill-payment-section [data-sensitivity="severe"]')
@@ -865,6 +1212,7 @@ function extractPaymentDetailsFromOrderPage() {
 function scrapeOrderData() {
   const orderItems = [];
   const productLinkLookup = buildProductLinkLookup();
+  const nextDataOrder = extractOrderDataFromNextData();
 
   // Query the hidden print items list which contains reliable product data
   // This list is always present in the DOM (hidden via .dn class) and is populated on page load.
@@ -927,9 +1275,13 @@ function scrapeOrderData() {
   }
 
   // Extract order metadata
-  const orderNumber = findOrderNumber();
+  const orderNumber = findOrderNumber() || nextDataOrder?.orderNumber || null;
   let orderDate = document.querySelector(CONSTANTS.SELECTORS.ORDER_DATE)?.innerText || '';
   orderDate = orderDate.replace("order", "").trim();
+  if (!orderDate) {
+    orderDate = cleanText(nextDataOrder?.orderDate || '');
+  }
+
   // ----- Extract order totals and fee breakdown -----
   const paymentSection = document.querySelector('.print-bill-payment-section') || document;
   const subtotalAfterSavingsNode = findElementByAriaLabel('subtotal after savings', paymentSection);
@@ -951,10 +1303,17 @@ function scrapeOrderData() {
     }
   }
 
+  if (!orderSubtotal && nextDataOrder?.orderSubtotal) {
+    orderSubtotal = cleanText(nextDataOrder.orderSubtotal);
+  }
+
   const subtotalBeforeSavingsNode = findElementByAriaLabel('subtotal was', paymentSection);
-  const subtotalBeforeSavings = getLastCurrencyValue(
+  let subtotalBeforeSavings = getLastCurrencyValue(
     subtotalBeforeSavingsNode?.getAttribute('aria-label') || subtotalBeforeSavingsNode?.textContent
   );
+  if (!subtotalBeforeSavings && nextDataOrder?.subtotalBeforeSavings) {
+    subtotalBeforeSavings = cleanText(nextDataOrder.subtotalBeforeSavings);
+  }
 
   let savings = '';
   const savingsNode = findElementByAriaLabel('savings', paymentSection);
@@ -974,6 +1333,10 @@ function scrapeOrderData() {
     }
   }
 
+  if (!savings && nextDataOrder?.savings) {
+    savings = cleanText(nextDataOrder.savings);
+  }
+
   let orderTotal = '';
   const totalEl = document.querySelector(CONSTANTS.SELECTORS.ORDER_TOTAL);
   if (totalEl) {
@@ -986,7 +1349,15 @@ function scrapeOrderData() {
     }
   }
 
-  const feeBreakdown = extractFeeBreakdownFromOrderPage();
+  if (!orderTotal && nextDataOrder?.orderTotal) {
+    orderTotal = cleanText(nextDataOrder.orderTotal);
+  }
+
+  let feeBreakdown = extractFeeBreakdownFromOrderPage();
+  if ((!Array.isArray(feeBreakdown) || feeBreakdown.length === 0) && Array.isArray(nextDataOrder?.feeBreakdown)) {
+    feeBreakdown = nextDataOrder.feeBreakdown;
+  }
+
   let deliveryCharges = getFeeAmount(feeBreakdown, 'delivery') || '$0.00';
   let bagFee = getFeeAmount(feeBreakdown, 'bag fee') || getFeeAmount(feeBreakdown, 'bag') || '$0.00';
   let tax = getFeeAmount(feeBreakdown, 'tax') || '$0.00';
@@ -1010,6 +1381,18 @@ function scrapeOrderData() {
     bagFee = bagFromLabel || '$0.00';
   }
 
+  if ((!deliveryCharges || deliveryCharges === '$0.00') && nextDataOrder?.deliveryCharges) {
+    deliveryCharges = cleanText(nextDataOrder.deliveryCharges);
+  }
+
+  if ((!bagFee || bagFee === '$0.00') && nextDataOrder?.bagFee) {
+    bagFee = cleanText(nextDataOrder.bagFee);
+  }
+
+  if ((!tax || tax === '$0.00') && nextDataOrder?.tax) {
+    tax = cleanText(nextDataOrder.tax);
+  }
+
   // Tip: look for "Driver tip" or "Tip" in a flex justify-between row
   let tip = '$0.00';
   const tipRows = document.querySelectorAll(CONSTANTS.SELECTORS.TIP + ', .print-bill-payment-section .flex.justify-between');
@@ -1024,19 +1407,50 @@ function scrapeOrderData() {
     }
   }
 
-  const paymentMethodDetails = extractPaymentDetailsFromOrderPage();
+  if ((!tip || tip === '$0.00') && nextDataOrder?.tip) {
+    tip = cleanText(nextDataOrder.tip);
+  }
+
+  let paymentMethodDetails = extractPaymentDetailsFromOrderPage();
+  if (
+    (!Array.isArray(paymentMethodDetails) || paymentMethodDetails.length === 0) &&
+    Array.isArray(nextDataOrder?.paymentMethodDetails)
+  ) {
+    paymentMethodDetails = nextDataOrder.paymentMethodDetails;
+  }
+
   const paymentMethods = paymentMethodDetails
     .map((method) => [method.brand, method.ending].filter(Boolean).join(' - '))
     .filter(Boolean);
-  const paymentMessages = Array.from(new Set(
+  let paymentMessages = Array.from(new Set(
     paymentMethodDetails.map((method) => method.message).filter(Boolean)
   ));
+  if (paymentMessages.length === 0 && nextDataOrder?.paymentMessages) {
+    paymentMessages = cleanText(nextDataOrder.paymentMessages)
+      .split(';')
+      .map((value) => cleanText(value))
+      .filter(Boolean);
+  }
 
-  const addressDetails = extractAddressDetailsFromOrderPage();
-  const address = addressDetails.address || extractAddressFromOrderPage();
+  let addressDetails = extractAddressDetailsFromOrderPage();
+  if (!addressDetails.address && (nextDataOrder?.address || nextDataOrder?.addressRecipient)) {
+    addressDetails = {
+      recipient: cleanText(nextDataOrder?.addressRecipient || ''),
+      line: cleanText(nextDataOrder?.addressLine || nextDataOrder?.address || ''),
+      address: cleanText(nextDataOrder?.address || ''),
+    };
+  }
 
-  const { instructions: deliveryInstructions, expanded: deliveryInstructionsExpanded } =
+  const address =
+    addressDetails.address ||
+    cleanText(nextDataOrder?.address || '') ||
+    extractAddressFromOrderPage();
+
+  let { instructions: deliveryInstructions, expanded: deliveryInstructionsExpanded } =
     extractDeliveryInstructionsFromOrderPage();
+  if (!deliveryInstructions && nextDataOrder?.deliveryInstructions) {
+    deliveryInstructions = cleanText(nextDataOrder.deliveryInstructions);
+  }
 
   const chargeHistoryButton = document.querySelector('[data-testid="charge-history-cta"]');
   const chargeHistoryTitle = cleanText(
@@ -1053,10 +1467,22 @@ function scrapeOrderData() {
     [chargeHistoryTitle, chargeHistoryDescription].filter(Boolean).join('. ')
   );
 
+  const resolvedChargeHistoryTitle = chargeHistoryTitle || cleanText(nextDataOrder?.chargeHistoryTitle || '');
+  const resolvedChargeHistoryDescription =
+    chargeHistoryDescription || cleanText(nextDataOrder?.chargeHistoryDescription || '');
+  const resolvedChargeHistoryText =
+    chargeHistoryText ||
+    cleanText(nextDataOrder?.chargeHistoryText || '') ||
+    cleanText([resolvedChargeHistoryTitle, resolvedChargeHistoryDescription].filter(Boolean).join('. '));
+
+  const items = mergeOrderItems(orderItems, nextDataOrder?.items || []);
+  const resolvedOrderNumber = orderNumber || nextDataOrder?.orderNumber || null;
+  const resolvedOrderDate = orderDate || cleanText(nextDataOrder?.orderDate || '');
+
   return {
-    schemaVersion: 2,
-    orderNumber,
-    orderDate,
+    schemaVersion: 3,
+    orderNumber: resolvedOrderNumber,
+    orderDate: resolvedOrderDate,
     orderSubtotal,
     subtotalBeforeSavings,
     savings,
@@ -1070,15 +1496,15 @@ function scrapeOrderData() {
     addressLine: addressDetails.line,
     deliveryInstructions,
     deliveryInstructionsExpanded,
-    paymentMethods: paymentMethods.join('; '),
+    paymentMethods: paymentMethods.join('; ') || cleanText(nextDataOrder?.paymentMethods || ''),
     paymentMethodDetails,
     paymentMessages: paymentMessages.join('; '),
     feeBreakdown,
-    chargeHistoryTitle,
-    chargeHistoryDescription,
-    chargeHistoryText,
-    hasChargeHistory: Boolean(chargeHistoryButton),
-    items: orderItems,
+    chargeHistoryTitle: resolvedChargeHistoryTitle,
+    chargeHistoryDescription: resolvedChargeHistoryDescription,
+    chargeHistoryText: resolvedChargeHistoryText,
+    hasChargeHistory: Boolean(chargeHistoryButton) || Boolean(nextDataOrder?.hasChargeHistory),
+    items,
   };
 }
 
