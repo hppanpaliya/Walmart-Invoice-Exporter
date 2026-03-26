@@ -5,6 +5,7 @@
 
   const OrderDataFetcher = (() => {
     let downloadTab = null;
+    const MIN_ORDER_SCHEMA_VERSION = 2;
 
     const hasUsableOrderItems = (data) => {
       if (!Array.isArray(data?.items) || data.items.length === 0) {
@@ -21,6 +22,11 @@
 
     const isValidInvoiceData = (data) => {
       if (!data || typeof data !== "object") {
+        return false;
+      }
+
+      const schemaVersion = Number(data.schemaVersion || 0);
+      if (schemaVersion < MIN_ORDER_SCHEMA_VERSION) {
         return false;
       }
 
