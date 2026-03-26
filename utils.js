@@ -22,6 +22,51 @@ function parseNumericValue(value) {
 }
 
 /**
+ * Format detailed payment method metadata into a readable string
+ * @param {Object} orderDetails - Order details containing payment info
+ * @returns {string}
+ */
+function formatPaymentMethodDetails(orderDetails) {
+  const details = Array.isArray(orderDetails?.paymentMethodDetails)
+    ? orderDetails.paymentMethodDetails
+    : [];
+
+  if (details.length === 0) {
+    return orderDetails?.paymentMethods || '';
+  }
+
+  return details
+    .map((entry) => {
+      const primary = [entry.brand, entry.ending].filter(Boolean).join(' - ');
+      const amount = entry.amount ? `Amount: ${entry.amount}` : '';
+      const message = entry.message ? `Note: ${entry.message}` : '';
+      return [primary, amount, message].filter(Boolean).join(' | ');
+    })
+    .filter(Boolean)
+    .join(' || ');
+}
+
+/**
+ * Format fee breakdown array into a compact readable string
+ * @param {Array} feeBreakdown - Fee rows extracted from order page
+ * @returns {string}
+ */
+function formatFeeBreakdown(feeBreakdown) {
+  if (!Array.isArray(feeBreakdown) || feeBreakdown.length === 0) {
+    return '';
+  }
+
+  return feeBreakdown
+    .map((fee) => {
+      const label = fee.label || 'Fee';
+      const amount = fee.amount || '';
+      const originalAmount = fee.originalAmount ? ` (was ${fee.originalAmount})` : '';
+      return `${label}: ${amount}${originalAmount}`.trim();
+    })
+    .join('; ');
+}
+
+/**
  * Configure columns for a single order export worksheet
  * @param {ExcelJS.Worksheet} worksheet - The worksheet to configure
  */
@@ -43,16 +88,24 @@ function configureMultipleOrdersColumns(worksheet) {
   worksheet.columns = [
     { header: 'Order Number', key: 'orderNumber', width: 20, style: { alignment: { horizontal: "center" } } },
     { header: 'Order Date', key: 'orderDate', width: 20, style: { alignment: { horizontal: "center" } } },
-    { header: 'Shipping Address', key: 'address', width: 40, style: { alignment: { horizontal: "center" } } },  
-    { header: 'Payment Method', key: 'paymentMethods', width: 30, style: { alignment: { horizontal: "center" } } },
+    { header: 'Address Recipient', key: 'addressRecipient', width: 24, style: { alignment: { horizontal: "center" } } },
+    { header: 'Shipping Address', key: 'address', width: 45, style: { alignment: { horizontal: "center" } } },
+    { header: 'Delivery Instructions', key: 'deliveryInstructions', width: 36, style: { alignment: { horizontal: "center" } } },
+    { header: 'Payment Method', key: 'paymentMethods', width: 42, style: { alignment: { horizontal: "center" } } },
+    { header: 'Payment Messages', key: 'paymentMessages', width: 52, style: { alignment: { horizontal: "center" } } },
+    { header: 'Subtotal (Before Savings)', key: 'subtotalBeforeSavings', width: 22, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Savings', key: 'savings', width: 14, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Subtotal', key: 'orderSubtotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
-    { header: 'Order Total', key: 'orderTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Product Name', key: 'productName', width: 60, style: { alignment: { horizontal: "center" } } },
     { header: 'Quantity', key: 'quantity', width: 10, style: { numFmt: "#,##0", alignment: { horizontal: "center" } } },
     { header: 'Price', key: 'price', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Delivery Charges', key: 'deliveryCharges', width: 20, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Bag Fee', key: 'bagFee', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Tax', key: 'tax', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Tip', key: 'tip', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Order Total', key: 'orderTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Fee Breakdown', key: 'feeBreakdown', width: 52, style: { alignment: { horizontal: "center" } } },
+    { header: 'Charge History', key: 'chargeHistoryText', width: 52, style: { alignment: { horizontal: "center" } } },
     { header: 'Delivery Status', key: 'deliveryStatus', width: 20, style: { alignment: { horizontal: "center" } } },
     { header: 'Product Link', key: 'productLink', width: 60 , style: { font: STYLES.linkFont } },
   ];
@@ -93,10 +146,14 @@ function addMultipleOrderItemsToWorksheet(worksheet, items) {
     worksheet.addRow({
       orderNumber: item.orderNumber || '',
       orderDate: item.orderDate || '',
+      addressRecipient: item.addressRecipient || '',
       address: item.address || '',
+      deliveryInstructions: item.deliveryInstructions || '',
       paymentMethods: item.paymentMethods || '',
+      paymentMessages: item.paymentMessages || '',
+      subtotalBeforeSavings: parseNumericValue(item.subtotalBeforeSavings),
+      savings: parseNumericValue(item.savings),
       orderSubtotal: parseNumericValue(item.orderSubtotal),
-      orderTotal: parseNumericValue(item.orderTotal),
       productName,
       quantity: parseNumericValue(item.quantity),
       price: parseNumericValue(item.price),
@@ -106,8 +163,12 @@ function addMultipleOrderItemsToWorksheet(worksheet, items) {
         hyperlink: productLink
       },
       deliveryCharges: parseNumericValue(item.deliveryCharges),
+      bagFee: parseNumericValue(item.bagFee),
       tax: parseNumericValue(item.tax),
       tip: parseNumericValue(item.tip),
+      orderTotal: parseNumericValue(item.orderTotal),
+      feeBreakdown: item.feeBreakdown || '',
+      chargeHistoryText: item.chargeHistoryText || '',
     });
   });
 }
@@ -117,7 +178,16 @@ function addMultipleOrderItemsToWorksheet(worksheet, items) {
  * @param {ExcelJS.Worksheet} worksheet - The worksheet to style
  */
 function styleSingleOrderWorksheet(worksheet) {
-  const currencyLabels = new Set(['Subtotal', 'Delivery Charges', 'Tax', 'Tip', 'Order Total']);
+  const currencyLabels = new Set([
+    'Subtotal (Before Savings)',
+    'Savings',
+    'Subtotal',
+    'Delivery Charges',
+    'Bag Fee',
+    'Tax',
+    'Tip',
+    'Order Total',
+  ]);
 
   // Apply product font to all cells
   worksheet.eachRow((row) => {
@@ -163,17 +233,32 @@ function addOrderSummary(worksheet, orderDetails) {
   // Add empty row for spacing
   worksheet.addRow([]);
 
+  const paymentMethodsDetailed = formatPaymentMethodDetails(orderDetails);
+  const feeBreakdownText = formatFeeBreakdown(orderDetails.feeBreakdown);
+  const chargeHistoryText = orderDetails.chargeHistoryText || [
+    orderDetails.chargeHistoryTitle,
+    orderDetails.chargeHistoryDescription,
+  ].filter(Boolean).join(' - ');
+
   // Add order details
   const rows = [
     ['Order Number', orderDetails.orderNumber],
     ['Order Date', orderDetails.orderDate],
+    ['Address Recipient', orderDetails.addressRecipient],
     ['Shipping Address', orderDetails.address],
-    ['Payment Method', orderDetails.paymentMethods],
+    ['Delivery Instructions', orderDetails.deliveryInstructions],
+    ['Payment Method', paymentMethodsDetailed || orderDetails.paymentMethods],
+    ['Payment Messages', orderDetails.paymentMessages],
+    ['Subtotal (Before Savings)', parseNumericValue(orderDetails.subtotalBeforeSavings)],
+    ['Savings', parseNumericValue(orderDetails.savings)],
     ['Subtotal', parseNumericValue(orderDetails.orderSubtotal)],
     ['Delivery Charges', parseNumericValue(orderDetails.deliveryCharges)],
+    ['Bag Fee', parseNumericValue(orderDetails.bagFee)],
     ['Tax', parseNumericValue(orderDetails.tax)],
     ['Tip', parseNumericValue(orderDetails.tip)],
     ['Order Total', parseNumericValue(orderDetails.orderTotal)],
+    ['Fee Breakdown', feeBreakdownText],
+    ['Charge History', chargeHistoryText],
   ];
 
   const summaryRows = rows.map(([label, value]) => {
@@ -183,7 +268,16 @@ function addOrderSummary(worksheet, orderDetails) {
   });
 
   // Apply currency formatting only to money fields.
-  const currencyLabels = new Set(['Subtotal', 'Delivery Charges', 'Tax', 'Tip', 'Order Total']);
+  const currencyLabels = new Set([
+    'Subtotal (Before Savings)',
+    'Savings',
+    'Subtotal',
+    'Delivery Charges',
+    'Bag Fee',
+    'Tax',
+    'Tip',
+    'Order Total',
+  ]);
   summaryRows.forEach((row) => {
     const label = row.getCell(1).value;
     if (!currencyLabels.has(label)) return;
@@ -279,22 +373,37 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null)
   const ordersArray = Array.isArray(ordersData) ? ordersData : [ordersData];
   
   ordersArray.forEach((orderDetails) => {
+    const paymentMethodsDetailed = formatPaymentMethodDetails(orderDetails);
+    const feeBreakdownText = formatFeeBreakdown(orderDetails.feeBreakdown);
+    const chargeHistoryText = orderDetails.chargeHistoryText || [
+      orderDetails.chargeHistoryTitle,
+      orderDetails.chargeHistoryDescription,
+    ].filter(Boolean).join(' - ');
+
     (orderDetails.items || []).forEach((item) => {
       allItems.push({
         orderNumber: orderDetails.orderNumber || '',
         orderDate: orderDetails.orderDate || '',
+        addressRecipient: orderDetails.addressRecipient || '',
         address: orderDetails.address || '',
-        paymentMethods: orderDetails.paymentMethods || '',
-        orderSubtotal: parseNumericValue(orderDetails.orderSubtotal),
-        orderTotal: parseNumericValue(orderDetails.orderTotal),
+        deliveryInstructions: orderDetails.deliveryInstructions || '',
+        paymentMethods: paymentMethodsDetailed || orderDetails.paymentMethods || '',
+        paymentMessages: orderDetails.paymentMessages || '',
+        subtotalBeforeSavings: orderDetails.subtotalBeforeSavings || '',
+        savings: orderDetails.savings || '',
+        orderSubtotal: orderDetails.orderSubtotal || '',
+        orderTotal: orderDetails.orderTotal || '',
         productName: item.productName || '',
         quantity: item.quantity,
         price: item.price,
         deliveryStatus: item.deliveryStatus || '',
         productLink: item.productLink || '',
-        deliveryCharges: parseNumericValue(orderDetails.deliveryCharges),
-        tax: parseNumericValue(orderDetails.tax),
-        tip: parseNumericValue(orderDetails.tip),
+        deliveryCharges: orderDetails.deliveryCharges || '',
+        bagFee: orderDetails.bagFee || '',
+        tax: orderDetails.tax || '',
+        tip: orderDetails.tip || '',
+        feeBreakdown: feeBreakdownText,
+        chargeHistoryText,
       });
     });
   });

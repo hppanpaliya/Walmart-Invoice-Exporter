@@ -662,11 +662,31 @@ function extractPrintItem(item) {
   };
 }
 
-function extractAddressFromOrderPage() {
-  // Newer Walmart layout: address lines are inside the payment section under a
-  // `.flex.flex-column.mid-gray` container with data-sensitivity metadata.
+function extractCurrencyValues(value) {
+  if (!value) return [];
+  const matches = String(value).match(/-?\$[\d,]+(?:\.\d{2})?/g);
+  return matches ? matches.map((match) => cleanText(match)) : [];
+}
+
+function getLastCurrencyValue(value) {
+  const amounts = extractCurrencyValues(value);
+  return amounts[amounts.length - 1] || "";
+}
+
+function findElementByAriaLabel(fragment, root = document) {
+  const searchRoot = root || document;
+  const target = normalizeLookupText(fragment);
+  return (
+    Array.from(searchRoot.querySelectorAll('[aria-label]')).find((el) => {
+      const ariaLabel = normalizeLookupText(el.getAttribute('aria-label'));
+      return ariaLabel.includes(target);
+    }) || null
+  );
+}
+
+function extractAddressDetailsFromOrderPage() {
   const addressContainers = Array.from(
-    document.querySelectorAll('.print-bill-payment-section .flex.flex-column.mid-gray')
+    document.querySelectorAll('.print-bill-payment-section .flex.flex-column.mid-gray, .print-bill-payment-section [data-sensitivity="severe"]')
   );
 
   const parts = [];
@@ -687,15 +707,159 @@ function extractAddressFromOrderPage() {
   });
 
   if (parts.length > 0) {
-    return parts.slice(0, 2).join(', ');
+    const recipient = parts[0] || "";
+    const line = parts.slice(1).join(', ');
+    const address = parts.slice(0, 2).join(', ');
+    return { recipient, line, address };
   }
 
-  // Legacy fallback selectors
   const fallbackParts = Array.from(document.querySelectorAll(CONSTANTS.SELECTORS.ADDRESS))
     .map((el) => cleanText(el.textContent))
     .filter(Boolean);
 
-  return Array.from(new Set(fallbackParts)).slice(0, 2).join(', ');
+  const deduped = Array.from(new Set(fallbackParts));
+  return {
+    recipient: deduped[0] || "",
+    line: deduped.slice(1).join(', '),
+    address: deduped.slice(0, 2).join(', '),
+  };
+}
+
+function extractAddressFromOrderPage() {
+  return extractAddressDetailsFromOrderPage().address;
+}
+
+function extractDeliveryInstructionsFromOrderPage() {
+  const heading = Array.from(document.querySelectorAll('.print-bill-payment-section h2'))
+    .find((node) => normalizeLookupText(node.textContent).includes('delivery instructions'));
+  const toggleButton = document.querySelector('button[data-automation-id="delivery-instruction-hide-show-link"]');
+  const expanded = toggleButton?.getAttribute('aria-expanded') === 'true';
+
+  if (!heading) {
+    return { instructions: '', expanded };
+  }
+
+  const section =
+    heading.closest('div.ph3.pv4.pb3-m.ph0-m.pt0-m') ||
+    heading.parentElement?.parentElement ||
+    heading.parentElement;
+
+  if (!section) {
+    return { instructions: '', expanded };
+  }
+
+  const clone = section.cloneNode(true);
+  clone.querySelectorAll('h1, h2, h3, h4, h5, h6, button').forEach((el) => el.remove());
+
+  const instructions = cleanText(clone.textContent)
+    .replace(/show delivery instructions/i, '')
+    .replace(/hide delivery instructions/i, '')
+    .trim();
+
+  return { instructions, expanded };
+}
+
+function extractFeeBreakdownFromOrderPage() {
+  const feeRows = Array.from(document.querySelectorAll('.print-bill-payment-section .print-fees-item'));
+
+  return feeRows
+    .map((row) => {
+      const srText = cleanText(row.querySelector('.ld_FS')?.textContent || '');
+      const labelText = cleanText(
+        row.querySelector('.pr3 .ld_Ek.ld_Eq.ld_Eo')?.textContent ||
+        row.querySelector('.pr3 .ld_Ek.ld_Eq.ld_En')?.textContent ||
+        row.querySelector('.pr3 .ld_Ek.ld_Eq')?.textContent
+      );
+
+      const visibleAmounts = Array.from(
+        row.querySelectorAll('.flex.justify-between.items-end span, .flex.justify-between.items-end .ld_Ek')
+      )
+        .map((el) => cleanText(el.textContent))
+        .filter((value) => /\$/.test(value));
+
+      const srAmounts = extractCurrencyValues(srText);
+      const amount = visibleAmounts[visibleAmounts.length - 1] || srAmounts[srAmounts.length - 1] || '';
+      const originalAmount = visibleAmounts.length > 1
+        ? visibleAmounts[0]
+        : (srAmounts.length > 1 ? srAmounts[0] : '');
+
+      let label = labelText;
+      if (!label && srText) {
+        label = cleanText(srText.replace(/-?\$[\d,]+(?:\.\d{2})?/g, ' '));
+      }
+
+      return {
+        label,
+        amount,
+        originalAmount,
+        rawText: srText,
+      };
+    })
+    .filter((fee) => fee.label || fee.amount || fee.originalAmount);
+}
+
+function getFeeAmount(feeBreakdown, keyword) {
+  const normalizedKeyword = normalizeLookupText(keyword);
+  const fee = feeBreakdown.find((entry) => {
+    const label = normalizeLookupText(entry.label || '');
+    const rawText = normalizeLookupText(entry.rawText || '');
+    return label.includes(normalizedKeyword) || rawText.includes(normalizedKeyword);
+  });
+
+  return fee?.amount || '';
+}
+
+function extractPaymentDetailsFromOrderPage() {
+  const methods = [];
+  const seen = new Set();
+
+  const paymentRows = Array.from(document.querySelectorAll('.bill-order-payment-info .flex.items-center.mb3'));
+
+  paymentRows.forEach((row) => {
+    const endingElement = row.querySelector('[aria-labelledby^="card-description-"]');
+    const ending = cleanText(endingElement?.textContent || '');
+    const cardId = cleanText(endingElement?.getAttribute('aria-labelledby') || ending);
+    if (!cardId && !ending) {
+      return;
+    }
+
+    const brand = cleanText(row.querySelector('img[alt]')?.alt || '');
+    const amount = cleanText(row.querySelector('.tr.flex-auto')?.textContent || '');
+    const message = cleanText(row.parentElement?.querySelector('.mt3')?.textContent || '');
+
+    const key = `${cardId}|${brand}|${ending}|${amount}|${message}`;
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    methods.push({ cardId, brand, ending, amount, message });
+  });
+
+  if (methods.length > 0) {
+    return methods;
+  }
+
+  // Legacy fallback
+  const fallbackElements = document.querySelectorAll(CONSTANTS.SELECTORS.PAYMENT_METHODS);
+  fallbackElements.forEach((el) => {
+    const ending = cleanText(el.textContent || '');
+    if (!ending) {
+      return;
+    }
+
+    const cardId = cleanText(el.getAttribute('aria-labelledby') || ending);
+    const brand = cleanText(el.closest('.flex.items-center')?.querySelector('img[alt]')?.alt || '');
+    const key = `${cardId}|${brand}|${ending}`;
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    methods.push({ cardId, brand, ending, amount: '', message: '' });
+  });
+
+  return methods;
 }
 
 function scrapeOrderData() {
@@ -766,141 +930,154 @@ function scrapeOrderData() {
   const orderNumber = findOrderNumber();
   let orderDate = document.querySelector(CONSTANTS.SELECTORS.ORDER_DATE)?.innerText || '';
   orderDate = orderDate.replace("order", "").trim();
-  // ----- Extract order totals -----
+  // ----- Extract order totals and fee breakdown -----
+  const paymentSection = document.querySelector('.print-bill-payment-section') || document;
+  const subtotalAfterSavingsNode = findElementByAriaLabel('subtotal after savings', paymentSection);
+  let orderSubtotal = getLastCurrencyValue(
+    subtotalAfterSavingsNode?.getAttribute('aria-label') || subtotalAfterSavingsNode?.textContent
+  );
 
-  // Subtotal: grab the last span inside the subtotal row
-  let orderSubtotal = '';
-  const subtotalEl = document.querySelector(CONSTANTS.SELECTORS.ORDER_SUBTOTAL);
-  if (subtotalEl) {
-    const spans = subtotalEl.querySelectorAll('span');
-    if (spans.length > 0) {
-      orderSubtotal = spans[spans.length - 1].innerText.trim();
-    }
-    if (!orderSubtotal) {
-      orderSubtotal = subtotalEl.innerText.trim();
+  // Fallback for layouts that do not expose subtotal-after-savings aria labels.
+  if (!orderSubtotal) {
+    const subtotalEl = document.querySelector(CONSTANTS.SELECTORS.ORDER_SUBTOTAL);
+    if (subtotalEl) {
+      const spans = subtotalEl.querySelectorAll('span');
+      if (spans.length > 0) {
+        orderSubtotal = cleanText(spans[spans.length - 1].innerText);
+      }
+      if (!orderSubtotal) {
+        orderSubtotal = cleanText(subtotalEl.innerText);
+      }
     }
   }
 
-  // Order total: grab the last span inside the total row
+  const subtotalBeforeSavingsNode = findElementByAriaLabel('subtotal was', paymentSection);
+  const subtotalBeforeSavings = getLastCurrencyValue(
+    subtotalBeforeSavingsNode?.getAttribute('aria-label') || subtotalBeforeSavingsNode?.textContent
+  );
+
+  let savings = '';
+  const savingsNode = findElementByAriaLabel('savings', paymentSection);
+  if (savingsNode) {
+    const savingsText = savingsNode.getAttribute('aria-label') || savingsNode.textContent || '';
+    const savingsAmount = getLastCurrencyValue(savingsText);
+    if (savingsAmount) {
+      savings = savingsAmount.startsWith('-') ? savingsAmount : `-${savingsAmount.replace(/^-/, '')}`;
+    }
+  }
+
+  if (!savings) {
+    const savingsBadgeText = cleanText(document.querySelector('.bill-order-payment-spacing .Tag_tag__9ThK9')?.textContent || '');
+    const savingsAmount = getLastCurrencyValue(savingsBadgeText);
+    if (savingsAmount) {
+      savings = savingsAmount.startsWith('-') ? savingsAmount : `-${savingsAmount.replace(/^-/, '')}`;
+    }
+  }
+
   let orderTotal = '';
   const totalEl = document.querySelector(CONSTANTS.SELECTORS.ORDER_TOTAL);
   if (totalEl) {
     const spans = totalEl.querySelectorAll('span');
     if (spans.length > 0) {
-      orderTotal = spans[spans.length - 1].innerText.trim();
+      orderTotal = cleanText(spans[spans.length - 1].innerText);
     }
     if (!orderTotal) {
-      orderTotal = totalEl.innerText.trim();
+      orderTotal = cleanText(totalEl.innerText);
     }
   }
 
-  // Helper: find a dollar amount from an ld_FS (or ld_FS-equivalent) screen-reader label
-  // The labels look like:  " Tax $5.66"  or  " Bag fee $0.16"
-  function extractAmountFromFeeLabel(keyword) {
-    const feeLabels = document.querySelectorAll(CONSTANTS.SELECTORS.FEE_LABEL);
-    for (const el of feeLabels) {
-      const text = el.textContent || '';
-      if (text.toLowerCase().includes(keyword.toLowerCase())) {
-        const match = text.match(/\$(\d+\.\d{2})/);
-        if (match) return `$${match[1]}`;
-      }
-    }
-    return null;
+  const feeBreakdown = extractFeeBreakdownFromOrderPage();
+  let deliveryCharges = getFeeAmount(feeBreakdown, 'delivery') || '$0.00';
+  let bagFee = getFeeAmount(feeBreakdown, 'bag fee') || getFeeAmount(feeBreakdown, 'bag') || '$0.00';
+  let tax = getFeeAmount(feeBreakdown, 'tax') || '$0.00';
+
+  // Additional fallbacks from screen-reader labels when line-item parsing misses.
+  if (!tax || tax === '$0.00') {
+    const taxFromLabel = getLastCurrencyValue(
+      Array.from(document.querySelectorAll(CONSTANTS.SELECTORS.FEE_LABEL))
+        .map((el) => cleanText(el.textContent))
+        .find((text) => normalizeLookupText(text).includes('tax'))
+    );
+    tax = taxFromLabel || '$0.00';
   }
 
-  // Helper: find amount from a .print-fees-item by looking for a visible label text
-  function extractAmountFromFeeItem(keyword) {
-    const feeItems = document.querySelectorAll(CONSTANTS.SELECTORS.DELIVERY_CHARGES);
-    for (const item of feeItems) {
-      const labelText = item.textContent || '';
-      if (labelText.toLowerCase().includes(keyword.toLowerCase())) {
-        // The actual charged amount is always the LAST span inside the
-        // "flex justify-between items-end" price row (the first span may be
-        // struck-through original price, e.g. "$9.95" crossed out → "$0" actual).
-        const priceRow = item.querySelector('.flex.justify-between.items-end');
-        if (priceRow) {
-          const spans = priceRow.querySelectorAll('span');
-          if (spans.length > 0) {
-            const t = spans[spans.length - 1].innerText.trim();
-            if (t) return t.startsWith('$') ? t : `$${t}`;
-          }
-        }
-        // Fallback: last aria-hidden span with a dollar value
-        const spans = Array.from(item.querySelectorAll('span[aria-hidden="true"]'));
-        for (let i = spans.length - 1; i >= 0; i--) {
-          const t = spans[i].innerText && spans[i].innerText.trim();
-          if (t && t.match(/^\$\d/)) return t;
-        }
-      }
-    }
-    return null;
+  if (!bagFee || bagFee === '$0.00') {
+    const bagFromLabel = getLastCurrencyValue(
+      Array.from(document.querySelectorAll(CONSTANTS.SELECTORS.FEE_LABEL))
+        .map((el) => cleanText(el.textContent))
+        .find((text) => normalizeLookupText(text).includes('bag fee'))
+    );
+    bagFee = bagFromLabel || '$0.00';
   }
-
-  // Tax
-  let tax = extractAmountFromFeeItem('Tax') ||
-             extractAmountFromFeeLabel('Tax') ||
-             '$0.00';
-
-  // Delivery charges (look for "Delivery" fee; Walmart+ shows it as Free/$0)
-  let deliveryCharges = extractAmountFromFeeItem('Delivery') ||
-                        extractAmountFromFeeLabel('Delivery') ||
-                        '$0.00';
 
   // Tip: look for "Driver tip" or "Tip" in a flex justify-between row
   let tip = '$0.00';
-  const tipRows = document.querySelectorAll(CONSTANTS.SELECTORS.TIP);
+  const tipRows = document.querySelectorAll(CONSTANTS.SELECTORS.TIP + ', .print-bill-payment-section .flex.justify-between');
   for (const row of tipRows) {
-    const rowText = row.textContent || '';
-    if (rowText.toLowerCase().includes('tip')) {
-      const spans = Array.from(row.querySelectorAll('span'));
-      for (let i = spans.length - 1; i >= 0; i--) {
-        const t = spans[i].innerText && spans[i].innerText.trim();
-        if (t && t.match(/^\$\d/)) { tip = t; break; }
+    const rowText = cleanText(row.textContent || '');
+    if (normalizeLookupText(rowText).includes('tip')) {
+      const parsedTip = getLastCurrencyValue(rowText);
+      if (parsedTip) {
+        tip = parsedTip;
       }
       if (tip !== '$0.00') break;
     }
   }
 
+  const paymentMethodDetails = extractPaymentDetailsFromOrderPage();
+  const paymentMethods = paymentMethodDetails
+    .map((method) => [method.brand, method.ending].filter(Boolean).join(' - '))
+    .filter(Boolean);
+  const paymentMessages = Array.from(new Set(
+    paymentMethodDetails.map((method) => method.message).filter(Boolean)
+  ));
 
-  // Extract payment methods
-  // Each card entry has: img[alt="American Express"] + span[aria-labelledby="card-description-N"]>Ending in 1001
-  // Walmart renders cards twice (mobile + desktop), so deduplicate by aria-labelledby id.
-  const paymentMethods = [];
-  const seenCardIds = new Set();
-  const paymentElements = document.querySelectorAll(CONSTANTS.SELECTORS.PAYMENT_METHODS);
-  paymentElements.forEach(el => {
-    const labelId = el.getAttribute('aria-labelledby');
-    if (seenCardIds.has(labelId)) return;
-    seenCardIds.add(labelId);
+  const addressDetails = extractAddressDetailsFromOrderPage();
+  const address = addressDetails.address || extractAddressFromOrderPage();
 
-    const cardText = el.innerText.trim();
-    if (!cardText) return;
+  const { instructions: deliveryInstructions, expanded: deliveryInstructionsExpanded } =
+    extractDeliveryInstructionsFromOrderPage();
 
-    // Try to get the card brand from the nearest img[alt] sibling
-    const cardRow = el.closest('.flex.items-center');
-    const brandImg = cardRow?.querySelector('img[alt]');
-    const brand = brandImg?.alt?.trim();
-
-    const label = brand && brand !== cardText
-      ? `${brand} - ${cardText}`
-      : cardText;
-
-    paymentMethods.push(label);
-  });
-
-
-  const address = extractAddressFromOrderPage();
+  const chargeHistoryButton = document.querySelector('[data-testid="charge-history-cta"]');
+  const chargeHistoryTitle = cleanText(
+    chargeHistoryButton?.querySelector('.StyledText_large__afIjH')?.textContent ||
+    chargeHistoryButton?.querySelector('.black.f4')?.textContent ||
+    ''
+  );
+  const chargeHistoryDescription = cleanText(
+    chargeHistoryButton?.querySelector('.StyledText_small__qJ5Ut')?.textContent ||
+    ''
+  );
+  const chargeHistoryText = cleanText(
+    chargeHistoryButton?.getAttribute('aria-label') ||
+    [chargeHistoryTitle, chargeHistoryDescription].filter(Boolean).join('. ')
+  );
 
   return {
+    schemaVersion: 2,
     orderNumber,
     orderDate,
     orderSubtotal,
+    subtotalBeforeSavings,
+    savings,
     orderTotal,
     deliveryCharges,
+    bagFee,
     tax,
     tip,
     address,
+    addressRecipient: addressDetails.recipient,
+    addressLine: addressDetails.line,
+    deliveryInstructions,
+    deliveryInstructionsExpanded,
     paymentMethods: paymentMethods.join('; '),
+    paymentMethodDetails,
+    paymentMessages: paymentMessages.join('; '),
+    feeBreakdown,
+    chargeHistoryTitle,
+    chargeHistoryDescription,
+    chargeHistoryText,
+    hasChargeHistory: Boolean(chargeHistoryButton),
     items: orderItems,
   };
 }
