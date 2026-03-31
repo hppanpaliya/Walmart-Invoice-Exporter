@@ -495,6 +495,9 @@ const CONSTANTS = {
   // URL Parameters
   URLS: {
     WALMART_ORDERS: 'https://www.walmart.com/orders',
+    WALMART_ORDERS_CA: 'https://www.walmart.ca/orders',
+    WALMART_ORDER_DOMAINS: ['www.walmart.com', 'www.walmart.ca'],
+    WALMART_ORDERS_PATH: '/orders',
     WALMART_REVIEWS: 'https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe/reviews',
   },
 

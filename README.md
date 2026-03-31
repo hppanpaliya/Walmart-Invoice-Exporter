@@ -34,7 +34,7 @@ A Chrome extension that allows users to download their Walmart order history in 
 - **Permissions**:
   - `ActiveTabs` - Required for order page access and invoice downloads
   - `Storage` - Used for local storage of invoice cache and preferences
-  - Host permissions for `https://www.walmart.com/*`
+  - Host permissions for `https://www.walmart.com/*` and `https://www.walmart.ca/*`
 - **Caching System**:
   - Session storage for order numbers (24-hour auto-expiration)
   - Local storage for downloaded invoice data with per-order cache management
@@ -66,7 +66,7 @@ A Chrome extension that allows users to download their Walmart order history in 
   - CSS background images and inline styles
   - Content Security Policy enforcement
   - Image constructor override
-- **Throttling**: Configurable delays between downloads to prevent walmart.com rate limiting
+- **Throttling**: Configurable delays between downloads to prevent Walmart rate limiting
 - **Memory Optimization**: Automatic cleanup of resources after each order download
 - **Background Processing**: Efficient handling of multiple downloads using browser background tabs
 - **Smart Retries**: Automatic retry attempts with exponential backoff for failed downloads
@@ -125,7 +125,7 @@ Downloads all selected orders into a single XLSX file with all items combined in
 
 **To Use Batch Download:**
 
-1. Go to your Walmart order history page (https://www.walmart.com/orders)
+1. Go to your Walmart order history page (https://www.walmart.com/orders or https://www.walmart.ca/orders)
 2. Click the extension icon
 3. **(Optional)** Select your preferred export mode from the "Export mode" dropdown:
    - "Multiple files (one per order)" - Each order as a separate file
@@ -184,9 +184,9 @@ chrome://settings/content/automaticDownloads
 
 - Open a new Chrome tab and paste the above link
 - Under "**Allowed to automatically download multiple files**", click Add
-- Enter `[*.]walmart.com` and click Add
+- Enter `[*.]walmart.com` and `[*.]walmart.ca`, then click Add
 
-> **Important**: All these settings are required for bulk downloads to work properly. Make sure to add walmart.com under "**Allowed to automatically download multiple files**" and NOT under "Not allowed to automatically download multiple files"
+> **Important**: All these settings are required for bulk downloads to work properly. Make sure to add walmart.com/walmart.ca under "**Allowed to automatically download multiple files**" and NOT under "Not allowed to automatically download multiple files"
 
 ### Common Issues
 
@@ -319,13 +319,13 @@ This extension prioritizes your privacy and security:
 - No data is sent to external servers
 
 **Only Runs On:**
-- Walmart's order pages (`https://www.walmart.com/orders*`)
+- Walmart's order pages (`https://www.walmart.com/orders*` and `https://www.walmart.ca/orders*`)
 - Cannot access other websites or your browsing history
 
 **Permissions Explanation:**
 - `activeTab` - Allows the extension to access the current Walmart order page
 - `storage` - Allows local caching of invoices and preferences on your device
-- `host_permissions` for `walmart.com` - Required to access Walmart order data
+- `host_permissions` for `walmart.com` and `walmart.ca` - Required to access Walmart order data
 
 **Data Processing:**
 - All PDF parsing and Excel generation happens locally in your browser

@@ -5,7 +5,7 @@
   "description": "Download Walmart order details in xlsx format",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "storage", "sidePanel"],
-  "host_permissions": ["https://www.walmart.com/*"],
+  "host_permissions": ["https://www.walmart.com/*", "https://www.walmart.ca/*"],
   "background": {
     "service_worker": "background.js"
   },
@@ -23,7 +23,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.walmart.com/orders*"],
+      "matches": ["https://www.walmart.com/orders*", "https://www.walmart.ca/orders*"],
       "js": ["utils.js", "content.js", "exceljs.bare.min.js"]
     }
   ],

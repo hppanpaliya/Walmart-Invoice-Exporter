@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+- **Feature:** Added support for Walmart Canada order pages (`walmart.ca`) alongside Walmart US (`walmart.com`)
+
+### Enhancements
+- **Enhancement:** Side panel now detects both `walmart.com/orders` and `walmart.ca/orders` as valid collection/download pages
+- **Enhancement:** Order tab switching now searches for both Walmart US and Canada order tabs
+
 ## [5.2] - February 3, 2026
 
 ### Features

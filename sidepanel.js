@@ -10,6 +10,21 @@ let initialOrderPlaceholderHtml = "";
 const CACHE_INDICATOR_STYLE = 'cursor: pointer; margin-left: 6px; color: var(--primary); display: inline-flex; align-items: center; gap: 2px; font-size: 10px;';
 const CACHE_INDICATOR_SELECTOR = '[data-cache-indicator="true"]';
 
+function getWalmartOrdersBaseUrl(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    if (
+      CONSTANTS.URLS.WALMART_ORDER_DOMAINS.includes(parsed.hostname) &&
+      parsed.pathname.startsWith(CONSTANTS.URLS.WALMART_ORDERS_PATH)
+    ) {
+      return `${parsed.protocol}//${parsed.hostname}${CONSTANTS.URLS.WALMART_ORDERS_PATH}`;
+    }
+  } catch (_error) {
+    // Ignore malformed URLs
+  }
+  return null;
+}
+
 // Global error handler for unhandled promise rejections
 window.addEventListener('unhandledrejection', (event) => {
   console.error('Unhandled promise rejection:', event.reason);
@@ -151,10 +166,11 @@ document.addEventListener("DOMContentLoaded", function () {
       const existingBanner = document.getElementById("offTabWarning");
       if (existingBanner) existingBanner.remove();
 
-      if (url && url.startsWith(CONSTANTS.URLS.WALMART_ORDERS)) {
+      const ordersBaseUrl = getWalmartOrdersBaseUrl(url);
+      if (ordersBaseUrl) {
         const cleanUrl = url.replace(/\/$/, "");
         const orderPath = cleanUrl.split("/orders/")[1];
-        AppState.currentOrdersUrl = null;
+        AppState.currentOrdersUrl = ordersBaseUrl;
 
         // Re-enable all interactive elements
         setUIEnabled(true);
@@ -180,7 +196,7 @@ document.addEventListener("DOMContentLoaded", function () {
           document.getElementById("pageLimitGroup").style.display = "block";
           document.getElementById("buttonGroup").style.display = "flex";
           document.querySelector(".card").style.display = "block";
-          AppState.currentOrdersUrl = url;
+          AppState.currentOrdersUrl = ordersBaseUrl;
           loadCacheOnMainPage();
         }
       } else {
@@ -255,16 +271,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Switch to existing Walmart orders tab or open a new one
   function switchToWalmartOrdersTab() {
-    // First, try to find an existing Walmart orders tab
-    chrome.tabs.query({ url: `${CONSTANTS.URLS.WALMART_ORDERS}*` }, function(tabs) {
+    const walmartOrderTabPatterns = CONSTANTS.URLS.WALMART_ORDER_DOMAINS.map((domain) => `https://${domain}/orders*`);
+    // First, try to find an existing Walmart orders tab (US or Canada)
+    chrome.tabs.query({ url: walmartOrderTabPatterns }, function(tabs) {
       if (tabs && tabs.length > 0) {
         // Switch to the first matching tab
         chrome.tabs.update(tabs[0].id, { active: true });
         chrome.windows.update(tabs[0].windowId, { focused: true });
-      } else {
-        // No existing tab, open a new one
-        chrome.tabs.create({ url: CONSTANTS.URLS.WALMART_ORDERS });
+        return;
       }
+
+      // No existing tab, open a new one (US by default)
+      chrome.tabs.create({ url: CONSTANTS.URLS.WALMART_ORDERS });
     });
   }
 
@@ -649,7 +667,8 @@ const OrderDataFetcher = (() => {
   let downloadTab = null;
 
   const buildOrderUrls = (orderNumber) => {
-    const baseUrl = `${CONSTANTS.URLS.WALMART_ORDERS}/${orderNumber}`;
+    const ordersBaseUrl = AppState.currentOrdersUrl || CONSTANTS.URLS.WALMART_ORDERS;
+    const baseUrl = `${ordersBaseUrl}/${orderNumber}`;
     const isLongOrderNumber = orderNumber.length >= 20;
     if (isLongOrderNumber) {
       return [`${baseUrl}?storePurchase=true`, baseUrl];
