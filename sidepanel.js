@@ -13,11 +13,14 @@ const CACHE_INDICATOR_SELECTOR = '[data-cache-indicator="true"]';
 function getWalmartOrdersBaseUrl(rawUrl) {
   try {
     const parsed = new URL(rawUrl);
+    const ordersSegment = CONSTANTS.URLS.WALMART_ORDERS_PATH;
+    const ordersIndex = parsed.pathname.indexOf(ordersSegment);
     if (
       CONSTANTS.URLS.WALMART_ORDER_DOMAINS.includes(parsed.hostname) &&
-      parsed.pathname.startsWith(CONSTANTS.URLS.WALMART_ORDERS_PATH)
+      ordersIndex !== -1
     ) {
-      return `${parsed.protocol}//${parsed.hostname}${CONSTANTS.URLS.WALMART_ORDERS_PATH}`;
+      const ordersPathWithLocale = parsed.pathname.slice(0, ordersIndex + ordersSegment.length);
+      return `${parsed.protocol}//${parsed.hostname}${ordersPathWithLocale}`;
     }
   } catch (_error) {
     // Ignore malformed URLs
@@ -168,15 +171,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
       const ordersBaseUrl = getWalmartOrdersBaseUrl(url);
       if (ordersBaseUrl) {
-        const cleanUrl = url.replace(/\/$/, "");
-        const orderPath = cleanUrl.split("/orders/")[1];
+        const parsedUrl = new URL(url);
+        const ordersPrefix = new URL(ordersBaseUrl).pathname;
+        const remainingPath = parsedUrl.pathname.slice(ordersPrefix.length);
+        const orderPath = remainingPath.startsWith("/") ? remainingPath.slice(1) : remainingPath;
         AppState.currentOrdersUrl = ordersBaseUrl;
 
         // Re-enable all interactive elements
         setUIEnabled(true);
 
         // Check if there's an order number after /orders/
-        if (orderPath && /^\d{10,}$/.test(orderPath.split("?")[0])) {
+        if (orderPath && /^\d{10,}$/.test(orderPath)) {
           // Individual order page - do NOT use cache, only show current order
           const orderNumber = orderPath.split("?")[0];
           console.log("Valid order number:", orderNumber);
@@ -271,7 +276,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Switch to existing Walmart orders tab or open a new one
   function switchToWalmartOrdersTab() {
-    const walmartOrderTabPatterns = CONSTANTS.URLS.WALMART_ORDER_DOMAINS.map((domain) => `https://${domain}/orders*`);
+    const walmartOrderTabPatterns = CONSTANTS.URLS.WALMART_ORDER_DOMAINS.flatMap((domain) => ([
+      `https://${domain}/orders*`,
+      `https://${domain}/*/orders*`,
+    ]));
     // First, try to find an existing Walmart orders tab (US or Canada)
     chrome.tabs.query({ url: walmartOrderTabPatterns }, function(tabs) {
       if (tabs && tabs.length > 0) {

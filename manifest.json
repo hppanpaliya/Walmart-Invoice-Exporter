@@ -23,7 +23,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.walmart.com/orders*", "https://www.walmart.ca/orders*"],
+      "matches": [
+        "https://www.walmart.com/orders*",
+        "https://www.walmart.com/*/orders*",
+        "https://www.walmart.ca/orders*",
+        "https://www.walmart.ca/*/orders*"
+      ],
       "js": ["utils.js", "content.js", "exceljs.bare.min.js"]
     }
   ],

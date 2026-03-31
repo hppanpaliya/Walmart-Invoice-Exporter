@@ -125,7 +125,7 @@ Downloads all selected orders into a single XLSX file with all items combined in
 
 **To Use Batch Download:**
 
-1. Go to your Walmart order history page (https://www.walmart.com/orders or https://www.walmart.ca/orders)
+1. Go to your Walmart order history page (for example: `https://www.walmart.com/orders`, `https://www.walmart.ca/orders`, or localized paths like `https://www.walmart.ca/en/orders`)
 2. Click the extension icon
 3. **(Optional)** Select your preferred export mode from the "Export mode" dropdown:
    - "Multiple files (one per order)" - Each order as a separate file

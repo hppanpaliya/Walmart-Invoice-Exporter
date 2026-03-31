@@ -8,6 +8,7 @@
 ### Enhancements
 - **Enhancement:** Side panel now detects both `walmart.com/orders` and `walmart.ca/orders` as valid collection/download pages
 - **Enhancement:** Order tab switching now searches for both Walmart US and Canada order tabs
+- **Enhancement:** Added support for locale-prefixed order URLs (for example, `/en/orders`) so the panel no longer shows a false off-tab warning
 
 ## [5.2] - February 3, 2026
 
