@@ -175,6 +175,42 @@ async function waitForElement(
   throw new Error(`Element ${selector} not found after ${timeout}ms`);
 }
 
+// Wait until the order detail page has rendered its product cards before
+// scraping. The combined-export flow loads each order in a background tab, which
+// browsers throttle, so a scrape can otherwise run against a still-blank page and
+// yield empty rows. Poll until at least one card has a name, or give up after the
+// timeout.
+async function waitForOrderItems(
+  timeout = CONSTANTS.TIMING.COLLECTION_TIMEOUT,
+  pollInterval = CONSTANTS.TIMING.ELEMENT_POLL_INTERVAL
+) {
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeout) {
+    const named = Array.from(
+      document.querySelectorAll(CONSTANTS.SELECTORS.ITEM_STACK)
+    ).some((card) => card.querySelector(CONSTANTS.SELECTORS.CARD_NAME)?.innerText?.trim());
+    if (named) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+  }
+  console.warn("waitForOrderItems: no populated item cards before timeout");
+  return false;
+}
+
+// Pull the price actually charged for a line item out of its card. The card's
+// price block mixes several dollar amounts - per-item savings ("$3.98 from
+// savings"), the discounted price, and the struck-through "Was" price - so we
+// strip the savings and "Was" amounts first, then take the remaining price.
+function extractCardPrice(card) {
+  const priceEl = card.querySelector(CONSTANTS.SELECTORS.CARD_PRICE) || card;
+  const text = (priceEl.innerText || "")
+    .replace(/\$[\d,.]+\s*from\s+[a-z ]*?(savings|discount)/gi, "")
+    .replace(/Was\s*\$[\d,.]+/gi, "");
+  const match = text.match(/\$([\d,]+\.\d{2})/);
+  return match ? match[1].replace(/,/g, "") : "";
+}
+
 const withImageBlocking = (handler) => async (request) => {
   ImageBlocker.aggressive();
   return handler(request);
@@ -185,12 +221,16 @@ const MessageHandlers = {
   [CONSTANTS.MESSAGES.CLICK_NEXT_BUTTON]: withImageBlocking(handleClickNextButton),
   [CONSTANTS.MESSAGES.BLOCK_IMAGES]: withImageBlocking(async () => ({ success: true })),
   [CONSTANTS.MESSAGES.DOWNLOAD_XLSX]: withImageBlocking(async () => {
+    await waitForOrderItems();
     const data = scrapeOrderData();
     // Convert the order details to an XLSX file using the shared convertToXlsx function
     convertToXlsx(data, ExcelJS, { mode: 'single' });
     return { data };
   }),
-  [CONSTANTS.MESSAGES.GET_ORDER_DATA]: withImageBlocking(async () => ({ data: scrapeOrderData() })),
+  [CONSTANTS.MESSAGES.GET_ORDER_DATA]: withImageBlocking(async () => {
+    await waitForOrderItems();
+    return { data: scrapeOrderData() };
+  }),
 };
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -218,37 +258,38 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 function scrapeOrderData() {
   const orderItems = [];
 
-  // Query the hidden print items list which contains reliable product data
-  // This list is always present in the DOM (hidden via .dn class) and is populated on page load.
-  // It provides a cleaner data structure compared to the complex interactive UI.
-  const printItemsList = document.querySelectorAll(CONSTANTS.SELECTORS.PRINT_ITEMS);
+  // Read line items straight from the visible product cards. Walmart removed the
+  // hidden ".dn.print-items-list" print markup this used to scrape, which is why
+  // name, price, and the product link all stopped populating (the link, in
+  // particular, came out "N/A" because the old code matched a print-markup name
+  // against a card name by exact string equality across two separately-rendered
+  // DOM trees). Each card now carries the product's name, href (with the item id
+  // in its /ip/<slug>/<itemId> URL), quantity, and price together, so there is no
+  // fragile cross-tree matching.
+  const cards = document.querySelectorAll(CONSTANTS.SELECTORS.ITEM_STACK);
 
-  printItemsList.forEach((item) => {
-    const productName = item.querySelector(CONSTANTS.SELECTORS.PRINT_ITEM_NAME)?.innerText;
-    // Fall back to default delivery label if status element not found
-    const deliveryStatus = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_TYPE)?.innerText || CONSTANTS.TEXT.DELIVERY_LABEL;
-    const quantity = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_QTY)?.innerText;
-    const price = item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_PRICE)?.innerText;
-
-    // Find the corresponding visible item to get the product link
-    let productLink = "N/A";
-    const visibleItems = document.querySelectorAll(CONSTANTS.SELECTORS.VISIBLE_ITEMS);
-    for (const visibleItem of visibleItems) {
-      if (visibleItem?.innerText.trim() === (productName || '').trim()) {
-        const linkElement = visibleItem.closest(CONSTANTS.SELECTORS.ITEM_STACK)?.querySelector(CONSTANTS.SELECTORS.PRODUCT_LINK);
-        if (linkElement) {
-          productLink = linkElement.href;
-          break;
-        }
-      }
+  cards.forEach((card) => {
+    const productName = card.querySelector(CONSTANTS.SELECTORS.CARD_NAME)?.innerText.trim();
+    if (!productName) {
+      return; // skip stray cards that carry no product
     }
+
+    const linkEl = card.querySelector(CONSTANTS.SELECTORS.PRODUCT_LINK);
+    const productLink = linkEl?.href || "N/A";
+    if (productLink === "N/A") {
+      console.warn("No product link found for:", productName);
+    }
+
+    const qtyMatch = (card.innerText || "").match(/Qty\s*(\d+)/i);
 
     orderItems.push({
       productName,
       productLink,
-      deliveryStatus,
-      quantity,
-      price,
+      // Per-item delivery status lived in the removed print markup; the live page
+      // only exposes delivery status at the order level, so default it here.
+      deliveryStatus: CONSTANTS.TEXT.DELIVERY_LABEL,
+      quantity: qtyMatch ? qtyMatch[1] : "1",
+      price: extractCardPrice(card),
     });
   });
 

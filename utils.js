@@ -429,7 +429,11 @@ const CONSTANTS = {
     PRINT_BILL_PRICE: '.print-bill-price .w_U9_0.w_sD6D.w_QcqU',
     VISIBLE_ITEMS: '[data-testid="itemtile-stack"] [data-testid="productName"] span',
     ITEM_STACK: '[data-testid="itemtile-stack"]',
-    PRODUCT_LINK: 'a[link-identifier="itemClick"]',
+    CARD_NAME: '[data-testid="productName"]',
+    CARD_PRICE: '[data-testid="line-price"]',
+    // Match the product anchor by its /ip/<slug>/<itemId> href so it survives
+    // Walmart renaming the old link-identifier="itemClick" attribute.
+    PRODUCT_LINK: 'a[href*="/ip/"]',
 
     PRINT_BILL_GROUP: '.print-bill-group',
     PRINT_ITEM_ROW: '.dn.print-items-list > .flex.justify-between',
