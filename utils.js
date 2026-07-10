@@ -1529,6 +1529,20 @@ function createSuccessMessage(message) {
 }
 
 /**
+ * Create a warning completion message (amber) — the operation finished but
+ * the user should know something was incomplete.
+ * @param {string} message - Warning message text
+ * @returns {string} HTML string with warning icon
+ */
+function createWarningMessage(message) {
+  const safeMessage = formatMessageWithBreaks(message);
+  return `
+    ${renderIcon('ERROR_CIRCLE', '#b45309')}
+    ${safeMessage}
+  `;
+}
+
+/**
  * Create an error completion message
  * @param {string} message - Error message text
  * @returns {string} HTML string with error icon

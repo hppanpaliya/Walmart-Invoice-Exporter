@@ -288,31 +288,35 @@
   }
 
   /** Export all collected orders combined, honoring the selected format. */
-  async function exportCombinedOrders(collectedOrdersData) {
+  async function exportCombinedOrders(collectedOrdersData, baseName = "Walmart_Orders") {
     const format = getExportFormat();
     if (format === CONSTANTS.EXPORT_FORMATS.CSV) {
       const preset = getCsvPreset();
       if (preset !== CONSTANTS.CSV_PRESETS.GENERIC) {
+        const presetLabel = preset === CONSTANTS.CSV_PRESETS.XERO ? "Xero" : "QuickBooks";
         // Accounting presets emit one bank-statement style file.
-        convertOrdersToAccountingCsv(collectedOrdersData, preset);
+        convertOrdersToAccountingCsv(collectedOrdersData, preset, `${baseName}_${presetLabel}.csv`);
         return;
       }
-      await convertOrdersToCsv(collectedOrdersData);
+      await convertOrdersToCsv(collectedOrdersData, {
+        ordersFilename: `${baseName}.csv`,
+        itemsFilename: `${baseName}_Items.csv`,
+      });
       return;
     }
     if (format === CONSTANTS.EXPORT_FORMATS.JSON) {
-      convertOrdersToJson(collectedOrdersData, "Walmart_Orders.json");
+      convertOrdersToJson(collectedOrdersData, `${baseName}.json`);
       return;
     }
     if (format === CONSTANTS.EXPORT_FORMATS.RECEIPT) {
-      convertOrdersToReceiptHtml(collectedOrdersData, "Walmart_Orders_Receipts.html");
+      convertOrdersToReceiptHtml(collectedOrdersData, `${baseName}_Receipts.html`);
       return;
     }
     if (format === CONSTANTS.EXPORT_FORMATS.PDF) {
-      convertOrdersToReceiptPdf(collectedOrdersData, "Walmart_Orders_Receipts.pdf");
+      convertOrdersToReceiptPdf(collectedOrdersData, `${baseName}_Receipts.pdf`);
       return;
     }
-    await convertMultipleOrdersToXlsx(collectedOrdersData, ExcelJS, "Walmart_Orders.xlsx", {
+    await convertMultipleOrdersToXlsx(collectedOrdersData, ExcelJS, `${baseName}.xlsx`, {
       includeThumbnails: shouldIncludeThumbnails(),
     });
   }
@@ -349,43 +353,6 @@
     await convertToXlsx(data, ExcelJS, { mode: "single", includeThumbnails: shouldIncludeThumbnails() });
   }
 
-  /** Export Quick Export summary rows (+ per-item rows), honoring the format. */
-  async function exportSummaryRows(rows, itemRows = []) {
-    const format = getExportFormat();
-    if (format === CONSTANTS.EXPORT_FORMATS.CSV) {
-      convertOrderSummariesToCsv(rows);
-      if (itemRows.length > 0) {
-        // Space out the second download for Chrome's multi-download throttle.
-        await delay(CONSTANTS.TIMING.RETRY_DELAY);
-        convertOrderSummaryItemsToCsv(itemRows);
-      }
-      return;
-    }
-    if (format === CONSTANTS.EXPORT_FORMATS.JSON) {
-      const itemsByOrder = {};
-      itemRows.forEach((itemRow) => {
-        (itemsByOrder[itemRow.orderNumber] = itemsByOrder[itemRow.orderNumber] || []).push({
-          name: itemRow.name,
-          quantity: itemRow.quantity,
-          price: itemRow.price,
-          status: itemRow.status,
-        });
-      });
-      const structured = rows.map((row) => ({ ...row, items: itemsByOrder[row.orderNumber] || [] }));
-      downloadTextFile(JSON.stringify(structured, null, 2), "Walmart_Orders_Summary.json", "application/json");
-      return;
-    }
-    if (format === CONSTANTS.EXPORT_FORMATS.RECEIPT) {
-      convertOrderSummariesToHtml(rows);
-      return;
-    }
-    if (format === CONSTANTS.EXPORT_FORMATS.PDF) {
-      convertOrderSummariesToPdf(rows);
-      return;
-    }
-    await convertOrderSummariesToXlsx(rows, ExcelJS, null, { itemRows });
-  }
-
   /**
    * Fetch the background collection snapshot (order numbers, titles, summaries).
    * @returns {Promise<Object>} GET_PROGRESS response from the service worker
@@ -415,55 +382,75 @@
   }
 
   /**
-   * Join summary items into a readable list, e.g. "2× Milk; Bread".
-   * @param {Array} items - Items from an order summary
-   * @returns {string}
+   * Build a deep-export-shaped order object from a Quick Export summary — used
+   * when no stored invoice exists, so Quick Export files have EXACTLY the same
+   * layout as Download Selected. Fields the list payload doesn't carry stay
+   * blank; per-item prices are unknown (the caller warns about this).
+   * @param {string} orderNumber - Digits-only order number
+   * @param {Object|null} summary - Quick Export summary from the list payload
+   * @param {string} title - Cached order title (tooltip text)
+   * @returns {Object} orderDetails shaped like scrapeOrderData() output
    */
-  function formatSummaryItemNames(items) {
-    if (!Array.isArray(items)) return "";
-    return items
-      .filter((item) => item && item.name)
-      .map((item) => {
-        const quantity = Number(item.quantity);
-        return quantity > 1 ? `${quantity}× ${item.name}` : item.name;
-      })
-      .join("; ");
+  function buildOrderDetailsFromSummary(orderNumber, summary, title) {
+    const s = summary || {};
+    const items = (Array.isArray(s.items) ? s.items : []).map((item) => ({
+      productName: item.name || "",
+      quantity: item.quantity ?? "",
+      price: "",
+      deliveryStatus: item.statusCode || s.status || "",
+      productLink: "N/A",
+      thumbnailUrl: item.thumbnailUrl || "",
+    }));
+    if (items.length === 0) {
+      // Keep the order visible in the export even without item data.
+      items.push({
+        productName: title || "(items unknown — use Download Selected for full details)",
+        quantity: "",
+        price: "",
+        deliveryStatus: s.status || "",
+        productLink: "N/A",
+        thumbnailUrl: "",
+      });
+    }
+
+    return {
+      schemaVersion: 2,
+      orderNumber,
+      orderDate: formatSummaryDate(s.orderDate),
+      orderSubtotal: s.subTotal || "",
+      subtotalBeforeSavings: "",
+      savings: "",
+      orderTotal: s.orderTotal || "",
+      deliveryCharges: "",
+      bagFee: "",
+      tax: "",
+      tip: s.driverTip || "",
+      refund: "",
+      donations: "",
+      barcodeImageUrl: "",
+      sellers: "",
+      fulfillmentTypes: s.fulfillmentTypes || "",
+      deliveredDate: "",
+      trackingNumbers: "",
+      paymentSplit: "",
+      orderType: s.orderType || "",
+      isInStore: Boolean(s.isInStore),
+      address: "",
+      addressRecipient: "",
+      addressLine: "",
+      deliveryInstructions: "",
+      paymentMethods: "",
+      paymentMethodDetails: [],
+      paymentMessages: "",
+      items,
+    };
   }
 
   /**
-   * Build Quick Export rows for every collected order. Orders collected via the
-   * DOM fallback have no payload summary — those degrade to order number plus
-   * the cached title, leaving the remaining cells blank.
-   * @param {string[]} orderNumbers - All collected order numbers
-   * @param {Object} additionalFields - Order number → title map
-   * @param {Object} orderSummaries - Order number → summary map
-   * @returns {Object[]} Rows for convertOrderSummariesToXlsx
-   */
-  function buildQuickExportRows(orderNumbers, additionalFields, orderSummaries) {
-    return orderNumbers.map((orderNumber) => {
-      const summary = orderSummaries[orderNumber];
-      if (!summary) {
-        return { orderNumber, itemNames: additionalFields[orderNumber] || "" };
-      }
-      return {
-        orderNumber,
-        orderDate: formatSummaryDate(summary.orderDate),
-        orderDateIso: summary.orderDate || "",
-        itemCount: summary.itemCount,
-        itemNames: formatSummaryItemNames(summary.items) || additionalFields[orderNumber] || "",
-        status: summary.status || "",
-        fulfillment: summary.fulfillmentTypes || "",
-        subTotal: summary.subTotal || "",
-        driverTip: summary.driverTip || "",
-        orderTotal: summary.orderTotal || "",
-        orderType: formatOrderType(summary.orderType, summary.isInStore),
-      };
-    });
-  }
-
-  /**
-   * Export a one-row-per-order summary spreadsheet straight from the collected
-   * purchase-history payload — no order detail pages are opened.
+   * Quick Export: exports the SELECTED orders in exactly the same format and
+   * layout as Download Selected, but without opening any order pages. Orders
+   * with a stored invoice export with full fidelity; the rest are built from
+   * list-payload summaries (item prices unknown — the user is warned).
    */
   async function quickExportSummaries() {
     if (app && app.downloadInProgress) {
@@ -551,33 +538,67 @@
         console.warn("Order DB unavailable for Quick Export upgrade:", error);
       }
 
-      const summaryCount = orderNumbers.filter((orderNumber) => orderSummaries[orderNumber]).length;
-      if (summaryCount === 0) {
+      const usableCount = orderNumbers.filter(
+        (orderNumber) => invoiceByOrder[orderNumber] || orderSummaries[orderNumber]
+      ).length;
+      if (usableCount === 0) {
         showTimedProgressMessage(
           progressDiv,
           createErrorMessage(
-            "The cached orders have no summary data (they were collected by an older version). Click Clear Cache, run Start Collection again, then retry Quick Export."
+            "The selected orders have no stored data. Run Start Collection again, then retry Quick Export."
           ),
           CONSTANTS.TIMING.ERROR_DISPLAY_DURATION
         );
         return;
       }
 
-      const rows = buildQuickExportRows(orderNumbers, additionalFields, orderSummaries);
-      const dateByOrder = Object.fromEntries(rows.map((row) => [row.orderNumber, row.orderDate]));
-      const itemRows = buildSummaryItemRows(orderNumbers, orderSummaries, invoiceByOrder, dateByOrder);
-      await exportSummaryRows(rows, itemRows);
+      // Same data shape as Download Selected: full invoices where stored,
+      // summary-built orders otherwise.
+      const ordersData = [];
+      let missingPriceCount = 0;
+      orderNumbers.forEach((orderNumber) => {
+        const invoice = invoiceByOrder[orderNumber];
+        if (invoice) {
+          ordersData.push(invoice);
+          return;
+        }
+        missingPriceCount++;
+        ordersData.push(
+          buildOrderDetailsFromSummary(orderNumber, orderSummaries[orderNumber], additionalFields[orderNumber])
+        );
+      });
 
-      const missingCount = orderNumbers.length - summaryCount;
-      const message =
-        missingCount > 0
-          ? `${CONSTANTS.TEXT.QUICK_EXPORT_SUCCESS}\n${missingCount} of ${orderNumbers.length} orders had no summary data — only their order number and title were exported.`
-          : CONSTANTS.TEXT.QUICK_EXPORT_SUCCESS;
-      showTimedProgressMessage(
-        progressDiv,
-        createSuccessMessage(message),
-        CONSTANTS.TIMING.SUCCESS_DISPLAY_DURATION
-      );
+      // Same layout AND same export-mode semantics as Download Selected.
+      if (app && app.exportMode === CONSTANTS.EXPORT_MODES.MULTIPLE) {
+        for (let i = 0; i < ordersData.length; i++) {
+          progressDiv.innerHTML = createProgressMessage(
+            i + 1,
+            ordersData.length,
+            "Quick exporting order",
+            ordersData[i].orderNumber
+          );
+          await exportOneOrder(ordersData[i]);
+          await delay(CONSTANTS.TIMING.RETRY_DELAY);
+        }
+      } else {
+        await exportCombinedOrders(ordersData, "Walmart_Orders_Quick");
+      }
+
+      if (missingPriceCount > 0) {
+        showTimedProgressMessage(
+          progressDiv,
+          createWarningMessage(
+            `${CONSTANTS.TEXT.QUICK_EXPORT_SUCCESS}\nHeads up: ${missingPriceCount} of ${ordersData.length} orders have no downloaded invoice, so their item prices (and fees, address, payment details) are blank.\nRun "Download Selected" on those orders once to fill everything in.`
+          ),
+          CONSTANTS.TIMING.ERROR_DISPLAY_DURATION
+        );
+      } else {
+        showTimedProgressMessage(
+          progressDiv,
+          createSuccessMessage(CONSTANTS.TEXT.QUICK_EXPORT_SUCCESS),
+          CONSTANTS.TIMING.SUCCESS_DISPLAY_DURATION
+        );
+      }
       view.maybeShowRatingHint();
     } catch (error) {
       console.error("Quick Export failed:", error);
