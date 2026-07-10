@@ -289,9 +289,16 @@ function collectOrderNumbers() {
         CollectionState.allAdditionalFields = { ...CollectionState.allAdditionalFields, ...response.additionalFields };
       }
 
-      // Merge per-page order summaries (absent on DOM-fallback pages)
+      // Merge per-page order summaries — never let a degraded DOM-scraped
+      // summary replace payload-quality data for the same order.
       if (response.orderSummaries) {
-        CollectionState.allOrderSummaries = { ...CollectionState.allOrderSummaries, ...response.orderSummaries };
+        Object.entries(response.orderSummaries).forEach(([orderNumber, summary]) => {
+          const existing = CollectionState.allOrderSummaries[orderNumber];
+          if (existing && isPayloadQualitySummary(existing) && !isPayloadQualitySummary(summary)) {
+            return;
+          }
+          CollectionState.allOrderSummaries[orderNumber] = summary;
+        });
       }
 
       // Persist this page into the durable order database (best-effort).

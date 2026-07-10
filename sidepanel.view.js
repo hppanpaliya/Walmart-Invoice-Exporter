@@ -390,7 +390,7 @@
       const quickExportButton = document.createElement("button");
       quickExportButton.id = "quickExportButton";
       quickExportButton.className = CONSTANTS.CSS_CLASSES.BTN_PRIMARY;
-      quickExportButton.title = "Instant summary of collected data (selected orders, or all when none are selected) in your chosen export format — no order pages are opened";
+      quickExportButton.title = "Instant summary of the SELECTED orders in your chosen export format — no order pages are opened";
       quickExportButton.innerHTML = `
         ${renderIcon("BOLT")}
         <span class="btn-text">${CONSTANTS.TEXT.QUICK_EXPORT}</span>
