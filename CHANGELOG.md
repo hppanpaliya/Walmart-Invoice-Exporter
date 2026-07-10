@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.7] - July 10, 2026
+
+### Features
+- **Feature:** **Spending Dashboard** — a new panel view computed entirely on-device from the local order database: total/average spend, monthly spend bars, tips, savings, tax, refunds, donations, and your most-repurchased items. No servers, no telemetry — your data never leaves the browser.
+
 ## [6.6] - July 10, 2026
 
 ### Features
