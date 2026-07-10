@@ -41,10 +41,13 @@ test('extractOrderDataFromNextData extracts items from groups and subGroups with
   assert.equal(milk.deliveryStatus, 'Delivered');
   assert.equal(milk.productLink, 'https://www.walmart.com/ip/10450114');
   assert.equal(milk.thumbnailUrl, 'https://i5.walmartimages.com/asr/milk.jpg');
+  assert.equal(milk.usItemId, '10450114');
 
   const marketplaceItem = order.items[2];
   assert.equal(marketplaceItem.productName, '=HYPERLINK Product "Deal", 2-pack');
   assert.equal(marketplaceItem.deliveryStatus, 'Canceled');
+  // subGroups-nested items carry usItemId too (price-history keying).
+  assert.equal(marketplaceItem.usItemId, '998877');
 });
 
 test('extractOrderDataFromNextData aggregates shipment metadata across groups', () => {
