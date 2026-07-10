@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.15] - July 10, 2026
+
+### Improvements
+- **Improvement:** **Quick Export items sheet** — items are no longer crammed into a single "Item Names" cell. Excel exports gain an 'Items' worksheet (one row per item: order, date, item, qty, price, status), CSV exports a companion items file, and JSON nests a structured items array per order. Per-item prices aren't in Walmart's list data, so they join in automatically from any invoice you've downloaded — prices fill in as your database grows.
+
 ## [6.14] - July 10, 2026
 
 ### Fixes
