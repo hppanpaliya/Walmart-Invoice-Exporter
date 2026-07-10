@@ -46,6 +46,18 @@ function formatPaymentMethodDetails(orderDetails) {
 }
 
 /**
+ * Format the order type for export columns.
+ * In-store purchases show a friendly label; online orders keep the
+ * payload's raw type (e.g. "GLASS") so no information is lost.
+ * @param {string} orderType - Raw order type from the payload
+ * @param {boolean} isInStore - Payload's in-store flag
+ * @returns {string}
+ */
+function formatOrderType(orderType, isInStore) {
+  return isInStore ? 'In-store' : String(orderType || '');
+}
+
+/**
  * Configure columns for a single order export worksheet
  * @param {ExcelJS.Worksheet} worksheet - The worksheet to configure
  */
@@ -97,6 +109,7 @@ function configureMultipleOrdersColumns(worksheet, options = {}) {
     { header: 'Refund', key: 'refund', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Donations', key: 'donations', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Receipt Barcode', key: 'barcodeLink', width: 16, style: { alignment: { horizontal: "center" } } },
+    { header: 'Order Type', key: 'orderType', width: 14, style: { alignment: { horizontal: "center" } } },
   ];
   if (options.includeThumbnails) {
     columns.push({ header: 'Thumbnail', key: 'thumbnail', width: 9, style: { alignment: { horizontal: "center" } } });
@@ -120,6 +133,7 @@ function configureOrderSummaryColumns(worksheet) {
     { header: 'Subtotal', key: 'subTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Driver Tip', key: 'driverTip', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Order Total', key: 'orderTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Order Type', key: 'orderType', width: 14, style: { alignment: { horizontal: "center" } } },
   ];
 }
 
@@ -149,6 +163,7 @@ async function convertOrderSummariesToXlsx(summaryRows, ExcelJS, filename = null
       subTotal: row.subTotal ? parseNumericValue(row.subTotal) : '',
       driverTip: row.driverTip ? parseNumericValue(row.driverTip) : '',
       orderTotal: row.orderTotal ? parseNumericValue(row.orderTotal) : '',
+      orderType: row.orderType || '',
     });
   });
 
@@ -227,6 +242,7 @@ function addMultipleOrderItemsToWorksheet(worksheet, items) {
       barcodeLink: item.barcodeImageUrl
         ? { text: 'Barcode', hyperlink: item.barcodeImageUrl }
         : '',
+      orderType: formatOrderType(item.orderType, item.isInStore),
     });
   });
 }
@@ -325,6 +341,7 @@ function addOrderSummary(worksheet, orderDetails) {
         ? { text: 'Barcode', hyperlink: orderDetails.barcodeImageUrl }
         : '',
     ],
+    ['Order Type', formatOrderType(orderDetails.orderType, orderDetails.isInStore)],
   ];
 
   const summaryRows = rows.map(([label, value]) => {
@@ -538,6 +555,8 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
         deliveredDate: orderDetails.deliveredDate || '',
         trackingNumbers: orderDetails.trackingNumbers || '',
         paymentSplit: orderDetails.paymentSplit || '',
+        orderType: orderDetails.orderType || '',
+        isInStore: Boolean(orderDetails.isInStore),
       });
     });
   });
@@ -651,6 +670,7 @@ const ORDER_CSV_COLUMNS = [
   ['Delivered Date', (o) => o.deliveredDate || ''],
   ['Tracking Numbers', (o) => o.trackingNumbers || ''],
   ['Receipt Barcode URL', (o) => o.barcodeImageUrl || ''],
+  ['Order Type', (o) => formatOrderType(o.orderType, o.isInStore)],
 ];
 
 /** Item-level CSV columns (one row per item) — the "items sheet" equivalent. */
@@ -727,6 +747,7 @@ const SUMMARY_CSV_COLUMNS = [
   ['Subtotal', (row) => csvMoney(row.subTotal, { blankWhenEmpty: true })],
   ['Driver Tip', (row) => csvMoney(row.driverTip, { blankWhenEmpty: true })],
   ['Order Total', (row) => csvMoney(row.orderTotal, { blankWhenEmpty: true })],
+  ['Order Type', (row) => row.orderType || ''],
 ];
 
 /**

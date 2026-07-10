@@ -265,6 +265,8 @@ const PurchaseHistoryDataSource = (() => {
     return {
       orderNumber: normalizedOrderNumber,
       orderDate: order?.orderDate || "",
+      orderType: cleanText(order?.type || ""),
+      isInStore: Boolean(order?.isInStore),
       itemCount: order?.itemCount ?? "",
       orderTotal: order?.priceDetails?.orderTotal?.displayValue || "",
       subTotal: order?.priceDetails?.subTotal?.displayValue || "",
@@ -1175,6 +1177,8 @@ function extractOrderDataFromNextData() {
     orderDate:
       formatOrderDateFromIsoString(orderNode?.orderDate) ||
       cleanText(orderNode?.shortTitle || orderNode?.title).replace(/order/i, '').trim(),
+    orderType: cleanText(orderNode?.type || ''),
+    isInStore: Boolean(orderNode?.isInStore),
     orderSubtotal: cleanText(priceDetails?.subTotal?.displayValue || ''),
     subtotalBeforeSavings: cleanText(priceDetails?.strikethroughSubTotal?.displayValue || ''),
     savings: cleanText(priceDetails?.savings?.displayValue || ''),
@@ -1627,6 +1631,8 @@ function scrapeOrderData() {
     schemaVersion: 2,
     orderNumber: resolvedOrderNumber,
     orderDate: resolvedOrderDate,
+    orderType: cleanText(nextDataOrder?.orderType || ''),
+    isInStore: Boolean(nextDataOrder?.isInStore),
     orderSubtotal,
     subtotalBeforeSavings,
     savings,
