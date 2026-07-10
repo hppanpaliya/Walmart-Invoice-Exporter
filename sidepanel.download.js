@@ -412,6 +412,7 @@
         subTotal: summary.subTotal || "",
         driverTip: summary.driverTip || "",
         orderTotal: summary.orderTotal || "",
+        orderType: formatOrderType(summary.orderType, summary.isInStore),
       };
     });
   }
