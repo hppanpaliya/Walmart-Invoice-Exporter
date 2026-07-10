@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.8] - July 10, 2026
+
+### Features
+- **Feature:** **Price history on repurchases** — the dashboard now tracks items you've bought more than once (keyed by Walmart item id) and shows how their unit price moved, e.g. "you paid \$4.98, it was \$3.98 before". History deepens as you download invoices.
+
 ## [6.7] - July 10, 2026
 
 ### Features
