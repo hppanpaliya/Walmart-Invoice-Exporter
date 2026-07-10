@@ -84,30 +84,20 @@
     setCollectionButtonsState({ running: true });
     view.setButtonLoading(startButton, true);
 
-    // Collect in the user's current orders tab when possible — no second tab.
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      const activeTab = tabs && tabs[0];
-      const reuseTabId =
-        activeTab && String(activeTab.url || "").startsWith(CONSTANTS.URLS.WALMART_ORDERS)
-          ? activeTab.id
-          : null;
-
-      chrome.runtime.sendMessage(
-        {
-          action: CONSTANTS.MESSAGES.START_COLLECTION,
-          url: app.currentOrdersUrl,
-          pageLimit: pageLimit,
-          incremental: Boolean(app.incrementalCollect),
-          reuseTabId: reuseTabId,
-        },
-        function (response) {
-          if (response && response.status === "started") {
-            updateProgress();
-          }
-          view.setButtonLoading(startButton, false);
+    chrome.runtime.sendMessage(
+      {
+        action: CONSTANTS.MESSAGES.START_COLLECTION,
+        url: app.currentOrdersUrl,
+        pageLimit: pageLimit,
+        incremental: Boolean(app.incrementalCollect),
+      },
+      function (response) {
+        if (response && response.status === "started") {
+          updateProgress();
         }
-      );
-    });
+        view.setButtonLoading(startButton, false);
+      }
+    );
   }
 
   function stopCollection({ startLabel = "Restart Collection", showLoading = true } = {}) {
@@ -131,8 +121,40 @@
     stopCollection({ startLabel: "Restart Collection", showLoading: true });
   }
 
+  /**
+   * The 24h collection cache expired but the durable DB still has orders —
+   * render them so selection, Download, and Quick Export keep working
+   * without forcing a full re-collection.
+   */
+  async function displayOrdersFromDb() {
+    try {
+      const records = await OrderDb.getAllOrders();
+      const withData = records.filter((record) => record.summary || record.invoice);
+      if (withData.length === 0) return;
+
+      withData.sort((a, b) => String(b.orderDate).localeCompare(String(a.orderDate)));
+      const orderNumbers = withData.map((record) => record.orderNumber);
+      const titles = Object.fromEntries(withData.map((record) => [record.orderNumber, record.title || ""]));
+      await view.displayOrderNumbers(orderNumbers, titles);
+
+      const card = document.querySelector(".card");
+      if (card && !card.querySelector(".cache-info")) {
+        const info = document.createElement("div");
+        info.className = "cache-info";
+        info.textContent = `Loaded ${orderNumbers.length} orders from the local database`;
+        card.appendChild(info);
+      }
+    } catch (error) {
+      console.warn("Could not load orders from the DB:", error);
+    }
+  }
+
   function loadCacheOnMainPage() {
     chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.GET_PROGRESS }, function (response) {
+      if (!response || !response.orderNumbers || response.orderNumbers.length === 0) {
+        displayOrdersFromDb();
+        return;
+      }
       if (response && response.orderNumbers && response.orderNumbers.length > 0) {
         view.displayOrderNumbers(response.orderNumbers, response.additionalFields);
 
