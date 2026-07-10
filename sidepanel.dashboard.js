@@ -157,8 +157,18 @@ function computePriceHistory(records) {
     if (!invoice || !Array.isArray(invoice.items)) return;
     if (Number(invoice.schemaVersion || 0) < CONSTANTS.ORDER_SCHEMA_VERSION) return;
 
-    const isoDate = String(record?.orderDate || record?.summary?.orderDate || '');
-    const date = isoDate.slice(0, 10);
+    // Normalize to a sortable YYYY-MM-DD: DOM-collected orders store human
+    // dates ('July 1, 2026'), which would otherwise sort alphabetically.
+    const rawDate = String(record?.orderDate || record?.summary?.orderDate || '');
+    let date = '';
+    if (/^\d{4}-\d{2}/.test(rawDate)) {
+      date = rawDate.slice(0, 10);
+    } else if (rawDate) {
+      const parsed = new Date(rawDate);
+      if (!isNaN(parsed.getTime())) {
+        date = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+      }
+    }
 
     // One price point per item per order.
     const seenInOrder = new Set();

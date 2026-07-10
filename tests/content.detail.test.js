@@ -118,6 +118,30 @@ test('mergeOrderItems dedupes DOM garbage copies — payload prices win, no doub
   assert.equal(merged[0].deliveryStatus, 'Delivered on Jun 14');
 });
 
+test('mergeOrderItems keeps genuinely distinct same-name/same-qty lines (multiset)', () => {
+  const sandbox = loadDetailSandbox();
+  // One payload line, but the invoice DOM legitimately shows the same
+  // name+qty twice (e.g. shipped + re-priced substitution).
+  const merged = sandbox.mergeOrderItems(
+    [
+      { productName: 'Weighted Grapes', quantity: '1', price: '$4.10' },
+      { productName: 'Weighted Grapes', quantity: '1', price: '$3.85' },
+    ],
+    [{ productName: 'Weighted Grapes', quantity: '1', price: '$4.10' }]
+  );
+  assert.equal(merged.length, 2, 'the second real line must survive');
+});
+
+test('mergeOrderItems backfills the DOM price when the payload price is blank', () => {
+  const sandbox = loadDetailSandbox();
+  const merged = sandbox.mergeOrderItems(
+    [{ productName: 'Payload-priceless item', quantity: '1', price: '$2.50' }],
+    [{ productName: 'Payload-priceless item', quantity: '1', price: '' }]
+  );
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].price, '$2.50', 'DOM price fills the payload gap');
+});
+
 test('mergeOrderItems keeps DOM-only items the payload missed', () => {
   const sandbox = loadDetailSandbox();
   const merged = sandbox.mergeOrderItems(

@@ -1115,23 +1115,33 @@ function mergeOrderItems(domItems, nextDataItems) {
     return scrapedItems;
   }
 
-  // The payload is the primary source (extraction order: payload → DOM);
-  // DOM-scraped copies of the same item are discarded, and DOM-only items
-  // (payload missed them) are appended.
+  // The payload is the primary source (extraction order: payload → DOM).
+  // MULTISET semantics: each payload line absorbs at most ONE matching DOM
+  // line, so two genuinely distinct lines with the same name+quantity (e.g.
+  // a shipped item plus its re-priced substitution) both survive, while a
+  // single DOM garbage copy of a payload item is still discarded.
   const mergedItems = [...payloadItems];
-  const seen = new Set(payloadItems.map(itemKey));
-  const scrapedByKey = new Map(scrapedItems.map((item) => [itemKey(item), item]));
+  const remaining = new Map();
+  payloadItems.forEach((item) => {
+    const key = itemKey(item);
+    remaining.set(key, (remaining.get(key) || 0) + 1);
+  });
+  const scrapedByKey = new Map();
 
   scrapedItems.forEach((item) => {
     const key = itemKey(item);
-    if (seen.has(key)) {
+    const available = remaining.get(key) || 0;
+    if (available > 0) {
+      remaining.set(key, available - 1);
+      // Remember one DOM copy per key for backfill below.
+      if (!scrapedByKey.has(key)) scrapedByKey.set(key, item);
       return;
     }
-    seen.add(key);
     mergedItems.push(item);
   });
 
-  // Backfill fields the payload sometimes lacks from the DOM copy.
+  // Backfill fields the payload sometimes lacks from the matched DOM copy —
+  // including the price, which the payload occasionally omits.
   mergedItems.forEach((item) => {
     const match = scrapedByKey.get(itemKey(item));
     if (!match) return;
@@ -1140,6 +1150,9 @@ function mergeOrderItems(domItems, nextDataItems) {
     }
     if (!item.thumbnailUrl && match.thumbnailUrl) {
       item.thumbnailUrl = match.thumbnailUrl;
+    }
+    if (!cleanText(String(item.price || '')) && cleanText(String(match.price || ''))) {
+      item.price = match.price;
     }
   });
 
@@ -1817,15 +1830,17 @@ async function handleCollectOrderNumbers(request = {}) {
     return { orderNumbers, additionalFields, orderSummaries: orderSummaries || {}, hasNextPage };
   } catch (error) {
     console.error("Error during collection:", error);
-    // Timeout errors indicate no more orders on this page
+    // Selector timeouts mean the orders list truly is not on this page
+    // (empty history) — report end-of-orders. Anything else is an ERROR the
+    // background must retry, never a successful empty page.
     if (
       error.message.includes("not found after") ||
       error.message.includes("None of the selectors matched")
     ) {
       console.log("No order cards found. Assuming end of orders.");
-      return { orderNumbers: [], additionalFields: {}, orderSummaries: {}, hasNextPage: false };
+      return { orderNumbers: [], additionalFields: {}, orderSummaries: {}, hasNextPage: false, endOfOrders: true };
     }
-    return { orderNumbers: [], additionalFields: {}, orderSummaries: {}, hasNextPage: false };
+    return { orderNumbers: [], additionalFields: {}, orderSummaries: {}, hasNextPage: false, collectionError: true };
   }
 }
 
