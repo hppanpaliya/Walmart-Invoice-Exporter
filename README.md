@@ -1,11 +1,13 @@
 # Walmart Invoice Exporter
 
-A Chrome extension that allows users to download their Walmart order history in XLSX format. Now with invoice caching, flexible export modes, and advanced performance optimizations!
+A Chrome extension that allows users to download their Walmart order history as Excel, CSV, JSON, or printable receipts. Now with Quick Export, invoice caching, flexible export modes, and advanced performance optimizations!
 
 <img src="./screenshot.webp" alt="Screenshot of extension" height="200">
 
 ## Features
 
+- **Quick Export**: One click builds a summary spreadsheet (one row per order) straight from your order list — no order pages are opened
+- **Multiple Export Formats**: Excel (default), accounting-friendly CSV, structured JSON, or a printable HTML receipt you can print to PDF
 - **Invoice Caching**: Downloaded invoices are automatically cached locally for instant re-access without re-downloading
 - **Flexible Export Modes**: Choose between downloading individual files (one per order) or a combined single file with all items
 - **Batch Download**: Select and download multiple order invoices at once
@@ -21,10 +23,12 @@ A Chrome extension that allows users to download their Walmart order history in 
   - Product links
   - Order information (number, date)
   - Shipping address 
-  - Payment method
+  - Payment method and per-card payment split
   - Order subtotal (before fees and taxes)
   - Order total (final amount)
-  - Additional charges (delivery, tax, tip)
+  - Additional charges (delivery, tax, tip) plus refunds and donations
+  - Marketplace seller(s), fulfillment type, delivered date, and tracking numbers
+  - Receipt barcode link, and optional embedded product thumbnails
 - **Secure & Efficient**: Runs only on Walmart's orders pages with minimal required permissions
 - **Centralized Configuration**: Maintains consistent selectors and styling throughout the extension using centralized constants
 
@@ -94,6 +98,13 @@ Install the Walmart Invoice Exporter directly from the [Chrome Web Store](https:
 5. Pin the extension to your toolbar for easy access
 
 ## What's New
+
+### Version 6.4 (July 9, 2026)
+- **Fixed the "repeated blank entries" issue** — Walmart removed the CSS classes v6.2 relied on; extraction now reads Walmart's page payload first with DOM fallback, and warns instead of exporting blanks
+- **Quick Export** — instant one-row-per-order summary spreadsheet, no order page visits
+- **New export formats** — CSV, JSON, and printable HTML receipts alongside Excel
+- **Richer columns** — seller, fulfillment, delivered date, tracking, refund, donations, payment split, receipt barcode
+- **Opt-in product thumbnails** in Excel exports
 
 ### Version 6.3 (March 25, 2026)
 - **Improved reliability:** Added dual order-detail extraction (`__NEXT_DATA__` + DOM fallback)
