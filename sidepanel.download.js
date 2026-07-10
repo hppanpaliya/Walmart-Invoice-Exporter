@@ -256,6 +256,57 @@
     return { failedOrders, cancelled: false };
   }
 
+  /** Currently selected export format (XLSX default). */
+  function getExportFormat() {
+    return (app && app.exportFormat) || CONSTANTS.EXPORT_FORMATS.XLSX;
+  }
+
+  /** Export all collected orders combined, honoring the selected format. */
+  async function exportCombinedOrders(collectedOrdersData) {
+    const format = getExportFormat();
+    if (format === CONSTANTS.EXPORT_FORMATS.CSV) {
+      convertOrdersToCsv(collectedOrdersData);
+      return;
+    }
+    if (format === CONSTANTS.EXPORT_FORMATS.JSON) {
+      convertOrdersToJson(collectedOrdersData, "Walmart_Orders.json");
+      return;
+    }
+    await convertMultipleOrdersToXlsx(collectedOrdersData, ExcelJS, "Walmart_Orders.xlsx");
+  }
+
+  /** Export one order as its own file, honoring the selected format. */
+  async function exportOneOrder(data) {
+    const format = getExportFormat();
+    const orderNumber = data.orderNumber || "order";
+    if (format === CONSTANTS.EXPORT_FORMATS.CSV) {
+      convertOrdersToCsv([data], {
+        ordersFilename: `Order_${orderNumber}.csv`,
+        itemsFilename: `Order_${orderNumber}_Items.csv`,
+      });
+      return;
+    }
+    if (format === CONSTANTS.EXPORT_FORMATS.JSON) {
+      convertOrdersToJson(data, `Order_${orderNumber}.json`);
+      return;
+    }
+    await convertToXlsx(data, ExcelJS, { mode: "single" });
+  }
+
+  /** Export Quick Export summary rows, honoring the selected format. */
+  async function exportSummaryRows(rows) {
+    const format = getExportFormat();
+    if (format === CONSTANTS.EXPORT_FORMATS.CSV) {
+      convertOrderSummariesToCsv(rows);
+      return;
+    }
+    if (format === CONSTANTS.EXPORT_FORMATS.JSON) {
+      downloadTextFile(JSON.stringify(rows, null, 2), "Walmart_Orders_Summary.json", "application/json");
+      return;
+    }
+    await convertOrderSummariesToXlsx(rows, ExcelJS);
+  }
+
   /**
    * Fetch the background collection snapshot (order numbers, titles, summaries).
    * @returns {Promise<Object>} GET_PROGRESS response from the service worker
@@ -365,7 +416,7 @@
       }
 
       const rows = buildQuickExportRows(orderNumbers, response.additionalFields || {}, orderSummaries);
-      await convertOrderSummariesToXlsx(rows, ExcelJS);
+      await exportSummaryRows(rows);
 
       const missingCount = orderNumbers.length - summaryCount;
       const message =
@@ -442,7 +493,7 @@
           }
 
           try {
-            await convertMultipleOrdersToXlsx(collectedOrdersData, ExcelJS, "Walmart_Orders.xlsx");
+            await exportCombinedOrders(collectedOrdersData);
           } catch (e) {
             console.error("Failed to export to XLSX:", e);
             showTimedProgressMessage(
@@ -481,7 +532,7 @@
               if (checkExtractionWarnings(orderNumber, data)) {
                 extractionWarningsDetected = true;
               }
-              await convertToXlsx(data, ExcelJS, { mode: "single" });
+              await exportOneOrder(data);
             },
           });
 
