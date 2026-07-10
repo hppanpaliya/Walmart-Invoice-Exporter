@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "*"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Syntax check every extension script
+        run: |
+          for f in *.js; do
+            if [ "$f" = "exceljs.bare.min.js" ]; then continue; fi
+            node --check "$f"
+          done
+
+      - name: Unit tests (extractors, export writers, fixtures)
+        run: node --test tests/*.test.js
