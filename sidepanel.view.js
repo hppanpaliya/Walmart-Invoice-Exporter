@@ -194,6 +194,54 @@
     `;
   }
 
+  /**
+   * Show (or refresh) the durable order-database stats line in the card.
+   * Best-effort: IndexedDB problems must never break the panel.
+   */
+  async function updateDbStats() {
+    try {
+      const stats = await OrderDb.getStats();
+      let statsLine = document.getElementById("dbStats");
+
+      if (stats.orders === 0) {
+        if (statsLine) statsLine.remove();
+        return;
+      }
+
+      if (!statsLine) {
+        statsLine = document.createElement("div");
+        statsLine.id = "dbStats";
+        statsLine.className = "db-stats";
+        const card = document.querySelector(".card");
+        if (card) card.appendChild(statsLine);
+      }
+
+      statsLine.innerHTML = `
+        ${renderIcon("CACHE")}
+        <span>Order database: ${stats.orders} orders stored (${stats.invoices} with full invoice)</span>
+        <button class="db-clear" title="Delete every stored order from the local database">clear</button>
+      `;
+
+      const clearButton = statsLine.querySelector(".db-clear");
+      if (clearButton) {
+        clearButton.addEventListener("click", async () => {
+          const confirmed = window.confirm(
+            "Delete all orders stored in the local database? Exports and incremental collection will start from scratch."
+          );
+          if (!confirmed) return;
+          try {
+            await OrderDb.clearAll();
+          } catch (error) {
+            console.error("Failed to clear order database:", error);
+          }
+          updateDbStats();
+        });
+      }
+    } catch (error) {
+      console.warn("Order DB stats unavailable:", error);
+    }
+  }
+
   function setUIEnabled(enabled) {
     const card = document.querySelector(".card");
     if (card) {
@@ -333,7 +381,7 @@
       const quickExportButton = document.createElement("button");
       quickExportButton.id = "quickExportButton";
       quickExportButton.className = CONSTANTS.CSS_CLASSES.BTN_PRIMARY;
-      quickExportButton.title = "Instant summary spreadsheet from already-collected data — no order pages are opened";
+      quickExportButton.title = "Instant summary of collected data (selected orders, or all when none are selected) in your chosen export format — no order pages are opened";
       quickExportButton.innerHTML = `
         ${renderIcon("BOLT")}
         <span class="btn-text">${CONSTANTS.TEXT.QUICK_EXPORT}</span>
@@ -511,6 +559,7 @@
     clearOffTabWarning,
     showExtractionWarning,
     updateFilterNotice,
+    updateDbStats,
     setUIEnabled,
     updateProgressUI,
     createProgressElement,

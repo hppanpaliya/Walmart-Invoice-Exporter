@@ -54,6 +54,19 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  const incrementalToggle = document.getElementById("incrementalCollect");
+  chrome.storage.local.get(["incrementalCollect"], (res) => {
+    app.incrementalCollect = Boolean(res.incrementalCollect);
+    if (incrementalToggle) incrementalToggle.checked = app.incrementalCollect;
+  });
+
+  if (incrementalToggle) {
+    incrementalToggle.addEventListener("change", () => {
+      app.incrementalCollect = incrementalToggle.checked;
+      chrome.storage.local.set({ incrementalCollect: app.incrementalCollect });
+    });
+  }
+
   const faqButton = document.getElementById("faqButton");
   const backButton = document.getElementById("backButton");
   const confirmDialog = document.getElementById("confirmDialog");

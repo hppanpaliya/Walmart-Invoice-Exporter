@@ -3,8 +3,8 @@
  * Handles order collection, pagination, and caching
  */
 
-// Load shared constants and utilities
-importScripts('utils.js');
+// Load shared constants, utilities, and the durable order database
+importScripts('utils.js', 'orderdb.js');
 
 // Encapsulate state to reduce global namespace pollution
 const CollectionState = {
@@ -21,7 +21,9 @@ const CollectionState = {
   initialPageLoaded: false,
   cacheKey: CONSTANTS.CACHE_KEYS.ORDER_COLLECTION,
   pagesCached: {},
-  
+  incremental: false,
+  knownAtStart: null,
+
   // Reset state for new collection
   reset() {
     this.currentPage = 1;
@@ -123,11 +125,29 @@ function handleStartCollection(request, sendResponse) {
     loadCachedOrderNumbers().then(() => {
       CollectionState.reset();
       CollectionState.pageLimit = request.pageLimit || 0;
+      CollectionState.incremental = Boolean(request.incremental);
+      CollectionState.knownAtStart = null;
       // Always refresh the first page to avoid missing new orders within the cache window
       if (CollectionState.pagesCached[1]) {
         delete CollectionState.pagesCached[1];
       }
-      startCollection(request.url);
+
+      if (!CollectionState.incremental) {
+        startCollection(request.url);
+        return;
+      }
+
+      // Incremental mode stops when a whole page of already-stored orders is
+      // seen — snapshot what the database knows before we begin.
+      OrderDb.getKnownOrderNumbers()
+        .then((known) => {
+          CollectionState.knownAtStart = known;
+        })
+        .catch((error) => {
+          console.warn("Order DB unavailable; running a full collection:", error);
+          CollectionState.incremental = false;
+        })
+        .then(() => startCollection(request.url));
     });
   }
   sendResponse({ status: "started" });
@@ -265,6 +285,11 @@ function collectOrderNumbers() {
         CollectionState.allOrderSummaries = { ...CollectionState.allOrderSummaries, ...response.orderSummaries };
       }
 
+      // Persist this page into the durable order database (best-effort).
+      OrderDb.putSummaries(response.orderSummaries || {}, response.additionalFields || {}).catch(
+        (error) => console.warn("Failed to persist page to order DB:", error)
+      );
+
       // Cache page data
       CollectionState.pagesCached[CollectionState.currentPage] = {
         hasNextPage: response.hasNextPage,
@@ -275,6 +300,19 @@ function collectOrderNumbers() {
 
       // Save to cache after each page
       saveToCache();
+
+      // Incremental sync: a page consisting entirely of already-stored orders
+      // means everything older is stored too — stop here.
+      const pageFullyKnown =
+        CollectionState.incremental &&
+        CollectionState.knownAtStart &&
+        response.orderNumbers.length > 0 &&
+        response.orderNumbers.every((num) => CollectionState.knownAtStart.has(num));
+      if (pageFullyKnown) {
+        console.log("Incremental sync: page contains only known orders. Finishing collection.");
+        finishCollection();
+        return;
+      }
 
       if (response.hasNextPage && (CollectionState.pageLimit === 0 || CollectionState.currentPage < CollectionState.pageLimit)) {
         goToNextPage();
