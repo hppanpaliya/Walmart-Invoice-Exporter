@@ -156,6 +156,11 @@
       }
 
       await cacheInvoice(orderNumber, response.data);
+      // Also persist durably (best-effort) — powers analytics and survives
+      // the 24h cache expiry.
+      OrderDb.putInvoice(orderNumber, response.data).catch((error) =>
+        console.warn(`Failed to persist invoice #${orderNumber} to order DB:`, error)
+      );
       view.updateOrderCacheStatus(orderNumber);
       return response.data;
     };
@@ -434,7 +439,30 @@
 
     try {
       const response = await getCollectionSnapshot();
-      const orderNumbers = (response && response.orderNumbers) || [];
+      let orderNumbers = (response && response.orderNumbers) || [];
+      let orderSummaries = (response && response.orderSummaries) || {};
+      let additionalFields = (response && response.additionalFields) || {};
+
+      if (orderNumbers.length === 0) {
+        // The 24h collection cache is empty — fall back to the durable DB.
+        try {
+          const records = await OrderDb.getAllOrders();
+          const withSummaries = records.filter((record) => record.summary);
+          if (withSummaries.length > 0) {
+            withSummaries.sort((a, b) => String(b.orderDate).localeCompare(String(a.orderDate)));
+            orderNumbers = withSummaries.map((record) => record.orderNumber);
+            orderSummaries = Object.fromEntries(
+              withSummaries.map((record) => [record.orderNumber, record.summary])
+            );
+            additionalFields = Object.fromEntries(
+              withSummaries.map((record) => [record.orderNumber, record.title || ""])
+            );
+          }
+        } catch (error) {
+          console.warn("Order DB unavailable for Quick Export fallback:", error);
+        }
+      }
+
       if (orderNumbers.length === 0) {
         showTimedProgressMessage(
           progressDiv,
@@ -444,7 +472,17 @@
         return;
       }
 
-      const orderSummaries = response.orderSummaries || {};
+      // Respect the order checkboxes: when any orders are selected, export
+      // only those; with nothing selected, export everything collected.
+      const selectedOrders = getSelectedOrderNumbers();
+      if (selectedOrders.length > 0) {
+        const selectedSet = new Set(selectedOrders);
+        const filtered = orderNumbers.filter((orderNumber) => selectedSet.has(orderNumber));
+        if (filtered.length > 0) {
+          orderNumbers = filtered;
+        }
+      }
+
       const summaryCount = orderNumbers.filter((orderNumber) => orderSummaries[orderNumber]).length;
       if (summaryCount === 0) {
         showTimedProgressMessage(
@@ -457,7 +495,7 @@
         return;
       }
 
-      const rows = buildQuickExportRows(orderNumbers, response.additionalFields || {}, orderSummaries);
+      const rows = buildQuickExportRows(orderNumbers, additionalFields, orderSummaries);
       await exportSummaryRows(rows);
 
       const missingCount = orderNumbers.length - summaryCount;

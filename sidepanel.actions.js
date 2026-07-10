@@ -61,6 +61,7 @@
           view.applyLayout(view.UI_MODES.MAIN_ORDERS);
           app.currentOrdersUrl = url;
           view.updateFilterNotice(url);
+          view.updateDbStats();
           loadCacheOnMainPage();
         }
       } else {
@@ -88,6 +89,7 @@
         action: CONSTANTS.MESSAGES.START_COLLECTION,
         url: app.currentOrdersUrl,
         pageLimit: pageLimit,
+        incremental: Boolean(app.incrementalCollect),
       },
       function (response) {
         if (response && response.status === "started") {
