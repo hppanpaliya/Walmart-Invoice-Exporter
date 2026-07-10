@@ -5,7 +5,9 @@
 
   const OrderDataFetcher = (() => {
     let downloadTab = null;
-    const MIN_ORDER_SCHEMA_VERSION = 1;
+    // v2 added seller/fulfillment/tracking/refund/donations/payment-split
+    // fields; older cached invoices are re-fetched so the new columns fill in.
+    const MIN_ORDER_SCHEMA_VERSION = 2;
 
     const hasUsableOrderItems = (data) => {
       if (!Array.isArray(data?.items) || data.items.length === 0) {

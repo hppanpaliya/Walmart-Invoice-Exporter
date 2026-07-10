@@ -85,6 +85,13 @@ function configureMultipleOrdersColumns(worksheet) {
     { header: 'Order Total', key: 'orderTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Delivery Status', key: 'deliveryStatus', width: 20, style: { alignment: { horizontal: "center" } } },
     { header: 'Product Link', key: 'productLink', width: 60 , style: { font: STYLES.linkFont } },
+    { header: 'Seller(s)', key: 'sellers', width: 26, style: { alignment: { horizontal: "center" } } },
+    { header: 'Fulfillment', key: 'fulfillmentTypes', width: 16, style: { alignment: { horizontal: "center" } } },
+    { header: 'Delivered Date', key: 'deliveredDate', width: 18, style: { alignment: { horizontal: "center" } } },
+    { header: 'Tracking Numbers', key: 'trackingNumbers', width: 28, style: { alignment: { horizontal: "center" } } },
+    { header: 'Payment Split', key: 'paymentSplit', width: 40, style: { alignment: { horizontal: "center" } } },
+    { header: 'Refund', key: 'refund', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Donations', key: 'donations', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
   ];
 }
 
@@ -200,6 +207,14 @@ function addMultipleOrderItemsToWorksheet(worksheet, items) {
       tax: parseNumericValue(item.tax),
       tip: parseNumericValue(item.tip),
       orderTotal: parseNumericValue(item.orderTotal),
+      sellers: item.sellers || '',
+      fulfillmentTypes: item.fulfillmentTypes || '',
+      deliveredDate: item.deliveredDate || '',
+      trackingNumbers: item.trackingNumbers || '',
+      paymentSplit: item.paymentSplit || '',
+      // Blank (not $0.00) when the order had no refund or donation.
+      refund: item.refund ? parseNumericValue(item.refund) : '',
+      donations: item.donations ? parseNumericValue(item.donations) : '',
     });
   });
 }
@@ -217,6 +232,8 @@ function styleSingleOrderWorksheet(worksheet) {
     'Bag Fee',
     'Tax',
     'Tip',
+    'Refund',
+    'Donations',
     'Order Total',
   ]);
 
@@ -282,7 +299,14 @@ function addOrderSummary(worksheet, orderDetails) {
     ['Bag Fee', parseNumericValue(orderDetails.bagFee)],
     ['Tax', parseNumericValue(orderDetails.tax)],
     ['Tip', parseNumericValue(orderDetails.tip)],
+    ['Refund', orderDetails.refund ? parseNumericValue(orderDetails.refund) : ''],
+    ['Donations', orderDetails.donations ? parseNumericValue(orderDetails.donations) : ''],
     ['Order Total', parseNumericValue(orderDetails.orderTotal)],
+    ['Seller(s)', orderDetails.sellers || ''],
+    ['Fulfillment', orderDetails.fulfillmentTypes || ''],
+    ['Delivered Date', orderDetails.deliveredDate || ''],
+    ['Tracking Numbers', orderDetails.trackingNumbers || ''],
+    ['Payment Split', orderDetails.paymentSplit || ''],
   ];
 
   const summaryRows = rows.map(([label, value]) => {
@@ -300,6 +324,8 @@ function addOrderSummary(worksheet, orderDetails) {
     'Bag Fee',
     'Tax',
     'Tip',
+    'Refund',
+    'Donations',
     'Order Total',
   ]);
   summaryRows.forEach((row) => {
@@ -421,6 +447,13 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null)
         bagFee: orderDetails.bagFee || '',
         tax: orderDetails.tax || '',
         tip: orderDetails.tip || '',
+        refund: orderDetails.refund || '',
+        donations: orderDetails.donations || '',
+        sellers: orderDetails.sellers || '',
+        fulfillmentTypes: orderDetails.fulfillmentTypes || '',
+        deliveredDate: orderDetails.deliveredDate || '',
+        trackingNumbers: orderDetails.trackingNumbers || '',
+        paymentSplit: orderDetails.paymentSplit || '',
       });
     });
   });
