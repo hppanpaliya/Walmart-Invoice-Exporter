@@ -460,6 +460,13 @@
       return;
     }
 
+    // Same contract as Download: operate on the SELECTED orders only.
+    const selectedOrders = getSelectedOrderNumbers();
+    if (selectedOrders.length === 0) {
+      alert("Please select at least one order to quick export.");
+      return;
+    }
+
     const quickExportButton = document.getElementById("quickExportButton");
     view.setButtonLoading(quickExportButton, true);
     const progressDiv = createDownloadProgressElement();
@@ -493,24 +500,34 @@
         }
       }
 
+      // Strictly the selected orders — nothing else ever exports.
+      const selectedSet = new Set(selectedOrders);
+      orderNumbers = orderNumbers.filter((orderNumber) => selectedSet.has(orderNumber));
+
       if (orderNumbers.length === 0) {
         showTimedProgressMessage(
           progressDiv,
-          createErrorMessage("No collected orders to export. Run Start Collection first."),
+          createErrorMessage("No data found for the selected orders. Run Start Collection first."),
           CONSTANTS.TIMING.EXPORT_FAIL_DISPLAY
         );
         return;
       }
 
-      // Respect the order checkboxes: when any orders are selected, export
-      // only those; with nothing selected, export everything collected.
-      const selectedOrders = getSelectedOrderNumbers();
-      if (selectedOrders.length > 0) {
-        const selectedSet = new Set(selectedOrders);
-        const filtered = orderNumbers.filter((orderNumber) => selectedSet.has(orderNumber));
-        if (filtered.length > 0) {
-          orderNumbers = filtered;
+      // Upgrade degraded rows from the durable DB, which may hold a richer
+      // payload-quality summary from a previous collection.
+      try {
+        for (const orderNumber of orderNumbers) {
+          if (isPayloadQualitySummary(orderSummaries[orderNumber])) continue;
+          const record = await OrderDb.getOrder(orderNumber);
+          if (
+            record?.summary &&
+            (!orderSummaries[orderNumber] || isPayloadQualitySummary(record.summary))
+          ) {
+            orderSummaries[orderNumber] = record.summary;
+          }
         }
+      } catch (error) {
+        console.warn("Order DB unavailable for Quick Export upgrade:", error);
       }
 
       const summaryCount = orderNumbers.filter((orderNumber) => orderSummaries[orderNumber]).length;

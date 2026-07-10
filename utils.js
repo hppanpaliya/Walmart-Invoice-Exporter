@@ -1610,6 +1610,20 @@ function describeActiveFilters(url) {
 }
 
 /**
+ * Whether a Quick Export summary came from the rich payload path.
+ * Summaries stored before source-tagging existed are recognized by the
+ * payload-only fields they carry (per-item data / subtotal).
+ * @param {Object|null} summary - Quick Export summary object
+ * @returns {boolean}
+ */
+function isPayloadQualitySummary(summary) {
+  if (!summary) return false;
+  if (summary.source === 'payload') return true;
+  if (summary.source === 'dom') return false;
+  return (Array.isArray(summary.items) && summary.items.length > 0) || Boolean(summary.subTotal);
+}
+
+/**
  * Sidepanel UI helpers
  */
 const CACHE_INDICATOR_STYLE = 'cursor: pointer; margin-left: 6px; color: var(--primary); display: inline-flex; align-items: center; gap: 2px; font-size: 10px;';
