@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.11] - July 10, 2026
+
+### Features
+- **Feature:** **True PDF receipts** — a new 'PDF receipt (.pdf)' export format generates real PDF files directly in the extension via a built-in, dependency-free PDF writer: per-order receipts (items table, totals, payment/shipping meta, multi-page with repeated headers) and a Quick Export summary table. No more print-to-PDF detour.
+
 ## [6.10] - July 10, 2026
 
 ### Features
