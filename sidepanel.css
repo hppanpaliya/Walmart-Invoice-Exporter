@@ -165,6 +165,25 @@ body {
   cursor: pointer;
 }
 
+.db-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 10px;
+}
+
+.db-stats .db-clear {
+  background: none;
+  border: none;
+  color: var(--danger);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
 .filter-notice {
   display: flex;
   align-items: flex-start;

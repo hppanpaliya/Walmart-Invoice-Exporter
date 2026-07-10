@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="sidepanel.css">
     <script src="exceljs.bare.min.js"></script>
     <script src="utils.js"></script>
+    <script src="orderdb.js"></script>
     <script src="sidepanel.state.js"></script>
     <script src="sidepanel.view.js"></script>
     <script src="sidepanel.download.js"></script>
@@ -62,6 +63,10 @@
                     <option value="json">JSON (.json)</option>
                     <option value="receipt">Printable receipt (.html)</option>
                 </select>
+            </div>
+            <div class="toggle-group" id="incrementalToggleGroup">
+                <input type="checkbox" id="incrementalCollect">
+                <label for="incrementalCollect" title="Stops paginating when a whole page of already-stored orders is reached. Uses the local order database, which persists across sessions.">Only collect new orders (stop at known)</label>
             </div>
             <div class="toggle-group" id="thumbnailToggleGroup">
                 <input type="checkbox" id="includeThumbnails">

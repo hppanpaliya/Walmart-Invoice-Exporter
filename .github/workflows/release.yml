@@ -48,6 +48,7 @@ jobs:
           cp exceljs.bare.min.js temp/Walmart-Invoice-Exporter/
           cp manifest.json temp/Walmart-Invoice-Exporter/
           cp utils.js temp/Walmart-Invoice-Exporter/
+          cp orderdb.js temp/Walmart-Invoice-Exporter/
 
           # Side panel (replaces old popup/faq structure)
           cp sidepanel.html temp/Walmart-Invoice-Exporter/

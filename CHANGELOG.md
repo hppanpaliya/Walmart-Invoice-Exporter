@@ -1,5 +1,15 @@
 # Changelog
 
+## [6.6] - July 10, 2026
+
+### Features
+- **Feature:** **Local order database** — collected orders and downloaded invoices are now stored durably on-device (IndexedDB), surviving the 24-hour cache and browser restarts. A stats line in the panel shows what's stored, with a one-click clear.
+- **Feature:** **Incremental collection** — new "Only collect new orders" toggle stops pagination as soon as a whole page of already-stored orders is reached, making regular syncs fast instead of re-crawling the entire history.
+- **Feature:** Quick Export now falls back to the local database when the collection cache has expired — export without re-collecting.
+
+### Fixes
+- **Fix:** Quick Export respects the order selection — ticked orders export alone; nothing ticked exports everything collected.
+
 ## [6.5] - July 9, 2026
 
 ### Internal
