@@ -1,0 +1,120 @@
+{
+  "props": {
+    "pageProps": {
+      "initialData": {
+        "data": {
+          "order": {
+            "id": "200010000000042",
+            "displayId": "2000100-00000042",
+            "orderDate": "2026-07-01T14:23:00.000-04:00",
+            "title": "July 01, 2026 order",
+            "shortTitle": "Jul 01 order",
+            "itemCount": 3,
+            "type": "GLASS",
+            "idBarcodeImageUrl": "https://receipts-query.edge.walmart.com/barcode?data=sanitized",
+            "priceDetails": {
+              "subTotal": { "displayValue": "$18.53" },
+              "strikethroughSubTotal": { "displayValue": "$20.53" },
+              "savings": { "displayValue": "$2.00" },
+              "taxTotal": { "displayValue": "$1.14" },
+              "driverTip": { "displayValue": "$4.00" },
+              "grandTotal": { "displayValue": "$24.11" },
+              "grandTotalWithTips": { "displayValue": "$28.11" },
+              "refund": { "displayValue": "$3.98" },
+              "donations": { "displayValue": "$1.00" },
+              "fees": [
+                { "label": "Delivery fee", "displayValue": "$0.00", "strikeThroughValue": "$7.95" },
+                { "label": "Bag fee", "displayValue": "$0.25" }
+              ]
+            },
+            "paymentMethods": [
+              {
+                "cardType": "VISA",
+                "description": "ending in 1234",
+                "paymentType": "CREDITCARD",
+                "paymentPreferenceId": "pp-1",
+                "displayValues": [{ "displayValue": "$20.00" }],
+                "message": { "parts": [{ "text": "Charged Jul 2" }] }
+              },
+              {
+                "cardType": "GIFTCARD",
+                "description": "Gift Card",
+                "paymentType": "GIFTCARD",
+                "paymentPreferenceId": "pp-2",
+                "displayValues": [{ "displayValue": "$6.84" }, "covers remaining balance"]
+              }
+            ],
+            "groups_2101": [
+              {
+                "fulfillmentType": "DELIVERY",
+                "status": { "message": { "parts": [{ "text": "Delivered" }] } },
+                "deliveredDate": "2026-07-02",
+                "seller": { "name": "Walmart.com" },
+                "shipment": {
+                  "trackingNumber": "1Z999AA10123456784",
+                  "multiPackageDetails": [{ "trackingNumber": "1Z999AA10123456785" }]
+                },
+                "deliveryAddress": {
+                  "fullName": "Test Customer",
+                  "address": {
+                    "addressLineOne": "123 Main St",
+                    "city": "Springfield",
+                    "state": "IL",
+                    "postalCode": "62704"
+                  }
+                },
+                "deliveryInstructions": { "text": "Leave at door" },
+                "items": [
+                  {
+                    "productInfo": {
+                      "name": "Great Value Milk 1 Gallon",
+                      "usItemId": "10450114",
+                      "canonicalUrl": "/ip/10450114",
+                      "imageInfo": { "thumbnailUrl": "https://i5.walmartimages.com/asr/milk.jpg" }
+                    },
+                    "quantity": 2,
+                    "priceInfo": { "linePrice": { "displayValue": "$7.96" } }
+                  },
+                  {
+                    "productInfo": {
+                      "name": "Bananas, each",
+                      "usItemId": "44390948",
+                      "canonicalUrl": "/ip/44390948",
+                      "imageInfo": { "thumbnailUrl": "https://i5.walmartimages.com/asr/banana.jpg" }
+                    },
+                    "quantity": 6,
+                    "priceInfo": { "linePrice": { "displayValue": "$1.62" } }
+                  }
+                ]
+              },
+              {
+                "fulfillmentType": "SHIPPING",
+                "status": { "message": { "parts": [{ "text": "Canceled" }] } },
+                "seller": { "sellerDisplayName": "Acme Marketplace LLC" },
+                "subGroups": [
+                  {
+                    "categories": [
+                      {
+                        "items": [
+                          {
+                            "productInfo": {
+                              "name": "=HYPERLINK Product \"Deal\", 2-pack",
+                              "usItemId": "998877",
+                              "canonicalUrl": "/ip/998877"
+                            },
+                            "quantity": 1,
+                            "priceInfo": { "linePrice": { "displayValue": "$11.12" } }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
