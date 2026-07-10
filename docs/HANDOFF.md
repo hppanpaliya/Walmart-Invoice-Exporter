@@ -114,16 +114,16 @@ Plus `pageInfo.nextPageCursor` and `filterGroups` (date / returned status / stat
 | 2 | `20f2610` merge v6.3 (supersedes 6.2 revert) | ✅ on main |
 | 3 | `94369fb` tripwire: blank-data detection + warning banner | ✅ on main |
 | 4 | `c22ca87`/`fb9568a` docs: ROADMAP.md | ✅ on main |
-| 5 | **Quick Export** | ⚠️ PARTIAL — data layer done on branch `wip/quick-export` (`60bffdb`): content.js `buildOrderSummary()`, background.js `allOrderSummaries` accumulation + cache. **Missing:** Quick Export button (sidepanel.html + actions), summary XLSX writer in sidepanel.download.js (`Walmart_Orders_Summary.xlsx`: Order #, Date human + ISO, Item count, Item names "2× Milk; …", Status, Fulfillment, Subtotal, Tip, Total), graceful degradation when cached orders lack summaries (fill # + title, blank rest; if none have summaries → prompt re-collect). Resume: `git merge wip/quick-export` or cherry-pick `60bffdb`, then finish UI half. |
-| 6 | Filter awareness | ⏳ TODO — parse active filter params from the orders-page URL, display in panel ("Collecting: filtered view — …"); pagination already preserves filters (button clicks). NO owner-constructed filter URLs. |
-| 7 | New export columns | ⏳ TODO — add to deep export: taxTotal, seller name(s), fulfillmentType, deliveredDate, tracking numbers, refund, per-card charge split (`paymentMethods[].displayValues`), donations. Payload-first w/ DOM fallback where feasible (§2a has exact paths). |
-| 8 | CSV + JSON formats | ⏳ TODO — format selector (XLSX default/CSV/JSON), RFC-4180 CSV escaping, flat accounting-friendly CSV (one row per order + items sheet equivalent). |
-| 9 | Thumbnails (opt-in, default OFF) | ⏳ TODO — ExcelJS `addImage` from `imageInfo.thumbnailUrl`. CAUTION: images host is `i5.walmartimages.com` — check `host_permissions` before fetching from panel; if blocked, fall back to hyperlink column. No new permissions without sign-off. |
-| 10 | Barcode + printable receipt | ⏳ TODO — `idBarcodeImageUrl` column in export; per-order "printable receipt" generated HTML (user prints to PDF). True PDF gen = roadmap. |
-| 11 | Release commit | ⏳ TODO — CHANGELOG 6.4, manifest version 6.4, README touch-ups. LAST. |
+| 5 | **Quick Export** | ✅ DONE — data layer (`60bffdb`, merged) + UI: Quick Export button, `quickExportSummaries()` in sidepanel.download.js, graceful degradation (orders without summaries export # + title only; none at all → prompt re-collect). |
+| 6 | Filter awareness | ✅ DONE — `describeActiveFilters()` (utils.js) + `updateFilterNotice()` (view.js); display-only, no owner-constructed filter URLs. |
+| 7 | New export columns | ✅ DONE — sellers, fulfillmentTypes, deliveredDate, trackingNumbers, refund, donations, paymentSplit (all `displayValues`, not just `[0]`). Appended at the end of the multi-order sheet; schemaVersion 1→2 so 6.3 caches re-fetch. (taxTotal was already exported as 'Tax'.) |
+| 8 | CSV + JSON formats | ✅ DONE — 'Export format' selector (XLSX/CSV/JSON/receipt); RFC-4180 CSV as orders file (row per order) + items file (row per item) with numeric money fields; JSON = full structured objects. All export paths incl. Quick Export honor the format. |
+| 9 | Thumbnails (opt-in, default OFF) | ✅ DONE — toggle default OFF; `embedItemThumbnails()` fetches at export time and falls back to a hyperlink cell per image on failure (no host permission exists for i5.walmartimages.com; none added). Payload thumbnailUrl is backfilled into DOM-merged items. |
+| 10 | Barcode + printable receipt | ✅ DONE — `barcodeImageUrl` from `idBarcodeImageUrl` → 'Receipt Barcode' hyperlink column (Excel), URL column (CSV), field (JSON). 'Printable receipt (.html)' format renders per-order receipts with page breaks; user prints to PDF. |
+| 11 | Release commit | ✅ DONE — CHANGELOG 6.4, manifest 6.4, README, this table. |
 
-Recommended order: 5 → (6 ∥ 7 in parallel worktrees — mostly disjoint files) → 8 → 9 → 10 → 11.
-8/9/10 all rewrite `sidepanel.download.js` — keep those sequential.
+All v6.4 work shipped one feature per commit and passed a multi-agent code review.
+Remaining store action items from §1 (publish 6.4, reply to "repeated entry" reviews) are the owner's.
 
 ---
 
