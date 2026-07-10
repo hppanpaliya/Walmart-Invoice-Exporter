@@ -10,6 +10,7 @@ importScripts('utils.js');
 const CollectionState = {
   allOrderNumbers: new Set(),
   allAdditionalFields: {},
+  allOrderSummaries: {},
   currentPage: 1,
   isCollecting: false,
   tabId: null,
@@ -32,6 +33,7 @@ const CollectionState = {
   clearAll() {
     this.allOrderNumbers.clear();
     this.allAdditionalFields = {};
+    this.allOrderSummaries = {};
     this.pagesCached = {};
   }
 };
@@ -73,6 +75,7 @@ function loadCachedOrderNumbers() {
         } else {
           CollectionState.allOrderNumbers = new Set(cachedData.orderNumbers);
           CollectionState.allAdditionalFields = cachedData.additionalFields || {};
+          CollectionState.allOrderSummaries = cachedData.orderSummaries || {};
           CollectionState.pagesCached = cachedData.pagesCached || {};
           console.log(`Loaded ${CollectionState.allOrderNumbers.size} orders from cache with ${Object.keys(CollectionState.pagesCached).length} pages cached`);
         }
@@ -87,6 +90,7 @@ function saveToCache() {
   const dataToCache = {
     orderNumbers: Array.from(CollectionState.allOrderNumbers),
     additionalFields: CollectionState.allAdditionalFields,
+    orderSummaries: CollectionState.allOrderSummaries,
     pagesCached: CollectionState.pagesCached,
     timestamp: Date.now(),
   };
@@ -165,6 +169,7 @@ function handleGetProgress(_request, sendResponse) {
       pageLimit: CollectionState.pageLimit,
       orderNumbers: Array.from(CollectionState.allOrderNumbers),
       additionalFields: CollectionState.allAdditionalFields,
+      orderSummaries: CollectionState.allOrderSummaries,
       isCollecting: CollectionState.isCollecting,
       pagesCached: CollectionState.pagesCached,
     });
@@ -243,6 +248,11 @@ function collectOrderNumbers() {
       // Add additional fields to the map
       if (response.additionalFields) {
         CollectionState.allAdditionalFields = { ...CollectionState.allAdditionalFields, ...response.additionalFields };
+      }
+
+      // Merge per-page order summaries (absent on DOM-fallback pages)
+      if (response.orderSummaries) {
+        CollectionState.allOrderSummaries = { ...CollectionState.allOrderSummaries, ...response.orderSummaries };
       }
 
       // Cache page data

@@ -223,6 +223,58 @@ const PurchaseHistoryDataSource = (() => {
     );
   }
 
+  /**
+   * Build a lightweight order summary from a purchase-history order node.
+   * Every field falls back to an empty string when missing so downstream
+   * consumers can render partial data without extra guards.
+   * @param {Object} order - Raw order node from the purchase-history payload
+   * @param {string} normalizedOrderNumber - Digits-only order number
+   * @returns {Object} Summary object for Quick Export
+   */
+  function buildOrderSummary(order, normalizedOrderNumber) {
+    const groups = Array.isArray(order?.groups) ? order.groups : [];
+    const statusTexts = [];
+    const fulfillmentTypes = [];
+    const items = [];
+
+    groups.forEach((group) => {
+      const statusParts = Array.isArray(group?.status?.message?.parts)
+        ? group.status.message.parts
+        : [];
+      const statusText = cleanText(statusParts.map((part) => part?.text || "").join(" "));
+      if (statusText && !statusTexts.includes(statusText)) {
+        statusTexts.push(statusText);
+      }
+
+      const fulfillmentType = cleanText(group?.fulfillmentType || "");
+      if (fulfillmentType && !fulfillmentTypes.includes(fulfillmentType)) {
+        fulfillmentTypes.push(fulfillmentType);
+      }
+
+      const groupItems = Array.isArray(group?.items) ? group.items : [];
+      groupItems.forEach((item) => {
+        items.push({
+          name: cleanText(item?.name || ""),
+          quantity: item?.quantity ?? "",
+          statusCode: item?.statusCode || "",
+          thumbnailUrl: item?.imageInfo?.thumbnailUrl || "",
+        });
+      });
+    });
+
+    return {
+      orderNumber: normalizedOrderNumber,
+      orderDate: order?.orderDate || "",
+      itemCount: order?.itemCount ?? "",
+      orderTotal: order?.priceDetails?.orderTotal?.displayValue || "",
+      subTotal: order?.priceDetails?.subTotal?.displayValue || "",
+      driverTip: order?.priceDetails?.driverTip?.displayValue || "",
+      status: statusTexts.join("; "),
+      fulfillmentTypes: fulfillmentTypes.join(", "),
+      items,
+    };
+  }
+
   function buildSnapshot(purchaseHistory, source = "unknown") {
     const orders = Array.isArray(purchaseHistory?.orders) ? purchaseHistory.orders : [];
     if (orders.length === 0) {
@@ -231,6 +283,7 @@ const PurchaseHistoryDataSource = (() => {
 
     const orderNumbers = [];
     const additionalFields = {};
+    const orderSummaries = {};
     const seen = new Set();
 
     orders.forEach((order) => {
@@ -257,6 +310,7 @@ const PurchaseHistoryDataSource = (() => {
         ""
       );
       additionalFields[normalizedOrderNumber] = title;
+      orderSummaries[normalizedOrderNumber] = buildOrderSummary(order, normalizedOrderNumber);
     });
 
     if (orderNumbers.length === 0) {
@@ -269,6 +323,7 @@ const PurchaseHistoryDataSource = (() => {
     return {
       orderNumbers,
       additionalFields,
+      orderSummaries,
       hasNextPage: Boolean(nextPageCursor),
       nextPageCursor,
       source,
@@ -1605,6 +1660,7 @@ async function handleCollectOrderNumbers(request = {}) {
       return {
         orderNumbers: sourceSnapshot.orderNumbers,
         additionalFields: sourceSnapshot.additionalFields,
+        orderSummaries: sourceSnapshot.orderSummaries || {},
         hasNextPage: sourceSnapshot.hasNextPage,
       };
     }
@@ -1612,8 +1668,9 @@ async function handleCollectOrderNumbers(request = {}) {
     const { orderNumbers, additionalFields } = extractOrderNumbers();
     const hasNextPage = await checkForNextPage();
 
+    // The DOM fallback lacks payload-level detail, so no order summaries here.
     console.log(`Extracted ${orderNumbers.length} order numbers. Has next page: ${hasNextPage}`);
-    return { orderNumbers, additionalFields, hasNextPage };
+    return { orderNumbers, additionalFields, orderSummaries: {}, hasNextPage };
   } catch (error) {
     console.error("Error during collection:", error);
     // Timeout errors indicate no more orders on this page
@@ -1622,9 +1679,9 @@ async function handleCollectOrderNumbers(request = {}) {
       error.message.includes("None of the selectors matched")
     ) {
       console.log("No order cards found. Assuming end of orders.");
-      return { orderNumbers: [], additionalFields: {}, hasNextPage: false };
+      return { orderNumbers: [], additionalFields: {}, orderSummaries: {}, hasNextPage: false };
     }
-    return { orderNumbers: [], additionalFields: {}, hasNextPage: false };
+    return { orderNumbers: [], additionalFields: {}, orderSummaries: {}, hasNextPage: false };
   }
 }
 
