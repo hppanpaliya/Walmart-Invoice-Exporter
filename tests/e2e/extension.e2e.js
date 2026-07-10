@@ -76,19 +76,23 @@ test('extension end-to-end', async (t) => {
       const [download] = await clickAndCollectDownloads(panel, '#quickExportButton', 1);
       assert.equal(download.name, 'Walmart_Orders_Quick.xlsx');
 
-      const { headers, rows } = await readSheet(download.path, 'Walmart Orders');
-      quickHeaders = headers;
-      assert.ok(headers.includes('Order Number') && headers.includes('Product Name') && headers.includes('Order Type'),
-        'deep-export columns expected');
+      const items = await readSheet(download.path, 'Items');
+      quickHeaders = items.headers;
+      assert.ok(items.headers.includes('Order Number') && items.headers.includes('Product Name') && items.headers.includes('Order Type'),
+        'deep-export item columns expected');
 
-      const onlineRows = rows.filter((r) => String(r['Order Number']) === ONLINE_ORDER);
+      const onlineRows = items.rows.filter((r) => String(r['Order Number']) === ONLINE_ORDER);
       assert.equal(onlineRows.length, 2, 'one row per item');
       assert.equal(onlineRows[0]['Product Name'], 'Great Value Milk 1 Gallon');
-      assert.equal(onlineRows[0]['Quantity'], 2);
-      assert.equal(onlineRows[0]['Price'], 0, 'price unknown without an invoice');
-      assert.equal(onlineRows[0]['Order Total'], 28.11);
+      assert.equal(onlineRows[0]['Qty'], 2);
+      assert.equal(onlineRows[0]['Price'], '', 'unknown price must be BLANK, never $0.00');
 
-      const inStoreRows = rows.filter((r) => String(r['Order Number']) === INSTORE_ORDER);
+      const orders = await readSheet(download.path, 'Orders');
+      const onlineOrder = orders.rows.find((r) => String(r['Order Number']) === ONLINE_ORDER);
+      assert.equal(onlineOrder['Order Total'], 28.11);
+      assert.equal(onlineOrder['Tax'], '', 'tax unknown without an invoice — blank');
+
+      const inStoreRows = items.rows.filter((r) => String(r['Order Number']) === INSTORE_ORDER);
       assert.equal(inStoreRows.length, 1);
 
       const warning = await panel.textContent('#downloadProgress');
@@ -103,12 +107,15 @@ test('extension end-to-end', async (t) => {
       const [download] = await clickAndCollectDownloads(panel, '#downloadButton', 1, 45000);
       assert.equal(download.name, 'Walmart_Orders.xlsx');
 
-      const { rows } = await readSheet(download.path, 'Walmart Orders');
-      const milk = rows.find((r) => r['Product Name'] === 'Great Value Milk 1 Gallon');
+      const items = await readSheet(download.path, 'Items');
+      const milk = items.rows.find((r) => r['Product Name'] === 'Great Value Milk 1 Gallon');
       assert.ok(milk, 'deep export must contain the item');
       assert.equal(milk['Price'], 7.96);
-      assert.equal(milk['Tax'], 1.14);
-      assert.equal(milk['Seller(s)'], 'Walmart.com; Acme Marketplace LLC');
+
+      const orders = await readSheet(download.path, 'Orders');
+      const order = orders.rows.find((r) => String(r['Order Number']) === ONLINE_ORDER);
+      assert.equal(order['Tax'], 1.14);
+      assert.equal(order['Seller(s)'], 'Walmart.com; Acme Marketplace LLC');
 
       const stored = await panel.evaluate((orderNumber) => OrderDb.getOrder(orderNumber), ONLINE_ORDER);
       assert.ok(stored && stored.invoice, 'invoice must be persisted to the order DB');
@@ -119,12 +126,15 @@ test('extension end-to-end', async (t) => {
       const [download] = await clickAndCollectDownloads(panel, '#quickExportButton', 1);
       assert.equal(download.name, 'Walmart_Orders_Quick.xlsx');
 
-      const { headers, rows } = await readSheet(download.path, 'Walmart Orders');
-      assert.deepEqual(headers, quickHeaders, 'format identical run to run');
-      const milk = rows.find((r) => r['Product Name'] === 'Great Value Milk 1 Gallon');
+      const items = await readSheet(download.path, 'Items');
+      assert.deepEqual(items.headers, quickHeaders, 'format identical run to run');
+      const milk = items.rows.find((r) => r['Product Name'] === 'Great Value Milk 1 Gallon');
       assert.ok(milk);
       assert.equal(milk['Price'], 7.96, 'stored invoice now supplies the real price');
-      assert.equal(milk['Tax'], 1.14, 'full invoice fidelity, not summary fidelity');
+
+      const orders = await readSheet(download.path, 'Orders');
+      const order = orders.rows.find((r) => String(r['Order Number']) === ONLINE_ORDER);
+      assert.equal(order['Tax'], 1.14, 'full invoice fidelity, not summary fidelity');
 
       const message = await panel.textContent('#downloadProgress');
       assert.match(message, /success/i, 'no missing-price warning once the invoice exists');
