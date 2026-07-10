@@ -71,6 +71,15 @@ jobs:
           cd ..
           rm -rf temp
 
+      # The Edge/Firefox build scripts derive their packaged-file list at
+      # runtime from the `cp ... temp/Walmart-Invoice-Exporter/` lines in the
+      # step above (see scripts/release-files.lib.sh), so files added there
+      # flow into the Edge/Firefox zips automatically. Outputs land in dist/.
+      - name: Build Edge and Firefox packages
+        run: |
+          bash scripts/build-edge.sh
+          bash scripts/build-firefox.sh
+
       # ---------------------------
       # Handle versioned release
       # ---------------------------
@@ -85,7 +94,9 @@ jobs:
       - name: Create versioned release
         uses: softprops/action-gh-release@v1
         with:
-          files: Walmart-Invoice-Exporter-${{ env.branch }}-${{ env.version }}.zip
+          files: |
+            Walmart-Invoice-Exporter-${{ env.branch }}-${{ env.version }}.zip
+            dist/*.zip
           tag_name: v${{ env.version }}-${{ env.branch }}
           name: Release v${{ env.version }} - ${{ env.branch }}
           body: ${{ env.changelog }}
@@ -105,7 +116,9 @@ jobs:
       - name: Create latest release for this branch
         uses: softprops/action-gh-release@v1
         with:
-          files: Walmart-Invoice-Exporter-${{ env.branch }}-${{ env.version }}.zip
+          files: |
+            Walmart-Invoice-Exporter-${{ env.branch }}-${{ env.version }}.zip
+            dist/*.zip
           tag_name: latest-${{ env.branch }}
           name: Latest Release - ${{ env.branch }}
           body: ${{ env.changelog }}
