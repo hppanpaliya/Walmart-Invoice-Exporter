@@ -129,6 +129,34 @@
     if (existingBanner) existingBanner.remove();
   }
 
+  function showExtractionWarning() {
+    if (document.getElementById("extractionWarning")) return;
+
+    const warningBanner = document.createElement("div");
+    warningBanner.id = "extractionWarning";
+    warningBanner.className = "extraction-warning";
+    warningBanner.innerHTML = `
+      <div class="warning-content">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span>Walmart may have changed their website — some exported fields came back empty. Please <a href="${CONSTANTS.URLS.GITHUB_ISSUES}" target="_blank">report this</a> so we can fix it quickly.</span>
+        <button class="dismiss-warning" title="Dismiss">
+          ${renderIcon("X_CLOSE")}
+        </button>
+      </div>
+    `;
+
+    const dismissButton = warningBanner.querySelector(".dismiss-warning");
+    if (dismissButton) {
+      dismissButton.addEventListener("click", () => warningBanner.remove());
+    }
+
+    document.body.insertBefore(warningBanner, document.body.firstChild);
+  }
+
   function setUIEnabled(enabled) {
     const card = document.querySelector(".card");
     if (card) {
@@ -423,6 +451,7 @@
     createOffTabWarning,
     ensureOffTabWarning,
     clearOffTabWarning,
+    showExtractionWarning,
     setUIEnabled,
     updateProgressUI,
     createProgressElement,
