@@ -97,6 +97,47 @@ Install the Walmart Invoice Exporter directly from the [Chrome Web Store](https:
 4. Click "Load unpacked" and select the extension directory
 5. Pin the extension to your toolbar for easy access
 
+### Microsoft Edge
+
+Edge (Chromium) runs the Chrome package unmodified. Either download
+`Walmart-Invoice-Exporter-edge-<version>.zip` from the
+[GitHub Releases page](https://github.com/amruta-chaudhari/Walmart-Invoice-Exporter/releases)
+and unzip it, or build it locally:
+
+```bash
+bash scripts/build-edge.sh   # outputs dist/edge/ and dist/Walmart-Invoice-Exporter-edge-<version>.zip
+```
+
+Then open `edge://extensions`, enable "Developer mode" (left sidebar), click
+"Load unpacked", and select the unzipped folder (or `dist/edge/`). See
+[docs/PORTS.md](./docs/PORTS.md) for details and store-submission notes.
+
+### Firefox
+
+Download `Walmart-Invoice-Exporter-firefox-<version>.zip` from the
+[GitHub Releases page](https://github.com/amruta-chaudhari/Walmart-Invoice-Exporter/releases)
+and unzip it, or build it locally:
+
+```bash
+bash scripts/build-firefox.sh   # outputs dist/firefox/ and dist/Walmart-Invoice-Exporter-firefox-<version>.zip
+```
+
+To load it temporarily (removed on browser restart): open
+`about:debugging#/runtime/this-firefox`, click "Load Temporary Add-on…", and
+select the `manifest.json` inside the unzipped folder (or
+`dist/firefox/manifest.json`). Permanent installs require the zip to be
+signed by [addons.mozilla.org](https://addons.mozilla.org/developers/).
+
+Notes:
+
+- Firefox uses a browser **sidebar** (`sidebar_action`) instead of Chrome's
+  side panel — the UI opens in Firefox's global sidebar, which looks and
+  docks differently.
+- The Firefox build is produced and validated but **untested live** against
+  walmart.com.
+
+See [docs/PORTS.md](./docs/PORTS.md) for the full list of differences.
+
 ## What's New
 
 ### Version 6.4 (July 9, 2026)

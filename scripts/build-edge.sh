@@ -7,33 +7,17 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# shellcheck source=scripts/release-files.lib.sh
+. "$REPO_ROOT/scripts/release-files.lib.sh"
+
 OUT="dist/edge"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
-# --- Same file set as .github/workflows/release.yml, unmodified -------------
-cp -r _locales "$OUT/"
-cp -r images "$OUT/"
-cp background.js "$OUT/"
-cp content.js "$OUT/"
-cp exceljs.bare.min.js "$OUT/"
-cp pdflite.js "$OUT/"
-cp manifest.json "$OUT/"
-cp utils.js "$OUT/"
-
-# Side panel files
-cp sidepanel.html "$OUT/"
-cp sidepanel.js "$OUT/"
-cp sidepanel.css "$OUT/"
-cp sidepanel.state.js "$OUT/"
-cp sidepanel.view.js "$OUT/"
-cp sidepanel.actions.js "$OUT/"
-cp sidepanel.download.js "$OUT/"
-
-# Helpful documentation files (optional)
-cp README.md "$OUT/" || true
-cp CHANGELOG.md "$OUT/" || true
-cp Privacy-Policy.md "$OUT/" || true
+# --- File list derived at runtime from .github/workflows/release.yml --------
+# (single source of truth — see scripts/release-files.lib.sh). The Edge
+# package is byte-identical to the Chrome release contents.
+copy_release_files "$OUT"
 
 # --- Zip (manifest.json at the zip root, as the Edge dashboard requires) -----
 VERSION="$(node -p 'require("./manifest.json").version')"
