@@ -32,6 +32,18 @@ body {
   flex-wrap: wrap;
 }
 
+.version-badge {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1px 6px;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
 .header h1 {
   font-size: 16px;
   font-weight: 600;
