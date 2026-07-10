@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.17] - July 10, 2026
+
+### Internal
+- **End-to-end test harness:** Playwright now launches Chromium with the packaged extension loaded and drives it like a real user — collection through the real background worker, Quick Export selection contract, format parity with Download, per-item price joining from stored invoices, and the dashboard — asserting on the actual generated Excel files. walmart.com is fully mocked at the network layer (local proxy + synthetic pages built from the sanitized fixtures), so tests can never touch the real site or any real data. Runs in CI on every push. No user-facing changes.
+
 ## [6.16] - July 10, 2026
 
 ### Improvements
