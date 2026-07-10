@@ -1,5 +1,11 @@
 # Changelog
 
+## [6.16] - July 10, 2026
+
+### Improvements
+- **Improvement:** **Quick Export now uses the exact same format as Download Selected** — same columns, same single-file/multiple-files export modes, same format/preset/thumbnail options. Orders with a downloaded invoice export with full fidelity; the rest are built from list data with unknown fields left blank. Combined files are named `Walmart_Orders_Quick.*` so they never overwrite deep exports.
+- **Improvement:** When exported orders have no downloaded invoice, Quick Export now says so plainly: an amber warning lists how many orders have blank item prices/fees/address and tells you to run Download Selected once on those to fill them.
+
 ## [6.15] - July 10, 2026
 
 ### Improvements
