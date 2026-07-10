@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.25] - July 10, 2026
+
+### Changed
+- **Quick Export never synthesizes data anymore.** It now does exactly one thing, instantly and always accurately: re-export orders you've already downloaded (any format, no pages opened). Selected orders that were never downloaded are skipped with a clear count; if none of the selection is downloaded, it refuses with guidance instead of producing partial rows.
+
 ## [6.24] - July 10, 2026
 
 ### Fixes
