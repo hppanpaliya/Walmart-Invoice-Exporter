@@ -154,6 +154,21 @@ test('computeDashboardStats counts an item once per order even when duplicated i
   assert.deepEqual(toPlain(stats.topItems), [{ name: 'Test Soda', orders: 2, quantity: 3 }]);
 });
 
+test('computeDashboardStats buckets monthly spend for human-format and invoice-only dates', () => {
+  const sandbox = loadDashboardSandbox();
+  const stats = sandbox.computeDashboardStats([
+    // Human-format record date (DOM-collected order later deep-downloaded)
+    { orderNumber: '1', orderDate: 'Jun 14, 2026', summary: null, invoice: { schemaVersion: 3, orderTotal: '$20.00', items: [] } },
+    // No record/summary date at all — invoice's own date is the fallback
+    { orderNumber: '2', orderDate: '', summary: null, invoice: { schemaVersion: 3, orderDate: 'Jun 20, 2026', orderTotal: '$5.65', items: [] } },
+    { orderNumber: '3', orderDate: '2026-06-01T00:00:00Z', summary: null, invoice: { schemaVersion: 3, orderTotal: '$1.84', items: [] } },
+  ]);
+
+  assert.equal(stats.totalSpend, 27.49);
+  // Every dollar of measured spend must land in a month bucket.
+  assert.deepEqual(toPlain(stats.monthly), [{ month: '2026-06', total: 27.49 }]);
+});
+
 test('computeDashboardStats rounds money to cents', () => {
   const sandbox = loadDashboardSandbox();
   const records = [
