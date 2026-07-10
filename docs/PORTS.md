@@ -13,9 +13,29 @@ bash scripts/build-firefox.sh   # -> dist/firefox/ + dist/Walmart-Invoice-Export
 bash scripts/build-edge.sh      # -> dist/edge/    + dist/Walmart-Invoice-Exporter-edge-<version>.zip
 ```
 
-Both scripts are idempotent (they wipe their `dist/` subfolder first) and
-copy the exact file set used by `.github/workflows/release.yml`. The zips
-have `manifest.json` at the zip root, as both stores require.
+Both scripts are idempotent (they wipe their `dist/` subfolder first). The
+zips have `manifest.json` at the zip root, as both stores require.
+
+### Single source of truth for the file list
+
+Neither script hardcodes a file list. They source
+`scripts/release-files.lib.sh`, which parses the
+`cp [-r] <src> temp/Walmart-Invoice-Exporter/` lines out of
+`.github/workflows/release.yml` **at runtime** and copies exactly that set
+(lines ending in `|| true` are optional; any other missing file aborts the
+build). Add a file to the release workflow and it automatically ships in the
+Chrome, Edge, and Firefox packages — no script edits needed.
+
+The Firefox build additionally derives `background.scripts` from
+`background.js`'s own `importScripts(...)` call (see below), so new
+background dependencies flow in automatically too.
+
+### CI
+
+`.github/workflows/release.yml` runs both scripts after building the Chrome
+zip ("Build Edge and Firefox packages" step) and attaches `dist/*.zip` to
+both the versioned and `latest-<branch>` GitHub releases alongside the
+Chrome zip.
 
 ## Edge
 
@@ -32,8 +52,8 @@ transforming `dist/firefox/manifest.json`:
 
 | Chrome | Firefox | Handled by |
 |---|---|---|
-| `background.service_worker` | Not supported; MV3 backgrounds are **event pages** via `background.scripts` | `"background": {"scripts": ["firefox-shim.js", "utils.js", "background.js"]}` |
-| `importScripts('utils.js')` (background.js line 7) | `importScripts` doesn't exist in event pages | `utils.js` preloaded via `background.scripts`; `firefox-shim.js` defines a no-op `importScripts` |
+| `background.service_worker` | Not supported; MV3 backgrounds are **event pages** via `background.scripts` | `"background": {"scripts": [...]}` — `firefox-shim.js` first, then the scripts named in `background.js`'s `importScripts(...)` call (currently `utils.js`, `orderdb.js`), then `background.js`. The list is derived from `background.js` at build time |
+| `importScripts('utils.js', 'orderdb.js')` (background.js line 7) | `importScripts` doesn't exist in event pages | Imported scripts preloaded via `background.scripts`; `firefox-shim.js` defines a no-op `importScripts` |
 | `side_panel` key + `sidePanel` permission | Not supported; equivalent is `sidebar_action` (no permission needed) | Key/permission removed; `sidebar_action` added pointing at the same `sidepanel.html` |
 | `chrome.sidePanel.open({windowId})` in `action.onClicked` | `browser.sidebarAction.open()` (must run in a user-gesture handler — `onClicked` qualifies) | `firefox-shim.js` polyfills `chrome.sidePanel.open` |
 | `minimum_chrome_version` | Chrome-only key (Firefox warns) | Removed |
@@ -87,5 +107,6 @@ tabs, not `chrome.downloads`, so no extra permission is required.
   copied into the Firefox package.
 - No `webextension-polyfill` / promise migration: Firefox supports the
   callback-style `chrome.*` namespace the code already uses.
-- The `.github/workflows/release.yml` Chrome release flow is untouched; the
-  new scripts are manual/local for now.
+- The Chrome zip produced by `.github/workflows/release.yml` is unchanged;
+  the workflow only gained a step that runs these two scripts and uploads
+  `dist/*.zip` next to the Chrome zip on both releases.
