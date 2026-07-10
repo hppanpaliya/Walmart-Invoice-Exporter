@@ -80,7 +80,7 @@ test('scrapeOrderData (payload-only page) produces schemaVersion 2 with the paym
   const sandbox = loadDetailSandbox();
   const data = sandbox.scrapeOrderData();
 
-  assert.equal(data.schemaVersion, 2);
+  assert.equal(data.schemaVersion, 3);
   assert.equal(data.orderNumber, '200010000000042');
   assert.equal(data.items.length, 3);
   assert.equal(data.paymentSplit, 'VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84');
@@ -96,6 +96,40 @@ test('computeExtractionWarnings trips on blank data and stays quiet on healthy d
   const blank = { orderNumber: null, orderTotal: '', items: [{ productName: '' }] };
   const warnings = sandbox.computeExtractionWarnings(blank);
   assert.equal(warnings.length, 3);
+});
+
+test('mergeOrderItems dedupes DOM garbage copies — payload prices win, no doubled items', () => {
+  const sandbox = loadDetailSandbox();
+  // Real-world failure: the DOM print-view scrape returned the same items
+  // with $0.00 prices and progress text as status; the payload had the real
+  // rows. Including price in the dedup key kept BOTH copies.
+  const domItems = [
+    { productName: 'Fresh Roma Tomato, Each', quantity: '3', price: '$0.00', deliveryStatus: '3 weight adjusted' },
+    { productName: 'Whole Milk, Gallon', quantity: '1', price: '$0.00', deliveryStatus: '12 shopped' },
+  ];
+  const payloadItems = [
+    { productName: 'Fresh Roma Tomato, Each', quantity: '3', price: '$0.60', deliveryStatus: 'Delivered on Jun 14' },
+    { productName: 'Whole Milk, Gallon', quantity: '1', price: '$3.11', deliveryStatus: 'Delivered on Jun 14' },
+  ];
+
+  const merged = sandbox.mergeOrderItems(domItems, payloadItems);
+  assert.equal(merged.length, 2, 'items must not be duplicated');
+  assert.equal(merged[0].price, '$0.60', 'payload price wins over the DOM $0.00');
+  assert.equal(merged[0].deliveryStatus, 'Delivered on Jun 14');
+});
+
+test('mergeOrderItems keeps DOM-only items the payload missed', () => {
+  const sandbox = loadDetailSandbox();
+  const merged = sandbox.mergeOrderItems(
+    [
+      { productName: 'Payload-missed item', quantity: '1', price: '$2.00' },
+      { productName: 'Shared item', quantity: '1', price: '$0.00' },
+    ],
+    [{ productName: 'Shared item', quantity: '1', price: '$5.00' }]
+  );
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].price, '$5.00');
+  assert.equal(merged[1].productName, 'Payload-missed item');
 });
 
 test('mergeOrderItems backfills payload thumbnails into DOM-sourced items', () => {

@@ -1099,46 +1099,46 @@ function extractItemsFromNextData(orderNode) {
 }
 
 function mergeOrderItems(domItems, nextDataItems) {
-  const primaryItems = Array.isArray(domItems) ? domItems : [];
-  const fallbackItems = Array.isArray(nextDataItems) ? nextDataItems : [];
+  const scrapedItems = Array.isArray(domItems) ? domItems : [];
+  const payloadItems = Array.isArray(nextDataItems) ? nextDataItems : [];
 
-  if (primaryItems.length === 0) {
-    return fallbackItems;
-  }
-
-  if (fallbackItems.length === 0) {
-    return primaryItems;
-  }
-
+  // Key by name + quantity ONLY. Including the price made the same item
+  // survive twice whenever the DOM scrape got the price wrong (e.g. $0.00),
+  // which is exactly when dedup matters most.
   const itemKey = (item) => {
     const productName = normalizeLookupText(item?.productName || '');
-    const quantity = cleanText(item?.quantity || '');
-    const price = cleanText(item?.price || '');
-    return `${productName}|${quantity}|${price}`;
+    const quantity = cleanText(String(item?.quantity ?? ''));
+    return `${productName}|${quantity}`;
   };
 
-  const mergedItems = [...primaryItems];
-  const seen = new Set(primaryItems.map(itemKey));
-  const fallbackByKey = new Map(fallbackItems.map((item) => [itemKey(item), item]));
+  if (payloadItems.length === 0) {
+    return scrapedItems;
+  }
 
-  fallbackItems.forEach((item) => {
+  // The payload is the primary source (extraction order: payload → DOM);
+  // DOM-scraped copies of the same item are discarded, and DOM-only items
+  // (payload missed them) are appended.
+  const mergedItems = [...payloadItems];
+  const seen = new Set(payloadItems.map(itemKey));
+  const scrapedByKey = new Map(scrapedItems.map((item) => [itemKey(item), item]));
+
+  scrapedItems.forEach((item) => {
     const key = itemKey(item);
     if (seen.has(key)) {
       return;
     }
-
     seen.add(key);
     mergedItems.push(item);
   });
 
-  // DOM-sourced items win the merge but lack payload-only metadata
-  // (e.g. thumbnails) — backfill it from the matching payload item.
+  // Backfill fields the payload sometimes lacks from the DOM copy.
   mergedItems.forEach((item) => {
-    if (item.thumbnailUrl) {
-      return;
+    const match = scrapedByKey.get(itemKey(item));
+    if (!match) return;
+    if ((!item.productLink || item.productLink === 'N/A') && match.productLink && match.productLink !== 'N/A') {
+      item.productLink = match.productLink;
     }
-    const match = fallbackByKey.get(itemKey(item));
-    if (match?.thumbnailUrl) {
+    if (!item.thumbnailUrl && match.thumbnailUrl) {
       item.thumbnailUrl = match.thumbnailUrl;
     }
   });
@@ -1629,7 +1629,7 @@ function scrapeOrderData() {
   const resolvedOrderDate = orderDate || cleanText(nextDataOrder?.orderDate || '');
 
   return {
-    schemaVersion: 2,
+    schemaVersion: CONSTANTS.ORDER_SCHEMA_VERSION,
     orderNumber: resolvedOrderNumber,
     orderDate: resolvedOrderDate,
     orderType: cleanText(nextDataOrder?.orderType || ''),
@@ -1684,6 +1684,19 @@ function computeExtractionWarnings(data) {
 
     if (!cleanText(data?.orderTotal || "")) {
       warnings.push("Order total came back empty");
+    }
+
+    // A line price wildly above the order's own total means the price
+    // extraction grabbed the wrong text (seen with legacy DOM scraping).
+    const totalValue = Number(String(data?.orderTotal || "").replace(/[^0-9.-]+/g, "")) || 0;
+    if (totalValue > 0) {
+      const implausible = items.some((item) => {
+        const price = Number(String(item?.price || "").replace(/[^0-9.-]+/g, "")) || 0;
+        return price > totalValue * 2;
+      });
+      if (implausible) {
+        warnings.push("An item price exceeds the order total — price extraction looks wrong");
+      }
     }
 
     if (!data?.orderNumber) {
