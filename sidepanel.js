@@ -28,6 +28,19 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  const exportFormatSelect = document.getElementById("exportFormat");
+  chrome.storage.local.get(["exportFormat"], (res) => {
+    app.exportFormat = res.exportFormat || CONSTANTS.EXPORT_FORMATS.XLSX;
+    if (exportFormatSelect) exportFormatSelect.value = app.exportFormat;
+  });
+
+  if (exportFormatSelect) {
+    exportFormatSelect.addEventListener("change", () => {
+      app.exportFormat = exportFormatSelect.value;
+      chrome.storage.local.set({ exportFormat: app.exportFormat });
+    });
+  }
+
   const faqButton = document.getElementById("faqButton");
   const backButton = document.getElementById("backButton");
   const confirmDialog = document.getElementById("confirmDialog");
