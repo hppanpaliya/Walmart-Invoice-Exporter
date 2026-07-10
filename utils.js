@@ -368,38 +368,51 @@ function addOrderSummary(worksheet, orderDetails) {
  * @param {number} firstDataRow - 1-based row number of the first item row
  */
 async function embedItemThumbnails(workbook, worksheet, items, columnIndex, firstDataRow = 2) {
-  const imageIdByUrl = new Map();
-
-  for (let i = 0; i < items.length; i++) {
-    const url = String(items[i]?.thumbnailUrl || '');
-    if (!url) continue;
-    const rowNumber = firstDataRow + i;
-
-    try {
-      let imageId = imageIdByUrl.get(url);
-      if (imageId === undefined) {
+  // Prefetch every unique URL in parallel — serial round-trips would stall
+  // large exports for tens of seconds. Failures simply stay out of the map.
+  const uniqueUrls = [...new Set(items.map((item) => String(item?.thumbnailUrl || '')).filter(Boolean))];
+  const bufferByUrl = new Map();
+  await Promise.all(
+    uniqueUrls.map(async (url) => {
+      try {
         const response = await fetch(url);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
-        const buffer = await response.arrayBuffer();
-        const extension = /\.png(\?|$)/i.test(url) ? 'png' : 'jpeg';
-        imageId = workbook.addImage({ buffer, extension });
-        imageIdByUrl.set(url, imageId);
+        bufferByUrl.set(url, await response.arrayBuffer());
+      } catch (error) {
+        // Blocked (no host permission / CORS) or failed — hyperlink fallback below.
       }
-      worksheet.addImage(imageId, {
-        tl: { col: columnIndex - 1, row: rowNumber - 1 },
-        ext: { width: 40, height: 40 },
-        editAs: 'oneCell',
-      });
-      worksheet.getRow(rowNumber).height = 32;
-    } catch (error) {
-      // Blocked (no host permission / CORS) or failed — hyperlink fallback.
+    })
+  );
+
+  const imageIdByUrl = new Map();
+  items.forEach((item, i) => {
+    const url = String(item?.thumbnailUrl || '');
+    if (!url) return;
+    const rowNumber = firstDataRow + i;
+
+    const buffer = bufferByUrl.get(url);
+    if (buffer === undefined) {
       const cell = worksheet.getRow(rowNumber).getCell(columnIndex);
       cell.value = { text: 'Image', hyperlink: url };
       cell.font = STYLES.linkFont;
+      return;
     }
-  }
+
+    let imageId = imageIdByUrl.get(url);
+    if (imageId === undefined) {
+      const extension = /\.png(\?|$)/i.test(url) ? 'png' : 'jpeg';
+      imageId = workbook.addImage({ buffer, extension });
+      imageIdByUrl.set(url, imageId);
+    }
+    worksheet.addImage(imageId, {
+      tl: { col: columnIndex - 1, row: rowNumber - 1 },
+      ext: { width: 40, height: 40 },
+      editAs: 'oneCell',
+    });
+    worksheet.getRow(rowNumber).height = 32;
+  });
 }
 
 /**
@@ -551,11 +564,20 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
 /**
  * Escape a single CSV field per RFC 4180: fields containing commas, quotes,
  * or line breaks are wrapped in double quotes with inner quotes doubled.
+ * String fields starting with formula characters are prefixed with a quote
+ * so spreadsheet apps don't execute them (CSV formula injection — product
+ * names are third-party-seller controlled). Numbers pass through untouched.
  * @param {*} value - The field value
  * @returns {string}
  */
 function csvEscape(value) {
-  const text = String(value ?? '');
+  if (typeof value === 'number') {
+    return String(value);
+  }
+  let text = String(value ?? '');
+  if (/^[=+\-@\t\r]/.test(text)) {
+    text = `'${text}`;
+  }
   if (/[",\r\n]/.test(text)) {
     return `"${text.replace(/"/g, '""')}"`;
   }
@@ -564,12 +586,14 @@ function csvEscape(value) {
 
 /**
  * Build RFC-4180 CSV content (CRLF line endings, trailing newline).
+ * Prefixed with a UTF-8 BOM so Excel decodes non-ASCII product names
+ * (e.g. "2× Milk") correctly when the file is double-clicked open.
  * @param {Array<string>} header - Column headers
  * @param {Array<Array>} rows - Data rows
  * @returns {string}
  */
 function buildCsvContent(header, rows) {
-  return [header, ...rows]
+  return '\uFEFF' + [header, ...rows]
     .map((row) => row.map(csvEscape).join(','))
     .join('\r\n') + '\r\n';
 }
@@ -648,7 +672,7 @@ const ITEM_CSV_COLUMNS = [
  * @param {string} options.ordersFilename - Filename for the per-order file
  * @param {string} options.itemsFilename - Filename for the per-item file
  */
-function convertOrdersToCsv(ordersData, options = {}) {
+async function convertOrdersToCsv(ordersData, options = {}) {
   const {
     ordersFilename = 'Walmart_Orders.csv',
     itemsFilename = 'Walmart_Order_Items.csv',
@@ -663,6 +687,10 @@ function convertOrdersToCsv(ordersData, options = {}) {
     ordersFilename,
     'text/csv'
   );
+
+  // Space out the second download so Chrome's multiple-download throttle
+  // surfaces its permission prompt instead of silently dropping the file.
+  await delay(CONSTANTS.TIMING.RETRY_DELAY);
 
   const itemRows = [];
   ordersArray.forEach((order) => {
@@ -1104,7 +1132,13 @@ const CONSTANTS = {
  * Query params on the orders URL that are tracking/navigation noise,
  * not user-selected filters.
  */
-const NON_FILTER_ORDER_PARAMS = ['page', 'povid', 'from', 'wmlspartner', 'athcpid', 'adsredirect'];
+const NON_FILTER_ORDER_PARAMS = [
+  'page', 'povid', 'from', 'wmlspartner', 'adsredirect',
+  'gclid', 'fbclid', 'msclkid', 'irgwc', 'veh', 'sourceid', 'clickid', 'cid', 'sid',
+];
+
+/** Prefixes of tracking params (utm_*, Walmart ath* attribution). */
+const NON_FILTER_ORDER_PARAM_PREFIXES = ['utm_', 'ath'];
 
 /**
  * Describe the Walmart filters active on an orders-page URL.
@@ -1118,7 +1152,9 @@ function describeActiveFilters(url) {
     const params = new URL(url).searchParams;
     const parts = [];
     params.forEach((value, key) => {
-      if (NON_FILTER_ORDER_PARAMS.includes(key.toLowerCase())) return;
+      const lowerKey = key.toLowerCase();
+      if (NON_FILTER_ORDER_PARAMS.includes(lowerKey)) return;
+      if (NON_FILTER_ORDER_PARAM_PREFIXES.some((prefix) => lowerKey.startsWith(prefix))) return;
       const cleanValue = String(value).trim();
       parts.push(cleanValue ? `${key}: ${cleanValue}` : key);
     });

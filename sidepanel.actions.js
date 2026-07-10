@@ -161,19 +161,31 @@
     });
   }
 
+  function setQuickExportDisabled(disabled) {
+    const quickExportButton = document.getElementById("quickExportButton");
+    if (quickExportButton) {
+      quickExportButton.disabled = disabled;
+    }
+  }
+
   function updateProgress() {
     chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.GET_PROGRESS }, function (response) {
       if (response && response.isCollecting) {
         app.collectionInProgress = true;
         setCollectionButtonsState({ running: true });
         view.updateProgressUI(response.currentPage, response.pageLimit, true);
-        view.displayOrderNumbers(response.orderNumbers, response.additionalFields);
+        view.displayOrderNumbers(response.orderNumbers, response.additionalFields).then(() => {
+          // Quick Export mid-collection would export a partial snapshot.
+          setQuickExportDisabled(app.collectionInProgress);
+        });
         setTimeout(updateProgress, 1000);
         setCheckboxesDisabled(true);
       } else if (response) {
         app.collectionInProgress = false;
         view.updateProgressUI(response.currentPage, response.pageLimit, false);
-        view.displayOrderNumbers(response.orderNumbers, response.additionalFields);
+        view.displayOrderNumbers(response.orderNumbers, response.additionalFields).then(() => {
+          setQuickExportDisabled(false);
+        });
         setCollectionButtonsState({ running: false, startLabel: "Start Collection" });
         setCheckboxesDisabled(false);
       }
