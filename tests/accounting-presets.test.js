@@ -1,5 +1,24 @@
 'use strict';
 
+// (F7 regression) unknown-total orders must be skipped, not exported as $0
+const { test: __t } = require('node:test');
+const __assert = require('node:assert/strict');
+const { loadSandbox: __load } = require('./helpers/sandbox');
+__t('accounting CSV skips orders with unknown totals instead of writing $0 rows', () => {
+  const sandbox = __load({ scripts: ['utils.js'] });
+  const { rows, skipped } = sandbox.buildAccountingCsvRows(
+    [
+      { orderNumber: '1', orderDate: '2026-06-14T00:00:00Z', orderTotal: '$10.00', items: [] },
+      { orderNumber: '2', orderDate: '2026-06-15T00:00:00Z', orderTotal: '', items: [] },
+    ],
+    'quickbooks'
+  );
+  __assert.equal(rows.length, 1, 'unknown-total order must be skipped');
+  __assert.equal(skipped, 1);
+  __assert.equal(rows[0][2], -10);
+});
+
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { loadSandbox, evalIn, toPlain } = require('./helpers/sandbox');

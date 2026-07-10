@@ -23,7 +23,6 @@ const CollectionState = {
   pagesCached: {},
   incremental: false,
   knownAtStart: null,
-  ownsTab: true,
 
   // Reset state for new collection
   reset() {
@@ -143,7 +142,7 @@ function handleStartCollection(request, sendResponse) {
       }
 
       if (!CollectionState.incremental) {
-        startCollection(request.url, request.reuseTabId || null);
+        startCollection(request.url);
         return;
       }
 
@@ -157,7 +156,7 @@ function handleStartCollection(request, sendResponse) {
           console.warn("Order DB unavailable; running a full collection:", error);
           CollectionState.incremental = false;
         })
-        .then(() => startCollection(request.url, request.reuseTabId || null));
+        .then(() => startCollection(request.url));
     });
   }
   sendResponse({ status: "started" });
@@ -176,11 +175,9 @@ function handleStopCollection(_request, sendResponse) {
 
   CollectionState.isCollecting = false;
   if (CollectionState.tabId) {
-    if (CollectionState.ownsTab) {
-      chrome.tabs.remove(CollectionState.tabId).catch(() => {
-        // Tab may already be closed
-      });
-    }
+    chrome.tabs.remove(CollectionState.tabId).catch(() => {
+      // Tab may already be closed
+    });
     chrome.tabs.onUpdated.removeListener(onTabUpdated);
   }
   // Save to cache before sending response
@@ -229,26 +226,14 @@ function handleClearCache(_request, sendResponse) {
   return true; // Indicate async response
 }
 
-function startCollection(url, reuseTabId = null) {
-  // Prefer collecting in the user's CURRENT orders tab: no second tab, no
-  // page reload, and one fewer parallel session for Walmart to frown at.
-  if (reuseTabId) {
-    chrome.tabs.get(reuseTabId, (tab) => {
-      if (!chrome.runtime.lastError && tab && String(tab.url || "").startsWith(CONSTANTS.URLS.WALMART_ORDERS)) {
-        CollectionState.tabId = tab.id;
-        CollectionState.ownsTab = false; // NEVER close the user's own tab
-        console.log("Collecting in the user's current orders tab:", tab.id);
-        setTimeout(() => collectOrderNumbers(), 300);
-      } else {
-        createCollectionTab(url);
-      }
-    });
-    return;
-  }
-  createCollectionTab(url);
+/** The orders LIST page (an order-detail URL like /orders/123 is NOT it). */
+function isOrdersListUrl(url) {
+  return /^https:\/\/www\.walmart\.com\/orders\/?($|\?)/.test(String(url || ""));
 }
 
-function createCollectionTab(url) {
+// Collection always runs in its OWN background tab — never in a tab the
+// user is looking at (owner decision: reverted the 6.20 in-tab collection).
+function startCollection(url) {
   console.log("Starting collection in a background tab from URL:", url);
   chrome.tabs.create({ url: url, active: false }, (tab) => {
     if (chrome.runtime.lastError) {
@@ -257,7 +242,6 @@ function createCollectionTab(url) {
       return;
     }
     CollectionState.tabId = tab.id;
-    CollectionState.ownsTab = true;
     chrome.tabs.onUpdated.addListener(onTabUpdated);
   });
 }
@@ -287,6 +271,15 @@ function collectOrderNumbers() {
     return;
   }
 
+  // The user can navigate a reused tab away mid-collection — verify we are
+  // still on the orders list before asking it for a page.
+  chrome.tabs.get(CollectionState.tabId, (tab) => {
+    if (chrome.runtime.lastError || !tab || !isOrdersListUrl(tab.url)) {
+      console.warn("Collection tab is no longer on the orders list; retrying.");
+      retryCollection();
+      return;
+    }
+
   // Always collect order numbers to ensure cache is up to date with any changes
   chrome.tabs.sendMessage(
     CollectionState.tabId,
@@ -301,7 +294,13 @@ function collectOrderNumbers() {
       return;
     }
 
-    if (response && response.orderNumbers) {
+    if (response && response.collectionError) {
+      console.warn("Content script reported a collection error; retrying.");
+      retryCollection();
+      return;
+    }
+
+    if (response && response.orderNumbers && (response.orderNumbers.length > 0 || response.endOfOrders)) {
       console.log(`Collected ${response.orderNumbers.length} order numbers from page ${CollectionState.currentPage}`);
 
       // Add order numbers to the set
@@ -348,8 +347,8 @@ function collectOrderNumbers() {
         response.orderNumbers.length > 0 &&
         response.orderNumbers.every((num) => CollectionState.knownAtStart.has(num));
       if (pageFullyKnown) {
-        console.log("Incremental sync: page contains only known orders. Finishing collection.");
-        finishCollection();
+        console.log("Incremental sync: page contains only known orders. Hydrating from the DB and finishing.");
+        hydrateCollectionFromDb().finally(() => finishCollection());
         return;
       }
 
@@ -365,6 +364,7 @@ function collectOrderNumbers() {
     }
     }
   );
+  });
 }
 
 function goToNextPage() {
@@ -406,18 +406,40 @@ function retryCollection() {
   }
 }
 
+/**
+ * Merge every order stored in the durable DB into the live collection so an
+ * incremental early-stop still leaves the full history selectable in the
+ * panel (the 24h cache may have expired since the last full collection).
+ */
+async function hydrateCollectionFromDb() {
+  try {
+    const records = await OrderDb.getAllOrders();
+    records.forEach((record) => {
+      if (!record?.orderNumber) return;
+      CollectionState.allOrderNumbers.add(record.orderNumber);
+      if (record.title && !CollectionState.allAdditionalFields[record.orderNumber]) {
+        CollectionState.allAdditionalFields[record.orderNumber] = record.title;
+      }
+      const existing = CollectionState.allOrderSummaries[record.orderNumber];
+      if (record.summary && (!existing || (!isPayloadQualitySummary(existing) && isPayloadQualitySummary(record.summary)))) {
+        CollectionState.allOrderSummaries[record.orderNumber] = record.summary;
+      }
+    });
+    console.log(`Hydrated collection from DB: ${CollectionState.allOrderNumbers.size} orders total.`);
+  } catch (error) {
+    console.warn("Could not hydrate collection from the order DB:", error);
+  }
+}
+
 function finishCollection() {
   CollectionState.isCollecting = false;
   // Save to cache before closing
   saveToCache();
   if (CollectionState.tabId) {
     chrome.tabs.onUpdated.removeListener(onTabUpdated);
-    // Only close tabs the collection created — never the user's own tab.
-    if (CollectionState.ownsTab) {
-      chrome.tabs.remove(CollectionState.tabId).catch(() => {
-        // Tab may already be closed, ignore error
-      });
-    }
+    chrome.tabs.remove(CollectionState.tabId).catch(() => {
+      // Tab may already be closed, ignore error
+    });
     CollectionState.tabId = null;
   }
   console.log(`Collection finished. Total pages: ${CollectionState.currentPage}, Total order numbers: ${CollectionState.allOrderNumbers.size}`);
