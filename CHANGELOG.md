@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.20] - July 10, 2026
+
+### Improvements
+- **Collection runs in your current tab** — Start Collection no longer launches a second tab when you're already on the orders page: it paginates right where you are (faster, no duplicate session). A background tab is only created when collection starts from elsewhere, and your own tab is never closed.
+
 ## [6.19] - July 10, 2026
 
 ### Fixes
