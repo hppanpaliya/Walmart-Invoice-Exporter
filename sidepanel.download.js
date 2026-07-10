@@ -194,6 +194,22 @@
     return failedOrders.map((order) => `#${order}`).join(", ");
   }
 
+  /**
+   * Logs any extraction warnings attached to an order's data and reports
+   * whether the order looks like it was affected by a Walmart site change.
+   * @param {string} orderNumber - The order the data belongs to.
+   * @param {object} data - Order data returned by the content script.
+   * @returns {boolean} True when the order carries extraction warnings.
+   */
+  function checkExtractionWarnings(orderNumber, data) {
+    const warnings = Array.isArray(data?.extractionWarnings) ? data.extractionWarnings : [];
+    if (warnings.length === 0) {
+      return false;
+    }
+    console.warn(`Extraction warnings for order #${orderNumber}:`, warnings);
+    return true;
+  }
+
   function showTimedProgressMessage(progressDiv, messageHtml, durationMs) {
     if (!progressDiv) return;
     progressDiv.innerHTML = messageHtml;
@@ -262,6 +278,7 @@
       }
 
       const progressDiv = createDownloadProgressElement();
+      let extractionWarningsDetected = false;
 
       try {
         if (app && app.exportMode === CONSTANTS.EXPORT_MODES.SINGLE) {
@@ -274,11 +291,19 @@
             errorPrefix: "Failed to collect data for order",
             onOrder: async (orderNumber, options) => {
               const data = await OrderDataFetcher.fetchOrderData(orderNumber, options);
+              if (checkExtractionWarnings(orderNumber, data)) {
+                extractionWarningsDetected = true;
+              }
               collectedOrdersData.push(data);
             },
           });
 
           if (cancelled) return;
+
+          // Warn once (not per order) when any order came back with blank fields.
+          if (extractionWarningsDetected) {
+            view.showExtractionWarning();
+          }
 
           try {
             await convertMultipleOrdersToXlsx(collectedOrdersData, ExcelJS, "Walmart_Orders.xlsx");
@@ -317,11 +342,19 @@
             errorPrefix: "Error downloading order",
             onOrder: async (orderNumber, options) => {
               const data = await OrderDataFetcher.fetchOrderData(orderNumber, options);
+              if (checkExtractionWarnings(orderNumber, data)) {
+                extractionWarningsDetected = true;
+              }
               await convertToXlsx(data, ExcelJS, { mode: "single" });
             },
           });
 
           if (cancelled) return;
+
+          // Warn once (not per order) when any order came back with blank fields.
+          if (extractionWarningsDetected) {
+            view.showExtractionWarning();
+          }
 
           if (failedOrders.length === 0) {
             showTimedProgressMessage(

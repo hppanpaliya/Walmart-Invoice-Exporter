@@ -586,6 +586,7 @@ const CONSTANTS = {
   URLS: {
     WALMART_ORDERS: 'https://www.walmart.com/orders',
     WALMART_REVIEWS: 'https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe/reviews',
+    GITHUB_ISSUES: 'https://github.com/amruta-chaudhari/Walmart-Invoice-Exporter/issues/new',
   },
 
   // Timing Constants (in milliseconds)
