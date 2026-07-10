@@ -263,6 +263,7 @@ const PurchaseHistoryDataSource = (() => {
     });
 
     return {
+      source: "payload",
       orderNumber: normalizedOrderNumber,
       orderDate: order?.orderDate || "",
       orderType: cleanText(order?.type || ""),
@@ -1773,9 +1774,11 @@ async function handleCollectOrderNumbers(request = {}) {
 
     await waitForAnyElement(readinessSelectors);
 
+    // Payload snapshots are strictly richer than DOM scraping (item names,
+    // subtotal, tip, correct dates) — wait for one before falling back.
+    const snapshotDeadline = Date.now() + 6000;
     let sourceSnapshot = PurchaseHistoryDataSource.getBestSnapshot({ currentPage });
-    // Give page-2+ network payloads a short extra window before falling back to DOM.
-    if (!sourceSnapshot && currentPage > 1) {
+    while (!sourceSnapshot && Date.now() < snapshotDeadline) {
       await delay(300);
       sourceSnapshot = PurchaseHistoryDataSource.getBestSnapshot({ currentPage });
     }
@@ -1963,10 +1966,12 @@ async function waitForOrdersListTransition(
  * @param {string} orderNumber - Digits-only order number
  * @returns {Object} Summary object shaped like buildOrderSummary's output
  */
-function buildDomOrderSummary(card, orderNumber) {
+function buildDomOrderSummary(card, orderNumber, title = '') {
   const cardText = cleanText(card?.textContent || '');
 
-  const dateMatch = cardText.match(/\b([A-Z][a-z]{2,8}\.? \d{1,2}, \d{4})\b/);
+  // Only trust a date found in the card TITLE (usually "July 1, 2026 order");
+  // the card body carries delivery/arrival dates that are NOT the order date.
+  const dateMatch = cleanText(title).match(/\b([A-Z][a-z]{2,8}\.? \d{1,2}, \d{4})\b/);
   const totalMatch =
     cardText.match(/(\$[\d,]+(?:\.\d{2})?)\s*total/i) ||
     cardText.match(/total[^$]{0,20}(\$[\d,]+(?:\.\d{2})?)/i);
@@ -1980,6 +1985,7 @@ function buildDomOrderSummary(card, orderNumber) {
   const status = statusKeywords.find((keyword) => lowerText.includes(keyword.toLowerCase())) || '';
 
   return {
+    source: 'dom',
     orderNumber,
     orderDate: dateMatch ? dateMatch[1] : '',
     itemCount: itemCountMatch ? Number(itemCountMatch[1]) : '',
@@ -2030,7 +2036,7 @@ function extractOrderNumbers() {
         seenOrderNumbers.add(orderNumber);
         orderNumbers.push(orderNumber);
         additionalFields[orderNumber] = title;
-        orderSummaries[orderNumber] = buildDomOrderSummary(card, orderNumber);
+        orderSummaries[orderNumber] = buildDomOrderSummary(card, orderNumber, title);
       }
     } catch (e) {
       console.error(`Error processing order card ${index}:`, e);
