@@ -169,6 +169,13 @@ document.addEventListener("DOMContentLoaded", function () {
   if (startButton) startButton.addEventListener("click", actions.handleStartCollection);
   if (stopButton) stopButton.addEventListener("click", actions.handleStopCollection);
 
+  // Visible build version — unpacked-dev testing needs to know which build
+  // is actually loaded (chrome://extensions reload is easy to forget).
+  const versionBadge = document.getElementById("versionBadge");
+  if (versionBadge && chrome.runtime.getManifest) {
+    versionBadge.textContent = `v${chrome.runtime.getManifest().version}`;
+  }
+
   actions.checkCurrentTab();
 
   chrome.tabs.onActivated.addListener(actions.checkCurrentTab);
