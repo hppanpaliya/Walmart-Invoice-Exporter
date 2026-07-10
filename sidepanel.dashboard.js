@@ -128,6 +128,87 @@ function computeDashboardStats(records) {
   };
 }
 
+/**
+ * Track per-item unit-price history across downloaded invoices.
+ *
+ * Only records with an invoice carry per-item prices, so history grows as
+ * more invoices are downloaded. Items are keyed by usItemId when present,
+ * else by normalized product name. An item qualifies when it was bought in
+ * at least two orders with a computable unit price (line price / quantity,
+ * quantity > 0, rounded to cents); stable-priced items are included too,
+ * distinguished by the `changed` boolean.
+ *
+ * @param {Array} records - OrderDb records ({orderDate, summary, invoice, ...})
+ * @returns {Array<{
+ *   name: string,
+ *   usItemId: string,
+ *   points: Array<{date: string, unitPrice: number}>,
+ *   minPrice: number,
+ *   maxPrice: number,
+ *   latestPrice: number,
+ *   changed: boolean
+ * }>}
+ */
+function computePriceHistory(records) {
+  const list = Array.isArray(records) ? records : [];
+  const byKey = new Map();
+
+  list.forEach((record) => {
+    const invoice = record?.invoice || null;
+    if (!invoice || !Array.isArray(invoice.items)) return;
+
+    const isoDate = String(record?.orderDate || record?.summary?.orderDate || '');
+    const date = isoDate.slice(0, 10);
+
+    // One price point per item per order.
+    const seenInOrder = new Set();
+    invoice.items.forEach((item) => {
+      const name = String(item?.productName || '').trim();
+      const usItemId = String(item?.usItemId || '').trim();
+      const key = usItemId || name.toLowerCase();
+      if (!key || seenInOrder.has(key)) return;
+
+      const quantity = parseNumericValue(item?.quantity);
+      if (!(quantity > 0)) return;
+      const unitPrice = roundMoneyToCents(parseNumericValue(item?.price) / quantity);
+      if (!(unitPrice > 0)) return;
+
+      seenInOrder.add(key);
+      let entry = byKey.get(key);
+      if (!entry) {
+        entry = { name, usItemId, points: [] };
+        byKey.set(key, entry);
+      }
+      if (!entry.name && name) entry.name = name;
+      entry.points.push({ date, unitPrice });
+    });
+  });
+
+  return [...byKey.values()]
+    .filter((entry) => entry.points.length >= 2)
+    .map((entry) => {
+      const points = entry.points.slice().sort((a, b) => a.date.localeCompare(b.date));
+      const prices = points.map((point) => point.unitPrice);
+      const minPrice = Math.min(...prices);
+      const maxPrice = Math.max(...prices);
+      return {
+        name: entry.name,
+        usItemId: entry.usItemId,
+        points,
+        minPrice,
+        maxPrice,
+        latestPrice: points[points.length - 1].unitPrice,
+        changed: minPrice !== maxPrice,
+      };
+    })
+    .sort(
+      (a, b) =>
+        Number(b.changed) - Number(a.changed) ||
+        (b.maxPrice - b.minPrice) - (a.maxPrice - a.minPrice) ||
+        a.name.localeCompare(b.name)
+    );
+}
+
 (() => {
   const Sidepanel = window.Sidepanel || (window.Sidepanel = {});
 
@@ -193,6 +274,37 @@ function computeDashboardStats(records) {
     `;
   }
 
+  /** Cap on rendered price-history rows — the full list can get long. */
+  const PRICE_HISTORY_MAX_ROWS = 15;
+
+  /** Render the "Price history" section (repurchased items whose unit price moved). */
+  function priceHistorySectionHtml(priceHistory) {
+    const changedItems = priceHistory
+      .filter((entry) => entry.changed)
+      .slice(0, PRICE_HISTORY_MAX_ROWS);
+    const rows = changedItems.length
+      ? changedItems
+          .map(
+            (entry) => `
+              <li>
+                <span class="dashboard-item-name">${escapeHtml(entry.name)}</span>
+                <span class="dashboard-muted">${escapeHtml(
+                  `${formatMoney(entry.minPrice)} → ${formatMoney(entry.maxPrice)} (latest ${formatMoney(entry.latestPrice)})`
+                )}</span>
+              </li>
+            `
+          )
+          .join('')
+      : '<li class="dashboard-muted">No price changes detected yet.</li>';
+    return `
+      <div class="dashboard-section">
+        <h3 class="dashboard-section-title">Price history</h3>
+        <ul class="dashboard-list">${rows}</ul>
+        <div class="dashboard-hint">Price history grows as more invoices are downloaded — only downloaded invoices carry per-item prices.</div>
+      </div>
+    `;
+  }
+
   /**
    * Render the dashboard into #dashboardContent from the local order
    * database. Read-only: never touches running collections or downloads.
@@ -231,6 +343,7 @@ function computeDashboardStats(records) {
       </div>
       ${monthlySectionHtml(stats.monthly)}
       ${topItemsSectionHtml(stats.topItems)}
+      ${priceHistorySectionHtml(computePriceHistory(records))}
     `;
   }
 
