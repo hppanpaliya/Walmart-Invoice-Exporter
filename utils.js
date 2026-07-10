@@ -76,48 +76,6 @@ function configureSingleOrderColumns(worksheet, options = {}) {
 }
 
 /**
- * Configure columns for a combined multiple orders export worksheet
- * @param {ExcelJS.Worksheet} worksheet - The worksheet to configure
- */
-function configureMultipleOrdersColumns(worksheet, options = {}) {
-  const columns = [
-    { header: 'Order Number', key: 'orderNumber', width: 20, style: { alignment: { horizontal: "center" } } },
-    { header: 'Order Date', key: 'orderDate', width: 20, style: { alignment: { horizontal: "center" } } },
-    { header: 'Address Recipient', key: 'addressRecipient', width: 24, style: { alignment: { horizontal: "center" } } },
-    { header: 'Shipping Address', key: 'address', width: 45, style: { alignment: { horizontal: "center" } } },
-    { header: 'Delivery Instructions', key: 'deliveryInstructions', width: 36, style: { alignment: { horizontal: "center" } } },
-    { header: 'Payment Method', key: 'paymentMethods', width: 42, style: { alignment: { horizontal: "center" } } },
-    { header: 'Payment Messages', key: 'paymentMessages', width: 52, style: { alignment: { horizontal: "center" } } },
-    { header: 'Subtotal (Before Savings)', key: 'subtotalBeforeSavings', width: 22, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
-    { header: 'Savings', key: 'savings', width: 14, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
-    { header: 'Subtotal', key: 'orderSubtotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
-    { header: 'Product Name', key: 'productName', width: 60, style: { alignment: { horizontal: "center" } } },
-    { header: 'Quantity', key: 'quantity', width: 10, style: { numFmt: "#,##0", alignment: { horizontal: "center" } } },
-    { header: 'Price', key: 'price', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
-    { header: 'Delivery Charges', key: 'deliveryCharges', width: 20, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
-    { header: 'Bag Fee', key: 'bagFee', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
-    { header: 'Tax', key: 'tax', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
-    { header: 'Tip', key: 'tip', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
-    { header: 'Order Total', key: 'orderTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
-    { header: 'Delivery Status', key: 'deliveryStatus', width: 20, style: { alignment: { horizontal: "center" } } },
-    { header: 'Product Link', key: 'productLink', width: 60 , style: { font: STYLES.linkFont } },
-    { header: 'Seller(s)', key: 'sellers', width: 26, style: { alignment: { horizontal: "center" } } },
-    { header: 'Fulfillment', key: 'fulfillmentTypes', width: 16, style: { alignment: { horizontal: "center" } } },
-    { header: 'Delivered Date', key: 'deliveredDate', width: 18, style: { alignment: { horizontal: "center" } } },
-    { header: 'Tracking Numbers', key: 'trackingNumbers', width: 28, style: { alignment: { horizontal: "center" } } },
-    { header: 'Payment Split', key: 'paymentSplit', width: 40, style: { alignment: { horizontal: "center" } } },
-    { header: 'Refund', key: 'refund', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
-    { header: 'Donations', key: 'donations', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
-    { header: 'Receipt Barcode', key: 'barcodeLink', width: 16, style: { alignment: { horizontal: "center" } } },
-    { header: 'Order Type', key: 'orderType', width: 14, style: { alignment: { horizontal: "center" } } },
-  ];
-  if (options.includeThumbnails) {
-    columns.push({ header: 'Thumbnail', key: 'thumbnail', width: 9, style: { alignment: { horizontal: "center" } } });
-  }
-  worksheet.columns = columns;
-}
-
-/**
  * Configure columns for the Quick Export order summary worksheet
  * @param {ExcelJS.Worksheet} worksheet - The worksheet to configure
  */
@@ -274,60 +232,11 @@ function addItemsToWorksheet(worksheet, items) {
         text: truncateText(productName),
         hyperlink: productLink
       },
-      quantity: parseNumericValue(item.quantity),
-      price: parseNumericValue(item.price),
+      quantity: excelNumber(item.quantity),
+      price: excelNumber(item.price),
       deliveryStatus: item.deliveryStatus,
     });
     row.font = STYLES.productFont;
-  });
-}
-
-/**
- * Add items from multiple orders to a worksheet
- * @param {ExcelJS.Worksheet} worksheet - The worksheet to add items to
- * @param {Array} items - The items to add (with orderNumber and orderDate)
- */
-function addMultipleOrderItemsToWorksheet(worksheet, items) {
-  items.forEach((item) => {
-    const productName = item.productName || "";
-    const productLink = item.productLink || "";
-    worksheet.addRow({
-      orderNumber: item.orderNumber || '',
-      orderDate: item.orderDate || '',
-      addressRecipient: item.addressRecipient || '',
-      address: item.address || '',
-      deliveryInstructions: item.deliveryInstructions || '',
-      paymentMethods: item.paymentMethods || '',
-      paymentMessages: item.paymentMessages || '',
-      subtotalBeforeSavings: parseNumericValue(item.subtotalBeforeSavings),
-      savings: parseNumericValue(item.savings),
-      orderSubtotal: parseNumericValue(item.orderSubtotal),
-      productName,
-      quantity: parseNumericValue(item.quantity),
-      price: parseNumericValue(item.price),
-      deliveryStatus: item.deliveryStatus || '',
-      productLink: {
-        text: truncateText(productName),
-        hyperlink: productLink
-      },
-      deliveryCharges: parseNumericValue(item.deliveryCharges),
-      bagFee: parseNumericValue(item.bagFee),
-      tax: parseNumericValue(item.tax),
-      tip: parseNumericValue(item.tip),
-      orderTotal: parseNumericValue(item.orderTotal),
-      sellers: item.sellers || '',
-      fulfillmentTypes: item.fulfillmentTypes || '',
-      deliveredDate: item.deliveredDate || '',
-      trackingNumbers: item.trackingNumbers || '',
-      paymentSplit: item.paymentSplit || '',
-      // Blank (not $0.00) when the order had no refund or donation.
-      refund: item.refund ? parseNumericValue(item.refund) : '',
-      donations: item.donations ? parseNumericValue(item.donations) : '',
-      barcodeLink: item.barcodeImageUrl
-        ? { text: 'Barcode', hyperlink: item.barcodeImageUrl }
-        : '',
-      orderType: formatOrderType(item.orderType, item.isInStore),
-    });
   });
 }
 
@@ -578,6 +487,7 @@ async function convertSingleOrderToXlsx(orderDetails, ExcelJS, filename = null, 
 
   // Apply styling
   styleSingleOrderWorksheet(worksheet);
+  polishWorksheet(worksheet, { filter: false });
 
   if (options.includeThumbnails) {
     await embedItemThumbnails(workbook, worksheet, items, worksheet.columns.length);
@@ -589,70 +499,163 @@ async function convertSingleOrderToXlsx(orderDetails, ExcelJS, filename = null, 
 }
 
 /**
- * Convert multiple orders data to a single XLSX file with all items combined
- * @param {Array} ordersData - Array of order data objects, each containing items with order details
+ * Blank-preserving number conversion for spreadsheet cells: unknown values
+ * stay EMPTY instead of rendering as a misleading $0.00 / 0.
+ * @param {*} value - Raw value ("$7.96", 2, '', null)
+ * @returns {number|string} number, or '' when the value is unknown
+ */
+function excelNumber(value) {
+  if (value === '' || value === null || value === undefined) return '';
+  return parseNumericValue(value);
+}
+
+/**
+ * Polish a worksheet: Walmart-blue bold header, frozen header row, and
+ * (optionally) an auto-filter across the header.
+ * @param {ExcelJS.Worksheet} worksheet
+ * @param {Object} options
+ * @param {boolean} options.filter - Add an auto-filter over the columns
+ */
+function polishWorksheet(worksheet, { filter = true } = {}) {
+  const header = worksheet.getRow(1);
+  header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  header.eachCell((cell) => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0071DC' } };
+    cell.alignment = { vertical: 'middle' };
+  });
+  header.height = 20;
+  worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+  if (filter && worksheet.columns.length > 0) {
+    worksheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: worksheet.columns.length },
+    };
+  }
+}
+
+/**
+ * Convert multiple orders into one workbook with two sheets:
+ *  - "Orders": one row per order — financial columns sum correctly.
+ *  - "Items":  one row per item — lean columns, no repeated order noise.
+ * Unknown values stay blank (never a fake $0.00).
+ * @param {Array} ordersData - Array of order data objects
  * @param {Object} ExcelJS - The ExcelJS library
  * @param {string} filename - Optional custom filename
+ * @param {Object} options - { includeThumbnails }
  */
 async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null, options = {}) {
   const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('Walmart Orders');
-
-  // Configure columns for multiple orders
-  configureMultipleOrdersColumns(worksheet, options);
-
-  // Flatten all items from all orders into a single list with order info
-  const allItems = [];
   const ordersArray = Array.isArray(ordersData) ? ordersData : [ordersData];
-  
-  ordersArray.forEach((orderDetails) => {
-    const paymentMethodsDetailed = formatPaymentMethodDetails(orderDetails);
 
+  // ----- Sheet 1: one row per order -----
+  const ordersSheet = workbook.addWorksheet('Orders');
+  ordersSheet.columns = [
+    { header: 'Order Number', key: 'orderNumber', width: 20 },
+    { header: 'Order Date', key: 'orderDate', width: 14 },
+    { header: 'Order Type', key: 'orderType', width: 11, style: { alignment: { horizontal: 'center' } } },
+    { header: 'Items', key: 'itemCount', width: 7, style: { numFmt: '#,##0', alignment: { horizontal: 'center' } } },
+    { header: 'Subtotal (Before Savings)', key: 'subtotalBeforeSavings', width: 13, style: { numFmt: '$#,##0.00' } },
+    { header: 'Savings', key: 'savings', width: 10, style: { numFmt: '$#,##0.00' } },
+    { header: 'Subtotal', key: 'orderSubtotal', width: 11, style: { numFmt: '$#,##0.00' } },
+    { header: 'Delivery Charges', key: 'deliveryCharges', width: 10, style: { numFmt: '$#,##0.00' } },
+    { header: 'Bag Fee', key: 'bagFee', width: 9, style: { numFmt: '$#,##0.00' } },
+    { header: 'Tax', key: 'tax', width: 9, style: { numFmt: '$#,##0.00' } },
+    { header: 'Tip', key: 'tip', width: 9, style: { numFmt: '$#,##0.00' } },
+    { header: 'Refund', key: 'refund', width: 10, style: { numFmt: '$#,##0.00' } },
+    { header: 'Donations', key: 'donations', width: 10, style: { numFmt: '$#,##0.00' } },
+    { header: 'Order Total', key: 'orderTotal', width: 12, style: { numFmt: '$#,##0.00' } },
+    { header: 'Payment Method', key: 'paymentMethods', width: 32 },
+    { header: 'Payment Split', key: 'paymentSplit', width: 32 },
+    { header: 'Payment Messages', key: 'paymentMessages', width: 32 },
+    { header: 'Seller(s)', key: 'sellers', width: 24 },
+    { header: 'Fulfillment', key: 'fulfillmentTypes', width: 14 },
+    { header: 'Delivered Date', key: 'deliveredDate', width: 14 },
+    { header: 'Tracking Numbers', key: 'trackingNumbers', width: 24 },
+    { header: 'Ship To', key: 'address', width: 36 },
+    { header: 'Delivery Instructions', key: 'deliveryInstructions', width: 24 },
+    { header: 'Receipt Barcode', key: 'barcodeLink', width: 14 },
+  ];
+
+  ordersArray.forEach((orderDetails) => {
+    ordersSheet.addRow({
+      orderNumber: orderDetails.orderNumber || '',
+      orderDate: orderDetails.orderDate || '',
+      orderType: formatOrderType(orderDetails.orderType, orderDetails.isInStore),
+      itemCount: Array.isArray(orderDetails.items) ? orderDetails.items.length : '',
+      subtotalBeforeSavings: excelNumber(orderDetails.subtotalBeforeSavings),
+      savings: excelNumber(orderDetails.savings),
+      orderSubtotal: excelNumber(orderDetails.orderSubtotal),
+      deliveryCharges: excelNumber(orderDetails.deliveryCharges),
+      bagFee: excelNumber(orderDetails.bagFee),
+      tax: excelNumber(orderDetails.tax),
+      tip: excelNumber(orderDetails.tip),
+      refund: excelNumber(orderDetails.refund),
+      donations: excelNumber(orderDetails.donations),
+      orderTotal: excelNumber(orderDetails.orderTotal),
+      paymentMethods: formatPaymentMethodDetails(orderDetails) || orderDetails.paymentMethods || '',
+      paymentSplit: orderDetails.paymentSplit || '',
+      paymentMessages: orderDetails.paymentMessages || '',
+      sellers: orderDetails.sellers || '',
+      fulfillmentTypes: orderDetails.fulfillmentTypes || '',
+      deliveredDate: orderDetails.deliveredDate || '',
+      trackingNumbers: orderDetails.trackingNumbers || '',
+      address: [orderDetails.addressRecipient, orderDetails.addressLine || orderDetails.address]
+        .filter(Boolean)
+        .join(', ') || orderDetails.address || '',
+      deliveryInstructions: orderDetails.deliveryInstructions || '',
+      barcodeLink: orderDetails.barcodeImageUrl
+        ? { text: 'Barcode', hyperlink: orderDetails.barcodeImageUrl }
+        : '',
+    });
+  });
+  polishWorksheet(ordersSheet);
+
+  // ----- Sheet 2: one row per item -----
+  const itemsSheet = workbook.addWorksheet('Items');
+  const itemColumns = [
+    { header: 'Order Number', key: 'orderNumber', width: 20 },
+    { header: 'Order Date', key: 'orderDate', width: 14 },
+    { header: 'Product Name', key: 'productName', width: 64 },
+    { header: 'Qty', key: 'quantity', width: 7, style: { numFmt: '#,##0', alignment: { horizontal: 'center' } } },
+    { header: 'Price', key: 'price', width: 11, style: { numFmt: '$#,##0.00' } },
+    { header: 'Status', key: 'deliveryStatus', width: 16 },
+    { header: 'Order Type', key: 'orderType', width: 11, style: { alignment: { horizontal: 'center' } } },
+    { header: 'Product Link', key: 'productLink', width: 46, style: { font: STYLES.linkFont } },
+  ];
+  if (options.includeThumbnails) {
+    itemColumns.push({ header: 'Thumbnail', key: 'thumbnail', width: 9, style: { alignment: { horizontal: 'center' } } });
+  }
+  itemsSheet.columns = itemColumns;
+
+  const allItems = [];
+  ordersArray.forEach((orderDetails) => {
     (orderDetails.items || []).forEach((item) => {
-      allItems.push({
+      allItems.push({ orderDetails, item });
+      const productName = item.productName || '';
+      const productLink = item.productLink || '';
+      itemsSheet.addRow({
         orderNumber: orderDetails.orderNumber || '',
         orderDate: orderDetails.orderDate || '',
-        addressRecipient: orderDetails.addressRecipient || '',
-        address: orderDetails.address || '',
-        deliveryInstructions: orderDetails.deliveryInstructions || '',
-        paymentMethods: paymentMethodsDetailed || orderDetails.paymentMethods || '',
-        paymentMessages: orderDetails.paymentMessages || '',
-        subtotalBeforeSavings: orderDetails.subtotalBeforeSavings || '',
-        savings: orderDetails.savings || '',
-        orderSubtotal: orderDetails.orderSubtotal || '',
-        orderTotal: orderDetails.orderTotal || '',
-        productName: item.productName || '',
-        quantity: item.quantity,
-        price: item.price,
+        productName,
+        quantity: excelNumber(item.quantity),
+        price: excelNumber(item.price),
         deliveryStatus: item.deliveryStatus || '',
-        productLink: item.productLink || '',
-        thumbnailUrl: item.thumbnailUrl || '',
-        deliveryCharges: orderDetails.deliveryCharges || '',
-        bagFee: orderDetails.bagFee || '',
-        tax: orderDetails.tax || '',
-        tip: orderDetails.tip || '',
-        refund: orderDetails.refund || '',
-        donations: orderDetails.donations || '',
-        barcodeImageUrl: orderDetails.barcodeImageUrl || '',
-        sellers: orderDetails.sellers || '',
-        fulfillmentTypes: orderDetails.fulfillmentTypes || '',
-        deliveredDate: orderDetails.deliveredDate || '',
-        trackingNumbers: orderDetails.trackingNumbers || '',
-        paymentSplit: orderDetails.paymentSplit || '',
-        orderType: orderDetails.orderType || '',
-        isInStore: Boolean(orderDetails.isInStore),
+        orderType: formatOrderType(orderDetails.orderType, orderDetails.isInStore),
+        productLink: productLink && productLink !== 'N/A'
+          ? { text: truncateText(productName), hyperlink: productLink }
+          : '',
       });
     });
   });
-
-  // Add all items to worksheet
-  addMultipleOrderItemsToWorksheet(worksheet, allItems);
-
-  // Apply styling
-  styleMultipleOrdersWorksheet(worksheet);
+  polishWorksheet(itemsSheet);
 
   if (options.includeThumbnails) {
-    await embedItemThumbnails(workbook, worksheet, allItems, worksheet.columns.length);
+    await embedItemThumbnails(
+      workbook,
+      itemsSheet,
+      allItems.map(({ item }) => item),
+      itemsSheet.columns.length
+    );
   }
 
   // Download
