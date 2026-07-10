@@ -144,9 +144,9 @@ function configureOrderSummaryColumns(worksheet) {
  * @param {Object} ExcelJS - The ExcelJS library
  * @param {string} filename - Optional custom filename
  */
-async function convertOrderSummariesToXlsx(summaryRows, ExcelJS, filename = null) {
+async function convertOrderSummariesToXlsx(summaryRows, ExcelJS, filename = null, options = {}) {
   const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('Order Summaries');
+  const worksheet = workbook.addWorksheet('Orders');
 
   configureOrderSummaryColumns(worksheet);
 
@@ -170,9 +170,93 @@ async function convertOrderSummariesToXlsx(summaryRows, ExcelJS, filename = null
   // Apply styling (bold header row, matching the multi-order export)
   styleMultipleOrdersWorksheet(worksheet);
 
+  // Second sheet: one row per item (prices join in from downloaded invoices).
+  const itemRows = Array.isArray(options.itemRows) ? options.itemRows : [];
+  if (itemRows.length > 0) {
+    const itemsSheet = workbook.addWorksheet('Items');
+    itemsSheet.columns = [
+      { header: 'Order Number', key: 'orderNumber', width: 20, style: { alignment: { horizontal: "center" } } },
+      { header: 'Order Date', key: 'orderDate', width: 16, style: { alignment: { horizontal: "center" } } },
+      { header: 'Item', key: 'name', width: 60 },
+      { header: 'Qty', key: 'quantity', width: 8, style: { numFmt: "#,##0", alignment: { horizontal: "center" } } },
+      { header: 'Price', key: 'price', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+      { header: 'Status', key: 'status', width: 18, style: { alignment: { horizontal: "center" } } },
+    ];
+    itemRows.forEach((row) => {
+      itemsSheet.addRow({
+        orderNumber: row.orderNumber || '',
+        orderDate: row.orderDate || '',
+        name: row.name || '',
+        quantity: row.quantity === '' || row.quantity === null || row.quantity === undefined ? '' : parseNumericValue(row.quantity),
+        price: row.price ? parseNumericValue(row.price) : '',
+        status: row.status || '',
+      });
+    });
+    styleMultipleOrdersWorksheet(itemsSheet);
+  }
+
   // Download
   const downloadFilename = filename || 'Walmart_Orders_Summary.xlsx';
   await downloadWorkbook(workbook, downloadFilename);
+}
+
+/**
+ * Build one row per item for the Quick Export items sheet.
+ * Item names/quantities come from the list-payload summaries; per-item
+ * prices are not in the list payload, so they join in from any stored
+ * deep-export invoice (matched by normalized product name). Orders with an
+ * invoice but no summary items use the invoice items directly.
+ * @param {string[]} orderNumbers - Selected order numbers, in export order
+ * @param {Object} orderSummaries - orderNumber → Quick Export summary
+ * @param {Object} invoiceByOrder - orderNumber → stored invoice data
+ * @param {Object} dateByOrder - orderNumber → display date for the rows
+ * @returns {Object[]} rows {orderNumber, orderDate, name, quantity, price, status}
+ */
+function buildSummaryItemRows(orderNumbers, orderSummaries = {}, invoiceByOrder = {}, dateByOrder = {}) {
+  const normalizeName = (name) => String(name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const rows = [];
+
+  (orderNumbers || []).forEach((orderNumber) => {
+    const summary = orderSummaries[orderNumber] || null;
+    const invoice = invoiceByOrder[orderNumber] || null;
+    const orderDate = dateByOrder[orderNumber] || summary?.orderDate || '';
+
+    const priceByName = new Map();
+    (invoice?.items || []).forEach((item) => {
+      const key = normalizeName(item.productName);
+      if (key && !priceByName.has(key)) {
+        priceByName.set(key, item.price || '');
+      }
+    });
+
+    const summaryItems = Array.isArray(summary?.items) ? summary.items : [];
+    if (summaryItems.length > 0) {
+      summaryItems.forEach((item) => {
+        rows.push({
+          orderNumber,
+          orderDate,
+          name: item.name || '',
+          quantity: item.quantity ?? '',
+          price: priceByName.get(normalizeName(item.name)) || '',
+          status: item.statusCode || summary?.status || '',
+        });
+      });
+      return;
+    }
+
+    (invoice?.items || []).forEach((item) => {
+      rows.push({
+        orderNumber,
+        orderDate,
+        name: item.productName || '',
+        quantity: item.quantity ?? '',
+        price: item.price || '',
+        status: item.deliveryStatus || '',
+      });
+    });
+  });
+
+  return rows;
 }
 
 /**
@@ -860,6 +944,31 @@ function convertOrderSummariesToCsv(summaryRows, filename = 'Walmart_Orders_Summ
   const rows = rowsArray.map((row) => SUMMARY_CSV_COLUMNS.map(([, getter]) => getter(row)));
   downloadTextFile(
     buildCsvContent(SUMMARY_CSV_COLUMNS.map(([header]) => header), rows),
+    filename,
+    'text/csv'
+  );
+}
+
+/** Quick Export per-item columns for the companion items CSV. */
+const SUMMARY_ITEM_CSV_COLUMNS = [
+  ['Order Number', (row) => row.orderNumber || ''],
+  ['Order Date', (row) => row.orderDate || ''],
+  ['Item', (row) => row.name || ''],
+  ['Qty', (row) => (row.quantity === '' || row.quantity === null || row.quantity === undefined ? '' : parseNumericValue(row.quantity))],
+  ['Price', (row) => csvMoney(row.price, { blankWhenEmpty: true })],
+  ['Status', (row) => row.status || ''],
+];
+
+/**
+ * Export Quick Export item rows as the companion CSV (one row per item).
+ * @param {Array} itemRows - Rows from buildSummaryItemRows
+ * @param {string} filename - Download filename
+ */
+function convertOrderSummaryItemsToCsv(itemRows, filename = 'Walmart_Orders_Summary_Items.csv') {
+  const rowsArray = Array.isArray(itemRows) ? itemRows : [];
+  const rows = rowsArray.map((row) => SUMMARY_ITEM_CSV_COLUMNS.map(([, getter]) => getter(row)));
+  downloadTextFile(
+    buildCsvContent(SUMMARY_ITEM_CSV_COLUMNS.map(([header]) => header), rows),
     filename,
     'text/csv'
   );
