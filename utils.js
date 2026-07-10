@@ -22,6 +22,30 @@ function parseNumericValue(value) {
 }
 
 /**
+ * Format detailed payment method metadata into a readable string
+ * @param {Object} orderDetails - Order details containing payment info
+ * @returns {string}
+ */
+function formatPaymentMethodDetails(orderDetails) {
+  const details = Array.isArray(orderDetails?.paymentMethodDetails)
+    ? orderDetails.paymentMethodDetails
+    : [];
+
+  if (details.length === 0) {
+    return orderDetails?.paymentMethods || '';
+  }
+
+  return details
+    .map((entry) => {
+      const primary = [entry.brand, entry.ending].filter(Boolean).join(' - ');
+      const amount = entry.amount ? `Amount: ${entry.amount}` : '';
+      return [primary, amount].filter(Boolean).join(' | ');
+    })
+    .filter(Boolean)
+    .join(' || ');
+}
+
+/**
  * Configure columns for a single order export worksheet
  * @param {ExcelJS.Worksheet} worksheet - The worksheet to configure
  */
@@ -43,16 +67,22 @@ function configureMultipleOrdersColumns(worksheet) {
   worksheet.columns = [
     { header: 'Order Number', key: 'orderNumber', width: 20, style: { alignment: { horizontal: "center" } } },
     { header: 'Order Date', key: 'orderDate', width: 20, style: { alignment: { horizontal: "center" } } },
-    { header: 'Shipping Address', key: 'address', width: 40, style: { alignment: { horizontal: "center" } } },  
-    { header: 'Payment Method', key: 'paymentMethods', width: 30, style: { alignment: { horizontal: "center" } } },
+    { header: 'Address Recipient', key: 'addressRecipient', width: 24, style: { alignment: { horizontal: "center" } } },
+    { header: 'Shipping Address', key: 'address', width: 45, style: { alignment: { horizontal: "center" } } },
+    { header: 'Delivery Instructions', key: 'deliveryInstructions', width: 36, style: { alignment: { horizontal: "center" } } },
+    { header: 'Payment Method', key: 'paymentMethods', width: 42, style: { alignment: { horizontal: "center" } } },
+    { header: 'Payment Messages', key: 'paymentMessages', width: 52, style: { alignment: { horizontal: "center" } } },
+    { header: 'Subtotal (Before Savings)', key: 'subtotalBeforeSavings', width: 22, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Savings', key: 'savings', width: 14, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Subtotal', key: 'orderSubtotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
-    { header: 'Order Total', key: 'orderTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Product Name', key: 'productName', width: 60, style: { alignment: { horizontal: "center" } } },
     { header: 'Quantity', key: 'quantity', width: 10, style: { numFmt: "#,##0", alignment: { horizontal: "center" } } },
     { header: 'Price', key: 'price', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Delivery Charges', key: 'deliveryCharges', width: 20, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Bag Fee', key: 'bagFee', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Tax', key: 'tax', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Tip', key: 'tip', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Order Total', key: 'orderTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Delivery Status', key: 'deliveryStatus', width: 20, style: { alignment: { horizontal: "center" } } },
     { header: 'Product Link', key: 'productLink', width: 60 , style: { font: STYLES.linkFont } },
   ];
@@ -65,11 +95,13 @@ function configureMultipleOrdersColumns(worksheet) {
  */
 function addItemsToWorksheet(worksheet, items) {
   items.forEach((item) => {
+    const productName = item.productName || "";
+    const productLink = item.productLink || "";
     const row = worksheet.addRow({
-      productName: item.productName,
+      productName,
       productLink: {
-        text: truncateText(item.productName),
-        hyperlink: item.productLink
+        text: truncateText(productName),
+        hyperlink: productLink
       },
       quantity: parseNumericValue(item.quantity),
       price: parseNumericValue(item.price),
@@ -86,24 +118,32 @@ function addItemsToWorksheet(worksheet, items) {
  */
 function addMultipleOrderItemsToWorksheet(worksheet, items) {
   items.forEach((item) => {
+    const productName = item.productName || "";
+    const productLink = item.productLink || "";
     worksheet.addRow({
       orderNumber: item.orderNumber || '',
       orderDate: item.orderDate || '',
+      addressRecipient: item.addressRecipient || '',
       address: item.address || '',
+      deliveryInstructions: item.deliveryInstructions || '',
       paymentMethods: item.paymentMethods || '',
+      paymentMessages: item.paymentMessages || '',
+      subtotalBeforeSavings: parseNumericValue(item.subtotalBeforeSavings),
+      savings: parseNumericValue(item.savings),
       orderSubtotal: parseNumericValue(item.orderSubtotal),
-      orderTotal: parseNumericValue(item.orderTotal),
-      productName: item.productName || '',
+      productName,
       quantity: parseNumericValue(item.quantity),
       price: parseNumericValue(item.price),
       deliveryStatus: item.deliveryStatus || '',
       productLink: {
-        text: truncateText(item.productName),
-        hyperlink: item.productLink
+        text: truncateText(productName),
+        hyperlink: productLink
       },
       deliveryCharges: parseNumericValue(item.deliveryCharges),
+      bagFee: parseNumericValue(item.bagFee),
       tax: parseNumericValue(item.tax),
       tip: parseNumericValue(item.tip),
+      orderTotal: parseNumericValue(item.orderTotal),
     });
   });
 }
@@ -113,20 +153,41 @@ function addMultipleOrderItemsToWorksheet(worksheet, items) {
  * @param {ExcelJS.Worksheet} worksheet - The worksheet to style
  */
 function styleSingleOrderWorksheet(worksheet) {
+  const currencyLabels = new Set([
+    'Subtotal (Before Savings)',
+    'Savings',
+    'Subtotal',
+    'Delivery Charges',
+    'Bag Fee',
+    'Tax',
+    'Tip',
+    'Order Total',
+  ]);
+
   // Apply product font to all cells
   worksheet.eachRow((row) => {
     row.eachCell((cell) => {
       cell.font = STYLES.productFont;
     });
-    const cell = row.getCell("productLink");
-    if (cell) {
-      cell.font = STYLES.linkFont;
+    const linkCell = row.getCell(5);
+    if (linkCell && linkCell.value) {
+      linkCell.font = STYLES.linkFont;
     }
   });
 
   // Apply header font to first row
   worksheet.getRow(1).eachCell((cell) => {
     cell.font = STYLES.headerFont;
+  });
+
+  // Keep only the monetary summary rows formatted as currency.
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber <= 1) return;
+    const label = row.getCell(1).value;
+    if (currencyLabels.has(label)) {
+      row.getCell(2).numFmt = "$#,##0.00";
+      row.getCell(2).alignment = { horizontal: "center" };
+    }
   });
 }
 
@@ -147,14 +208,22 @@ function addOrderSummary(worksheet, orderDetails) {
   // Add empty row for spacing
   worksheet.addRow([]);
 
+  const paymentMethodsDetailed = formatPaymentMethodDetails(orderDetails);
+
   // Add order details
   const rows = [
     ['Order Number', orderDetails.orderNumber],
     ['Order Date', orderDetails.orderDate],
+    ['Address Recipient', orderDetails.addressRecipient],
     ['Shipping Address', orderDetails.address],
-    ['Payment Method', orderDetails.paymentMethods],
+    ['Delivery Instructions', orderDetails.deliveryInstructions],
+    ['Payment Method', paymentMethodsDetailed || orderDetails.paymentMethods],
+    ['Payment Messages', orderDetails.paymentMessages],
+    ['Subtotal (Before Savings)', parseNumericValue(orderDetails.subtotalBeforeSavings)],
+    ['Savings', parseNumericValue(orderDetails.savings)],
     ['Subtotal', parseNumericValue(orderDetails.orderSubtotal)],
     ['Delivery Charges', parseNumericValue(orderDetails.deliveryCharges)],
+    ['Bag Fee', parseNumericValue(orderDetails.bagFee)],
     ['Tax', parseNumericValue(orderDetails.tax)],
     ['Tip', parseNumericValue(orderDetails.tip)],
     ['Order Total', parseNumericValue(orderDetails.orderTotal)],
@@ -166,8 +235,20 @@ function addOrderSummary(worksheet, orderDetails) {
     return row;
   });
 
-  // Apply currency formatting to numeric values
-  summaryRows.slice(2).forEach((row) => {
+  // Apply currency formatting only to money fields.
+  const currencyLabels = new Set([
+    'Subtotal (Before Savings)',
+    'Savings',
+    'Subtotal',
+    'Delivery Charges',
+    'Bag Fee',
+    'Tax',
+    'Tip',
+    'Order Total',
+  ]);
+  summaryRows.forEach((row) => {
+    const label = row.getCell(1).value;
+    if (!currencyLabels.has(label)) return;
     row.getCell(2).numFmt = "$#,##0.00";
     row.getCell(2).font = { ...STYLES.productFont, bold: true };
     row.getCell(1).font = { ...STYLES.productFont, bold: true };
@@ -260,22 +341,30 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null)
   const ordersArray = Array.isArray(ordersData) ? ordersData : [ordersData];
   
   ordersArray.forEach((orderDetails) => {
+    const paymentMethodsDetailed = formatPaymentMethodDetails(orderDetails);
+
     (orderDetails.items || []).forEach((item) => {
       allItems.push({
         orderNumber: orderDetails.orderNumber || '',
         orderDate: orderDetails.orderDate || '',
+        addressRecipient: orderDetails.addressRecipient || '',
         address: orderDetails.address || '',
-        paymentMethods: orderDetails.paymentMethods || '',
-        orderSubtotal: parseNumericValue(orderDetails.orderSubtotal),
-        orderTotal: parseNumericValue(orderDetails.orderTotal),
+        deliveryInstructions: orderDetails.deliveryInstructions || '',
+        paymentMethods: paymentMethodsDetailed || orderDetails.paymentMethods || '',
+        paymentMessages: orderDetails.paymentMessages || '',
+        subtotalBeforeSavings: orderDetails.subtotalBeforeSavings || '',
+        savings: orderDetails.savings || '',
+        orderSubtotal: orderDetails.orderSubtotal || '',
+        orderTotal: orderDetails.orderTotal || '',
         productName: item.productName || '',
         quantity: item.quantity,
         price: item.price,
         deliveryStatus: item.deliveryStatus || '',
         productLink: item.productLink || '',
-        deliveryCharges: parseNumericValue(item.deliveryCharges),
-        tax: parseNumericValue(orderDetails.tax),
-        tip: parseNumericValue(orderDetails.tip),
+        deliveryCharges: orderDetails.deliveryCharges || '',
+        bagFee: orderDetails.bagFee || '',
+        tax: orderDetails.tax || '',
+        tip: orderDetails.tip || '',
       });
     });
   });
@@ -423,28 +512,29 @@ const CONSTANTS = {
   // DOM Selectors (content.js)
   SELECTORS: {
     PRINT_ITEMS: '.dn.print-items-list',
-    PRINT_ITEM_NAME: '.flex.justify-between > .w_U9_0.w_sD6D.w_QcqU',
-    PRINT_BILL_TYPE: '.print-bill-type .w_U9_0.w_sD6D.w_QcqU',
-    PRINT_BILL_QTY: '.print-bill-qty .w_U9_0.w_sD6D.w_QcqU',
-    PRINT_BILL_PRICE: '.print-bill-price .w_U9_0.w_sD6D.w_QcqU',
+    PRINT_ITEM_NAME: '.flex.justify-between > .w_U9_0.w_sD6D.w_QcqU, .flex.justify-between > div:first-child',
+    PRINT_BILL_TYPE: '.print-bill-type .w_U9_0.w_sD6D.w_QcqU, .print-bill-type > div',
+    PRINT_BILL_QTY: '.print-bill-qty .w_U9_0.w_sD6D.w_QcqU, .print-bill-qty > div',
+    PRINT_BILL_PRICE: '.print-bill-price .w_U9_0.w_sD6D.w_QcqU, .print-bill-price > div',
     VISIBLE_ITEMS: '[data-testid="itemtile-stack"] [data-testid="productName"] span',
     ITEM_STACK: '[data-testid="itemtile-stack"]',
     PRODUCT_LINK: 'a[link-identifier="itemClick"]',
 
     PRINT_BILL_GROUP: '.print-bill-group',
     PRINT_ITEM_ROW: '.dn.print-items-list > .flex.justify-between',
-    PAYMENT_METHODS: '.print-bill-payment-section .w_U9_0.w_sD6D.w_QcqU',
-    ADDRESS: '.print-bill-payment-section .w_U9_0.w_sD6D.w_QcqU span, .print-bill-payment-section .w_yTSq.w_0aYG.w_MwbK',
+    PAYMENT_METHODS: '[aria-labelledby^="card-description-"]',
+    ADDRESS: '.print-bill-payment-section .w_U9_0.w_sD6D.w_QcqU span, .print-bill-payment-section .w_yTSq.w_0aYG.w_MwbK, .print-bill-payment-section .flex.flex-column.mid-gray [data-sensitivity="medium"], .print-bill-payment-section .flex.flex-column.mid-gray span',
     ORDER_NUMBER_BAR: '.f-subheadline-m.dark-gray-m.print-bill-bar-id',
     ORDER_INFO_CARD: "[data-testid='orderInfoCard'] .dark-gray",
     ORDER_NUMBER_HEADING: '.print-bill-heading .dark-gray',
     PRINT_BILL_ID: '.print-bill-bar-id',
     ORDER_DATE: '.print-bill-date',
     ORDER_SUBTOTAL: '.flex.justify-between.pb3.bill-order-payment-subtotal, span[aria-label^="Subtotal after savings"]',
-    ORDER_TOTAL: '.bill-order-total-payment h2:last-child',
-    DELIVERY_CHARGES: '.print-fees',
-    TAX_ELEMENTS: '.w_iUH7',
-    TIP: '.print-bill-payment-section .flex.justify-between.pb2.pt3 .w_U9_0.w_U0S3.w_QcqU:last-child',
+    ORDER_TOTAL: '.bill-order-total-payment',
+    DELIVERY_CHARGES: '.print-fees-item',
+    TAX_ELEMENTS: '.print-fees-item',
+    TIP: '.flex.justify-between.pb2.pt3',
+    FEE_LABEL: '.ld_FS',
     ORDER_CARDS: '[data-testid^="order-"], div.ld_V.mv4',
     NEXT_BUTTON: 'button[data-automation-id="next-pages-button"]:not([disabled])',
     MAIN_HEADING: 'h1, .ld_FM.ld_FQ.ld_FO',
@@ -523,6 +613,67 @@ const CONSTANTS = {
     MULTIPLE: 'multiple',
   },
 };
+
+/**
+ * Sidepanel UI helpers
+ */
+const CACHE_INDICATOR_STYLE = 'cursor: pointer; margin-left: 6px; color: var(--primary); display: inline-flex; align-items: center; gap: 2px; font-size: 10px;';
+const CACHE_INDICATOR_SELECTOR = '[data-cache-indicator="true"]';
+
+function setCollectionButtonsState({ running, startLabel = "Start Collection" }) {
+  const startButton = document.getElementById("startCollection");
+  const stopButton = document.getElementById("stopCollection");
+  if (!startButton || !stopButton) return;
+
+  startButton.style.display = running ? "none" : "inline-flex";
+  stopButton.style.display = running ? "inline-flex" : "none";
+
+  if (!running) {
+    const label = startButton.querySelector(".btn-text");
+    if (label) label.textContent = startLabel;
+  }
+}
+
+function updateCheckboxCount(container) {
+  const heading = container.querySelector("h3");
+  const checked = container.querySelectorAll('input[type="checkbox"]:not(#selectAll):checked').length;
+  const totalOrders = container.querySelectorAll('input[type="checkbox"]:not(#selectAll)').length;
+  heading.textContent = `${CONSTANTS.TEXT.SELECT_ORDERS} (${totalOrders}) - Selected: ${checked}`;
+}
+
+function createCacheIndicator(orderNumber, options = {}) {
+  const { onDelete = null, onAfterDelete = null } = options;
+  const cacheIndicator = document.createElement("span");
+  cacheIndicator.dataset.cacheIndicator = "true";
+  cacheIndicator.style.cssText = CACHE_INDICATOR_STYLE;
+  cacheIndicator.title = "Click to delete this order's cache";
+  cacheIndicator.innerHTML = renderIcon('CACHE', 'var(--primary)');
+  cacheIndicator.style.display = "inline-flex";
+
+  cacheIndicator.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    await deleteInvoiceCache(orderNumber);
+    cacheIndicator.style.display = "none";
+    if (onDelete) onDelete(orderNumber);
+    if (onAfterDelete) onAfterDelete(orderNumber);
+  });
+
+  return cacheIndicator;
+}
+
+function createDownloadProgressElement() {
+  let progressDiv = document.getElementById("downloadProgress");
+  if (!progressDiv) {
+    progressDiv = document.createElement("div");
+    progressDiv.id = "downloadProgress";
+    const progressElement = document.getElementById("progress");
+    if (progressElement) {
+      progressElement.style.display = "none";
+      progressElement.insertAdjacentElement("afterend", progressDiv);
+    }
+  }
+  return progressDiv;
+}
 
 /**
  * DOM Factory Functions - Reusable DOM element creation
