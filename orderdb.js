@@ -83,11 +83,21 @@ const OrderDb = (() => {
       for (const [orderNumber, summary] of entries) {
         if (!orderNumber) continue;
         const existing = (await requestToPromise(store.get(orderNumber))) || null;
+
+        // Keep the richer stored summary when the incoming one is a
+        // degraded DOM scrape (isPayloadQualitySummary lives in utils.js,
+        // which loads before this module everywhere).
+        const keepExisting =
+          existing?.summary &&
+          isPayloadQualitySummary(existing.summary) &&
+          !isPayloadQualitySummary(summary);
+        const summaryToStore = keepExisting ? existing.summary : summary || existing?.summary || null;
+
         store.put({
           orderNumber,
-          orderDate: summary?.orderDate || existing?.orderDate || '',
+          orderDate: summaryToStore?.orderDate || existing?.orderDate || '',
           title: additionalFields[orderNumber] || existing?.title || '',
-          summary: summary || existing?.summary || null,
+          summary: summaryToStore,
           invoice: existing?.invoice || null,
           firstSeenAt: existing?.firstSeenAt || now,
           updatedAt: now,
