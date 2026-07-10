@@ -33,3 +33,5 @@ dev/
 repomix.config.json
 repomix-output.xmldesign.md
 .codex/
+# Browser automation artifacts
+.playwright-cli/
