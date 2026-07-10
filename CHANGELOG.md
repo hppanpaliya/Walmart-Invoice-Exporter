@@ -1,5 +1,13 @@
 # Changelog
 
+## [6.13] - July 10, 2026
+
+### Improvements
+- **UI refresh:** Download and Quick Export now sit side by side as one compact action row; the export controls (mode, format, CSV preset, thumbnails) are tucked into a collapsible "Export options" section so the main panel is just collect → select → export. Cleaner card, order list, and hover states throughout.
+
+### Fixes
+- **Fix:** Collection now always gathers the data Quick Export needs — pages collected via the DOM fallback get best-effort summaries (date, total, item count, status scraped from the order cards), and starting a collection over an old summary-less cache automatically re-collects from scratch instead of leaving Quick Export degraded.
+
 ## [6.12] - July 10, 2026
 
 ### Features

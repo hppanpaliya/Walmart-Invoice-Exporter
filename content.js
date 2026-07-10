@@ -1792,12 +1792,13 @@ async function handleCollectOrderNumbers(request = {}) {
       };
     }
 
-    const { orderNumbers, additionalFields } = extractOrderNumbers();
+    const { orderNumbers, additionalFields, orderSummaries } = extractOrderNumbers();
     const hasNextPage = await checkForNextPage();
 
-    // The DOM fallback lacks payload-level detail, so no order summaries here.
+    // DOM-fallback summaries are best-effort (date/total/status from card
+    // text) so Quick Export still works when the payload wasn't available.
     console.log(`Extracted ${orderNumbers.length} order numbers. Has next page: ${hasNextPage}`);
-    return { orderNumbers, additionalFields, orderSummaries: {}, hasNextPage };
+    return { orderNumbers, additionalFields, orderSummaries: orderSummaries || {}, hasNextPage };
   } catch (error) {
     console.error("Error during collection:", error);
     // Timeout errors indicate no more orders on this page
@@ -1954,9 +1955,49 @@ async function waitForOrdersListTransition(
  * Queries order cards once, then finds child elements within each card.
  * @returns {Object} Object containing orderNumbers array and additionalFields map
  */
+/**
+ * Best-effort Quick Export summary scraped from an order card's visible text.
+ * The payload path is far richer; this keeps Quick Export usable (date, total,
+ * item count, status) even when a page had to be collected from the DOM.
+ * @param {Element} card - The order card element
+ * @param {string} orderNumber - Digits-only order number
+ * @returns {Object} Summary object shaped like buildOrderSummary's output
+ */
+function buildDomOrderSummary(card, orderNumber) {
+  const cardText = cleanText(card?.textContent || '');
+
+  const dateMatch = cardText.match(/\b([A-Z][a-z]{2,8}\.? \d{1,2}, \d{4})\b/);
+  const totalMatch =
+    cardText.match(/(\$[\d,]+(?:\.\d{2})?)\s*total/i) ||
+    cardText.match(/total[^$]{0,20}(\$[\d,]+(?:\.\d{2})?)/i);
+  const itemCountMatch = cardText.match(/\b(\d+)\s+items?\b/i);
+
+  const statusKeywords = [
+    'Out for delivery', 'Delivered', 'Canceled', 'Cancelled', 'Shipped',
+    'Arrives', 'Picked up', 'Ready for pickup', 'Returned', 'Refunded', 'In progress',
+  ];
+  const lowerText = cardText.toLowerCase();
+  const status = statusKeywords.find((keyword) => lowerText.includes(keyword.toLowerCase())) || '';
+
+  return {
+    orderNumber,
+    orderDate: dateMatch ? dateMatch[1] : '',
+    itemCount: itemCountMatch ? Number(itemCountMatch[1]) : '',
+    orderTotal: totalMatch ? cleanText(totalMatch[1]) : '',
+    subTotal: '',
+    driverTip: '',
+    status,
+    fulfillmentTypes: '',
+    orderType: '',
+    isInStore: false,
+    items: [],
+  };
+}
+
 function extractOrderNumbers() {
   const orderNumbers = [];
   const additionalFields = {};
+  const orderSummaries = {};
   const seenOrderNumbers = new Set();
 
   // Prefer the current card wrapper, but fall back to the order details button
@@ -1972,7 +2013,7 @@ function extractOrderNumbers() {
 
   if (cardSources.length === 0) {
     console.warn("No order cards or order detail buttons found on the page");
-    return { orderNumbers, additionalFields };
+    return { orderNumbers, additionalFields, orderSummaries };
   }
 
   // Single-pass traversal: query within each card to avoid redundant global queries
@@ -1989,13 +2030,14 @@ function extractOrderNumbers() {
         seenOrderNumbers.add(orderNumber);
         orderNumbers.push(orderNumber);
         additionalFields[orderNumber] = title;
+        orderSummaries[orderNumber] = buildDomOrderSummary(card, orderNumber);
       }
     } catch (e) {
       console.error(`Error processing order card ${index}:`, e);
     }
   });
 
-  return { orderNumbers, additionalFields };
+  return { orderNumbers, additionalFields, orderSummaries };
 }
 
 /**
