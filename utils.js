@@ -196,7 +196,7 @@ function buildSummaryItemRows(orderNumbers, orderSummaries = {}, invoiceByOrder 
           name: item.name || '',
           quantity: item.quantity ?? '',
           price: priceByName.get(normalizeName(item.name)) || '',
-          status: item.statusCode || summary?.status || '',
+          status: summary?.status || '',
         });
       });
       return;
@@ -222,7 +222,7 @@ function buildSummaryItemRows(orderNumbers, orderSummaries = {}, invoiceByOrder 
  * @param {ExcelJS.Worksheet} worksheet - The worksheet to add items to
  * @param {Array} items - The items to add
  */
-function addItemsToWorksheet(worksheet, items) {
+function addItemsToWorksheet(worksheet, items, orderTotal = '') {
   items.forEach((item) => {
     const productName = item.productName || "";
     const productLink = item.productLink || "";
@@ -233,7 +233,7 @@ function addItemsToWorksheet(worksheet, items) {
         hyperlink: productLink
       },
       quantity: excelNumber(item.quantity),
-      price: excelNumber(item.price),
+      price: excelItemPrice(item.price, orderTotal),
       deliveryStatus: item.deliveryStatus,
     });
     row.font = STYLES.productFont;
@@ -304,25 +304,26 @@ function addOrderSummary(worksheet, orderDetails) {
 
   const paymentMethodsDetailed = formatPaymentMethodDetails(orderDetails);
 
-  // Add order details
+  // Add order details. Unknown values stay BLANK — never a fake $0.00.
   const rows = [
     ['Order Number', orderDetails.orderNumber],
     ['Order Date', orderDetails.orderDate],
+    ['Data', orderDataLabel(orderDetails)],
     ['Address Recipient', orderDetails.addressRecipient],
     ['Shipping Address', orderDetails.address],
     ['Delivery Instructions', orderDetails.deliveryInstructions],
     ['Payment Method', paymentMethodsDetailed || orderDetails.paymentMethods],
     ['Payment Messages', orderDetails.paymentMessages],
-    ['Subtotal (Before Savings)', parseNumericValue(orderDetails.subtotalBeforeSavings)],
-    ['Savings', parseNumericValue(orderDetails.savings)],
-    ['Subtotal', parseNumericValue(orderDetails.orderSubtotal)],
-    ['Delivery Charges', parseNumericValue(orderDetails.deliveryCharges)],
-    ['Bag Fee', parseNumericValue(orderDetails.bagFee)],
-    ['Tax', parseNumericValue(orderDetails.tax)],
-    ['Tip', parseNumericValue(orderDetails.tip)],
-    ['Refund', orderDetails.refund ? parseNumericValue(orderDetails.refund) : ''],
-    ['Donations', orderDetails.donations ? parseNumericValue(orderDetails.donations) : ''],
-    ['Order Total', parseNumericValue(orderDetails.orderTotal)],
+    ['Subtotal (Before Savings)', excelNumber(orderDetails.subtotalBeforeSavings)],
+    ['Savings', excelNumber(orderDetails.savings)],
+    ['Subtotal', excelNumber(orderDetails.orderSubtotal)],
+    ['Delivery Charges', excelNumber(orderDetails.deliveryCharges)],
+    ['Bag Fee', excelNumber(orderDetails.bagFee)],
+    ['Tax', excelNumber(orderDetails.tax)],
+    ['Tip', excelNumber(orderDetails.tip)],
+    ['Refund', excelNumber(orderDetails.refund)],
+    ['Donations', excelNumber(orderDetails.donations)],
+    ['Order Total', excelNumber(orderDetails.orderTotal)],
     ['Seller(s)', orderDetails.sellers || ''],
     ['Fulfillment', orderDetails.fulfillmentTypes || ''],
     ['Delivered Date', orderDetails.deliveredDate || ''],
@@ -337,11 +338,16 @@ function addOrderSummary(worksheet, orderDetails) {
     ['Order Type', formatOrderType(orderDetails.orderType, orderDetails.isInStore)],
   ];
 
-  const summaryRows = rows.map(([label, value]) => {
-    const row = worksheet.addRow([label, value]);
-    row.font = { ...STYLES.productFont, bold: true };
-    return row;
-  });
+  // Rows with no value are omitted entirely — a quick (summary-only) report
+  // simply has fewer lines than a full-invoice report, and the 'Data' row
+  // says why. Real zeros (a genuine $0.00) are kept.
+  const summaryRows = rows
+    .filter(([, value]) => !(value === '' || value === null || value === undefined))
+    .map(([label, value]) => {
+      const row = worksheet.addRow([label, value]);
+      row.font = { ...STYLES.productFont, bold: true };
+      return row;
+    });
 
   // Apply currency formatting only to money fields.
   const currencyLabels = new Set([
@@ -480,7 +486,7 @@ async function convertSingleOrderToXlsx(orderDetails, ExcelJS, filename = null, 
 
   // Add items
   const items = orderDetails.items || [];
-  addItemsToWorksheet(worksheet, items);
+  addItemsToWorksheet(worksheet, items, orderDetails.orderTotal);
 
   // Add order summary
   addOrderSummary(worksheet, orderDetails);
@@ -507,6 +513,35 @@ async function convertSingleOrderToXlsx(orderDetails, ExcelJS, filename = null, 
 function excelNumber(value) {
   if (value === '' || value === null || value === undefined) return '';
   return parseNumericValue(value);
+}
+
+/**
+ * Human label describing how complete an exported order's data is.
+ * Deep-downloaded invoices are complete; Quick Export rows built from the
+ * order-list summary have not had their detail page scanned yet.
+ * @param {Object} orderDetails
+ * @returns {string}
+ */
+function orderDataLabel(orderDetails) {
+  return orderDetails?.dataSource === 'summary'
+    ? 'Summary only — not scanned yet (run Download Selected for prices, fees, payment)'
+    : 'Full invoice';
+}
+
+/**
+ * Item price cell with a sanity guard: a line price that exceeds twice the
+ * order's own total is corrupt (seen with legacy DOM-scraped invoices) and
+ * exports as blank rather than as a wrong number.
+ * @param {*} price - Raw item price
+ * @param {*} orderTotal - The order's total, when known
+ * @returns {number|string}
+ */
+function excelItemPrice(price, orderTotal) {
+  const value = excelNumber(price);
+  if (value === '') return '';
+  const total = parseNumericValue(orderTotal);
+  if (total > 0 && value > total * 2) return '';
+  return value;
 }
 
 /**
@@ -553,6 +588,7 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
     { header: 'Order Number', key: 'orderNumber', width: 20 },
     { header: 'Order Date', key: 'orderDate', width: 14 },
     { header: 'Order Type', key: 'orderType', width: 11, style: { alignment: { horizontal: 'center' } } },
+    { header: 'Data', key: 'dataLabel', width: 26 },
     { header: 'Items', key: 'itemCount', width: 7, style: { numFmt: '#,##0', alignment: { horizontal: 'center' } } },
     { header: 'Subtotal (Before Savings)', key: 'subtotalBeforeSavings', width: 13, style: { numFmt: '$#,##0.00' } },
     { header: 'Savings', key: 'savings', width: 10, style: { numFmt: '$#,##0.00' } },
@@ -581,6 +617,7 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
       orderNumber: orderDetails.orderNumber || '',
       orderDate: orderDetails.orderDate || '',
       orderType: formatOrderType(orderDetails.orderType, orderDetails.isInStore),
+      dataLabel: orderDataLabel(orderDetails),
       itemCount: Array.isArray(orderDetails.items) ? orderDetails.items.length : '',
       subtotalBeforeSavings: excelNumber(orderDetails.subtotalBeforeSavings),
       savings: excelNumber(orderDetails.savings),
@@ -638,7 +675,7 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
         orderDate: orderDetails.orderDate || '',
         productName,
         quantity: excelNumber(item.quantity),
-        price: excelNumber(item.price),
+        price: excelItemPrice(item.price, orderDetails.orderTotal),
         deliveryStatus: item.deliveryStatus || '',
         orderType: formatOrderType(orderDetails.orderType, orderDetails.isInStore),
         productLink: productLink && productLink !== 'N/A'
@@ -1681,6 +1718,11 @@ const CONSTANTS = {
     SINGLE: 'single',
     MULTIPLE: 'multiple',
   },
+
+  // Order-data schema: v3 fixed item dedup (payload-first, price-insensitive)
+  // — invoices stored by older versions may contain doubled items and $0.00
+  // prices and are not trusted by exports or the dashboard.
+  ORDER_SCHEMA_VERSION: 3,
 
   // Export file formats
   EXPORT_FORMATS: {

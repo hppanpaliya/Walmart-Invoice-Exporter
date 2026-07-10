@@ -5,9 +5,9 @@
 
   const OrderDataFetcher = (() => {
     let downloadTab = null;
-    // v2 added seller/fulfillment/tracking/refund/donations/payment-split
-    // fields; older cached invoices are re-fetched so the new columns fill in.
-    const MIN_ORDER_SCHEMA_VERSION = 2;
+    // Older cached invoices (pre-v3 item-dedup fix) may contain doubled
+    // items with $0.00 prices — they are re-fetched, never trusted.
+    const MIN_ORDER_SCHEMA_VERSION = CONSTANTS.ORDER_SCHEMA_VERSION;
 
     const hasUsableOrderItems = (data) => {
       if (!Array.isArray(data?.items) || data.items.length === 0) {
@@ -397,7 +397,9 @@
       productName: item.name || "",
       quantity: item.quantity ?? "",
       price: "",
-      deliveryStatus: item.statusCode || s.status || "",
+      // statusCode is a raw numeric Walmart code (e.g. "3700.0031") — never
+      // show it; the group-level status text ("Delivered") is the human one.
+      deliveryStatus: s.status || "",
       productLink: "N/A",
       thumbnailUrl: item.thumbnailUrl || "",
     }));
@@ -414,7 +416,8 @@
     }
 
     return {
-      schemaVersion: 2,
+      schemaVersion: CONSTANTS.ORDER_SCHEMA_VERSION,
+      dataSource: "summary",
       orderNumber,
       orderDate: formatSummaryDate(s.orderDate),
       orderSubtotal: s.subTotal || "",
@@ -523,7 +526,9 @@
         for (const orderNumber of orderNumbers) {
           const record = await OrderDb.getOrder(orderNumber);
           if (!record) continue;
-          if (record.invoice) {
+          // Pre-v3 stored invoices carry the doubled-items bug — treat those
+          // orders as not-yet-scanned rather than exporting corrupt data.
+          if (record.invoice && Number(record.invoice.schemaVersion || 0) >= CONSTANTS.ORDER_SCHEMA_VERSION) {
             invoiceByOrder[orderNumber] = record.invoice;
           }
           if (
@@ -559,7 +564,7 @@
       orderNumbers.forEach((orderNumber) => {
         const invoice = invoiceByOrder[orderNumber];
         if (invoice) {
-          ordersData.push(invoice);
+          ordersData.push({ ...invoice, dataSource: "invoice" });
           return;
         }
         missingPriceCount++;

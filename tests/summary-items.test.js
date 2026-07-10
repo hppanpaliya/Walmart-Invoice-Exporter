@@ -14,8 +14,8 @@ const summaries = {
     orderDate: '2026-07-01T14:23:00.000-04:00',
     status: 'Delivered',
     items: [
-      { name: 'Great Value Milk 1 Gallon', quantity: 2, statusCode: 'DELIVERED' },
-      { name: 'Bananas, each', quantity: 6, statusCode: 'DELIVERED' },
+      { name: 'Great Value Milk 1 Gallon', quantity: 2, statusCode: '3700.0031' },
+      { name: 'Bananas, each', quantity: 6, statusCode: '3700.0031' },
     ],
   },
 };
@@ -43,7 +43,7 @@ test('buildSummaryItemRows explodes items into rows and joins invoice prices by 
     quantity: 2,
     // Whitespace-normalized name matching bridges list vs invoice spellings.
     price: '$7.96',
-    status: 'DELIVERED',
+    status: 'Delivered',
   });
   assert.equal(rows[1].price, '$1.62');
 });
