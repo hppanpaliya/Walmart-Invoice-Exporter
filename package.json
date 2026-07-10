@@ -1,0 +1,14 @@
+{
+  "name": "walmart-invoice-exporter-dev",
+  "private": true,
+  "description": "Dev/test tooling only — the extension itself has zero runtime dependencies.",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "test:e2e": "node --test tests/e2e/*.e2e.js",
+    "test:all": "npm test && npm run test:e2e"
+  },
+  "devDependencies": {
+    "exceljs": "^4.4.0",
+    "playwright": "^1.49.0"
+  }
+}

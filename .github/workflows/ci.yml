@@ -28,3 +28,23 @@ jobs:
 
       - name: Unit tests (extractors, export writers, fixtures)
         run: node --test tests/*.test.js
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dev dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests (real extension, mocked walmart.com)
+        run: npm run test:e2e
