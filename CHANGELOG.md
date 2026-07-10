@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.5] - July 9, 2026
+
+### Internal
+- **CI regression suite:** sanitized `__NEXT_DATA__` fixture files + unit tests for the payload extractors, Quick Export summaries, CSV escaping (formula injection, BOM, RFC-4180), receipt HTML escaping, and the extraction-warning tripwire — running on every push via GitHub Actions (`ci.yml`). Prevents the next silent-breakage incident like the one v6.3 fixed. No user-facing changes.
+
 ## [6.4] - July 9, 2026
 
 ### Fixes
