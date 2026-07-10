@@ -163,7 +163,7 @@ function handleStopCollection(_request, sendResponse) {
 }
 
 function handleGetProgress(_request, sendResponse) {
-  loadCachedOrderNumbers().then(() => {
+  const respond = () => {
     sendResponse({
       currentPage: CollectionState.currentPage,
       pageLimit: CollectionState.pageLimit,
@@ -173,7 +173,17 @@ function handleGetProgress(_request, sendResponse) {
       isCollecting: CollectionState.isCollecting,
       pagesCached: CollectionState.pagesCached,
     });
-  });
+  };
+
+  // While collecting, the in-memory state is authoritative — reloading the
+  // storage snapshot here would race the per-page merge (losing pages) and
+  // the cache-expiry path could clearAll() mid-collection.
+  if (CollectionState.isCollecting) {
+    respond();
+    return true;
+  }
+
+  loadCachedOrderNumbers().then(respond);
   return true; // Indicate async response
 }
 
