@@ -66,37 +66,20 @@ test('extension end-to-end', async (t) => {
       assert.match(String(dialogMessage), /select at least one order/i);
     });
 
-    let quickHeaders;
-    await t.test('quick export (no invoices) matches the Download format, prices blank, warning shown', async () => {
+    await t.test('quick export refuses when no selected order has been downloaded', async () => {
       await panel.check(`input[value="${ONLINE_ORDER}"]`);
       await panel.check(`input[value="${INSTORE_ORDER}"]`);
       // Export a single combined file (same option Download honors).
       await panel.evaluate(() => { window.Sidepanel.state.app.exportMode = 'single'; });
 
-      const [download] = await clickAndCollectDownloads(panel, '#quickExportButton', 1);
-      assert.equal(download.name, 'Walmart_Orders_Quick.xlsx');
+      let downloadFired = false;
+      panel.once('download', () => { downloadFired = true; });
+      await panel.click('#quickExportButton');
+      await panel.waitForTimeout(1200);
 
-      const items = await readSheet(download.path, 'Items');
-      quickHeaders = items.headers;
-      assert.ok(items.headers.includes('Order Number') && items.headers.includes('Product Name') && items.headers.includes('Order Type'),
-        'deep-export item columns expected');
-
-      const onlineRows = items.rows.filter((r) => String(r['Order Number']) === ONLINE_ORDER);
-      assert.equal(onlineRows.length, 2, 'one row per item');
-      assert.equal(onlineRows[0]['Product Name'], 'Great Value Milk 1 Gallon');
-      assert.equal(onlineRows[0]['Qty'], 2);
-      assert.equal(onlineRows[0]['Price'], '', 'unknown price must be BLANK, never $0.00');
-
-      const orders = await readSheet(download.path, 'Orders');
-      const onlineOrder = orders.rows.find((r) => String(r['Order Number']) === ONLINE_ORDER);
-      assert.equal(onlineOrder['Order Total'], 28.11);
-      assert.equal(onlineOrder['Tax'], '', 'tax unknown without an invoice — blank');
-
-      const inStoreRows = items.rows.filter((r) => String(r['Order Number']) === INSTORE_ORDER);
-      assert.equal(inStoreRows.length, 1);
-
-      const warning = await panel.textContent('#downloadProgress');
-      assert.match(warning, /no downloaded invoice/i, 'missing-price warning must be shown');
+      assert.equal(downloadFired, false, 'nothing may be exported — no fabricated data, ever');
+      const message = await panel.textContent('#downloadProgress');
+      assert.match(message, /None of the selected orders have been downloaded/i, 'the refusal must explain why');
     });
 
     await t.test('deep download stores the invoice and exports per-item prices', async () => {
@@ -122,22 +105,39 @@ test('extension end-to-end', async (t) => {
       assert.equal(stored.invoice.items.length, 3);
     });
 
-    await t.test('quick export after a deep download joins the stored prices', async () => {
+    await t.test('quick export instantly re-exports the downloaded order with full fidelity', async () => {
       const [download] = await clickAndCollectDownloads(panel, '#quickExportButton', 1);
       assert.equal(download.name, 'Walmart_Orders_Quick.xlsx');
 
       const items = await readSheet(download.path, 'Items');
-      assert.deepEqual(items.headers, quickHeaders, 'format identical run to run');
+      assert.ok(items.headers.includes('Product Name') && items.headers.includes('Price'),
+        'same layout as Download Selected');
       const milk = items.rows.find((r) => r['Product Name'] === 'Great Value Milk 1 Gallon');
       assert.ok(milk);
-      assert.equal(milk['Price'], 7.96, 'stored invoice now supplies the real price');
+      assert.equal(milk['Price'], 7.96, 'stored invoice supplies the real price');
 
       const orders = await readSheet(download.path, 'Orders');
       const order = orders.rows.find((r) => String(r['Order Number']) === ONLINE_ORDER);
-      assert.equal(order['Tax'], 1.14, 'full invoice fidelity, not summary fidelity');
+      assert.equal(order['Tax'], 1.14, 'full invoice fidelity');
+      assert.equal(order['Data'], 'Full invoice');
 
       const message = await panel.textContent('#downloadProgress');
-      assert.match(message, /success/i, 'no missing-price warning once the invoice exists');
+      assert.match(message, /success/i);
+    });
+
+    await t.test('quick export skips (and reports) selected orders that were never downloaded', async () => {
+      await panel.check(`input[value="${INSTORE_ORDER}"]`);
+
+      const [download] = await clickAndCollectDownloads(panel, '#quickExportButton', 1);
+      assert.equal(download.name, 'Walmart_Orders_Quick.xlsx');
+
+      const orders = await readSheet(download.path, 'Orders');
+      assert.equal(orders.rows.length, 1, 'only the downloaded order exports');
+      assert.equal(String(orders.rows[0]['Order Number']), ONLINE_ORDER);
+
+      const message = await panel.textContent('#downloadProgress');
+      assert.match(message, /Skipped 1/i, 'the skipped count must be reported');
+      await panel.uncheck(`input[value="${INSTORE_ORDER}"]`);
     });
 
     await t.test('dashboard renders stats from the collected data', async () => {
