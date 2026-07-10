@@ -17,6 +17,7 @@ cp -r images "$OUT/"
 cp background.js "$OUT/"
 cp content.js "$OUT/"
 cp exceljs.bare.min.js "$OUT/"
+cp pdflite.js "$OUT/"
 cp manifest.json "$OUT/"
 cp utils.js "$OUT/"
 
