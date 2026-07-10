@@ -28,14 +28,14 @@
                         "id": "item-1",
                         "name": "Great Value Milk 1 Gallon",
                         "quantity": 2,
-                        "statusCode": "DELIVERED",
+                        "statusCode": "3700.0031",
                         "imageInfo": { "thumbnailUrl": "https://i5.walmartimages.com/asr/milk.jpg" }
                       },
                       {
                         "id": "item-2",
                         "name": "Bananas, each",
                         "quantity": 6,
-                        "statusCode": "DELIVERED",
+                        "statusCode": "3700.0031",
                         "imageInfo": { "thumbnailUrl": "https://i5.walmartimages.com/asr/banana.jpg" }
                       }
                     ]
@@ -73,7 +73,7 @@
                         "id": "item-3",
                         "name": "AA Batteries 8-pack",
                         "quantity": 1,
-                        "statusCode": "PURCHASED"
+                        "statusCode": "9000.450"
                       }
                     ]
                   }

@@ -1,5 +1,17 @@
 # Changelog
 
+## [6.19] - July 10, 2026
+
+### Fixes
+- **Fix: duplicated items with \$0.00 prices and garbage statuses** — the DOM scrape could return the same items as the page payload but with wrong prices ("\$0.00") and progress text as status ("12 shopped"); the merge kept both copies. Payload items now always win, deduped by name+quantity. Invoices stored by older versions are no longer trusted (schema v3) — re-download those orders once to replace them.
+- **Fix:** Raw numeric Walmart status codes (e.g. "3700.0031") no longer leak into the Delivery Status column — the human status text ("Delivered") is used.
+- **Fix:** The per-order report's summary block no longer prints \$0.00 for values that were never scanned — and now **omits unmeasured fields entirely**: a quick (summary-only) report is simply shorter, and a new "Data" field states "Full invoice" or "Summary only — not scanned yet".
+
+### Improvements
+- **Dashboard measures fully downloaded invoices ONLY** — no half-measurements from summary data. A coverage banner shows how many stored orders are actually measured, and a "Reset dashboard data" button clears the local database.
+- A "Data" column on the Orders sheet marks each order as Full invoice vs Summary only.
+- Item prices that exceed twice their order's own total are treated as extraction corruption: blanked in exports and flagged by the warning tripwire.
+
 ## [6.18] - July 10, 2026
 
 ### Improvements

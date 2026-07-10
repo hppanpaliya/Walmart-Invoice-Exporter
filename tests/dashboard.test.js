@@ -28,6 +28,8 @@ function syntheticRecords() {
         ],
       },
       invoice: {
+       schemaVersion: 3,
+        schemaVersion: 3,
         orderTotal: '$24.11',
         orderSubtotal: '$18.53',
         savings: '$2.00',
@@ -84,18 +86,16 @@ function syntheticRecords() {
   ];
 }
 
-test('computeDashboardStats sums totals with invoice preferred over summary', () => {
+test('computeDashboardStats measures ONLY fully downloaded invoices — no half measurements', () => {
   const sandbox = loadDashboardSandbox();
   const stats = sandbox.computeDashboardStats(syntheticRecords());
 
-  assert.equal(stats.orderCount, 3);
+  assert.equal(stats.orderCount, 3, 'stored count still reports everything for coverage display');
   assert.equal(stats.invoiceCount, 1);
-  // 24.11 (invoice wins over the $99.99 summary) + 10.00 + 5.89
-  assert.equal(stats.totalSpend, 40);
-  assert.equal(stats.avgOrder, 13.33);
-  // 4.00 (invoice tip wins over $9.99 driverTip) + 1.50
-  assert.equal(stats.totalTips, 5.5);
-  // Invoice-only fields come from the single downloaded invoice.
+  // ONLY the single invoice is measured; the two summary-only orders are excluded.
+  assert.equal(stats.totalSpend, 24.11);
+  assert.equal(stats.avgOrder, 24.11);
+  assert.equal(stats.totalTips, 4);
   assert.equal(stats.totalSavings, 2);
   assert.equal(stats.totalTax, 1.14);
   assert.equal(stats.totalRefunds, 3.98);
@@ -106,10 +106,9 @@ test('computeDashboardStats groups monthly spend by ISO month, sorted ascending'
   const sandbox = loadDashboardSandbox();
   const stats = sandbox.computeDashboardStats(syntheticRecords());
 
+  // Only invoice-backed orders appear in the monthly bars.
   assert.deepEqual(toPlain(stats.monthly), [
-    { month: '2026-04', total: 5.89 },
     { month: '2026-05', total: 24.11 },
-    { month: '2026-06', total: 10 },
   ]);
 });
 
@@ -117,13 +116,8 @@ test('computeDashboardStats topItems keeps only items bought in more than one or
   const sandbox = loadDashboardSandbox();
   const stats = sandbox.computeDashboardStats(syntheticRecords());
 
-  // Milk appears in 3 orders; bananas and paper towels in 1 order each.
-  assert.equal(stats.topItems.length, 1);
-  assert.deepEqual(toPlain(stats.topItems[0]), {
-    name: 'Test Milk 1 Gallon',
-    orders: 3,
-    quantity: 4,
-  });
+  // Only invoice items count; the single invoice has no repeat purchases.
+  assert.equal(stats.topItems.length, 0);
 });
 
 test('computeDashboardStats counts an item once per order even when duplicated in it', () => {
@@ -134,6 +128,8 @@ test('computeDashboardStats counts an item once per order even when duplicated i
       orderDate: '2026-01-01T00:00:00.000Z',
       summary: null,
       invoice: {
+       schemaVersion: 3,
+        schemaVersion: 3,
         orderTotal: '$4.00',
         items: [
           { productName: 'Test Soda', quantity: '1', price: '$2.00' },
@@ -146,6 +142,8 @@ test('computeDashboardStats counts an item once per order even when duplicated i
       orderDate: '2026-02-01T00:00:00.000Z',
       summary: null,
       invoice: {
+       schemaVersion: 3,
+        schemaVersion: 3,
         orderTotal: '$2.00',
         items: [{ productName: 'Test Soda', quantity: '1', price: '$2.00' }],
       },
@@ -159,9 +157,9 @@ test('computeDashboardStats counts an item once per order even when duplicated i
 test('computeDashboardStats rounds money to cents', () => {
   const sandbox = loadDashboardSandbox();
   const records = [
-    { orderNumber: '1', orderDate: '2026-03-01T00:00:00.000Z', summary: { orderDate: '2026-03-01T00:00:00.000Z', orderTotal: '$0.10', items: [] }, invoice: null },
-    { orderNumber: '2', orderDate: '2026-03-02T00:00:00.000Z', summary: { orderDate: '2026-03-02T00:00:00.000Z', orderTotal: '$0.20', items: [] }, invoice: null },
-    { orderNumber: '3', orderDate: '2026-03-03T00:00:00.000Z', summary: { orderDate: '2026-03-03T00:00:00.000Z', orderTotal: '$0.40', items: [] }, invoice: null },
+    { orderNumber: '1', orderDate: '2026-03-01T00:00:00.000Z', summary: null, invoice: { schemaVersion: 3, orderTotal: '$0.10', items: [] } },
+    { orderNumber: '2', orderDate: '2026-03-02T00:00:00.000Z', summary: null, invoice: { schemaVersion: 3, orderTotal: '$0.20', items: [] } },
+    { orderNumber: '3', orderDate: '2026-03-03T00:00:00.000Z', summary: null, invoice: { schemaVersion: 3, orderTotal: '$0.40', items: [] } },
   ];
 
   const stats = sandbox.computeDashboardStats(records);
@@ -196,7 +194,7 @@ function invoiceRecord(orderNumber, isoDate, items) {
     orderNumber,
     orderDate: isoDate,
     summary: null,
-    invoice: { orderTotal: '$10.00', items },
+    invoice: { schemaVersion: 3, orderTotal: '$10.00', items },
   };
 }
 
