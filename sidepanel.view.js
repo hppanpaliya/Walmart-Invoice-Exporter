@@ -16,6 +16,7 @@
         pageLimitGroup: "none",
         buttonGroup: "none",
         progress: "none",
+        quickExportButton: "none",
       },
       cardDisplay: "block",
       checkboxContainerDisplay: "none",
@@ -24,6 +25,7 @@
       display: {
         pageLimitGroup: "block",
         buttonGroup: "flex",
+        quickExportButton: "",
       },
       cardDisplay: "block",
       checkboxContainerDisplay: "",
@@ -164,12 +166,14 @@
       card.classList.toggle("disabled-card", !enabled);
     }
 
-    const downloadButton = document.getElementById("downloadButton");
-    if (downloadButton) {
-      downloadButton.disabled = !enabled;
-      downloadButton.style.opacity = enabled ? "1" : "0.6";
-      downloadButton.style.cursor = enabled ? "pointer" : "not-allowed";
-    }
+    ["downloadButton", "quickExportButton"].forEach((buttonId) => {
+      const button = document.getElementById(buttonId);
+      if (button) {
+        button.disabled = !enabled;
+        button.style.opacity = enabled ? "1" : "0.6";
+        button.style.cursor = enabled ? "pointer" : "not-allowed";
+      }
+    });
 
     setCheckboxesDisabled(!enabled);
   }
@@ -288,6 +292,25 @@
       `;
       downloadButton.addEventListener("click", Sidepanel.download.downloadSelectedOrders);
       container.appendChild(downloadButton);
+    }
+
+    if (orderNumbers.length > 0 && !document.getElementById("quickExportButton")) {
+      const quickExportButton = document.createElement("button");
+      quickExportButton.id = "quickExportButton";
+      quickExportButton.className = CONSTANTS.CSS_CLASSES.BTN_PRIMARY;
+      quickExportButton.title = "Instant summary spreadsheet from already-collected data — no order pages are opened";
+      quickExportButton.innerHTML = `
+        ${renderIcon("BOLT")}
+        <span class="btn-text">${CONSTANTS.TEXT.QUICK_EXPORT}</span>
+      `;
+      quickExportButton.addEventListener("click", Sidepanel.download.quickExportSummaries);
+      container.appendChild(quickExportButton);
+
+      // displayOrderNumbers resolves asynchronously, so the single-order layout
+      // may already be active by the time the button is created — hide it then.
+      if (UI_STATE.mode === UI_MODES.SINGLE_ORDER) {
+        quickExportButton.style.display = "none";
+      }
     }
 
     updateClearCacheVisibility();

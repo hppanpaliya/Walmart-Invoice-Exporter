@@ -152,6 +152,12 @@ body {
   background: #27ae60;
 }
 
+#quickExportButton {
+  width: 100%;
+  justify-content: center;
+  margin-top: 8px;
+}
+
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
