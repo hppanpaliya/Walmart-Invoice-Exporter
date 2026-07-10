@@ -73,6 +73,14 @@
                     <option value="receipt">Printable receipt (.html)</option>
                 </select>
             </div>
+            <div class="input-group" id="csvPresetGroup" style="display:none">
+                <label for="csvPreset">CSV preset</label>
+                <select id="csvPreset">
+                    <option value="generic">Generic (orders + items)</option>
+                    <option value="quickbooks">QuickBooks (3-column bank)</option>
+                    <option value="xero">Xero (bank statement)</option>
+                </select>
+            </div>
             <div class="toggle-group" id="incrementalToggleGroup">
                 <input type="checkbox" id="incrementalCollect">
                 <label for="incrementalCollect" title="Stops paginating when a whole page of already-stored orders is reached. Uses the local order database, which persists across sessions.">Only collect new orders (stop at known)</label>
