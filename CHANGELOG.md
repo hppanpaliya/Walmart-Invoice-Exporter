@@ -1,5 +1,19 @@
 # Changelog
 
+## [6.4] - July 9, 2026
+
+### Fixes
+- **Fix:** Restored reliable extraction after Walmart removed the `w_*` CSS classes that v6.2 depended on — order data now comes from Walmart's page payload (`__NEXT_DATA__`) first, with network snapshots and the DOM as fallbacks. This resolves the "repeated blank entries" reports.
+- **Fix:** Pagination now verifies the order list actually changed before advancing, and duplicate "View details" buttons on multi-shipment orders no longer produce duplicate entries.
+- **Fix:** If Walmart changes their site again and fields come back empty, the extension now shows a warning banner instead of silently exporting blank data.
+
+### Features
+- **Feature:** **Quick Export** — one click builds a summary spreadsheet (order number, date, item count, item names, status, fulfillment, subtotal, tip, total) straight from the order list, without opening any order pages
+- **Feature:** **Export formats** — choose Excel (default), CSV (RFC-4180, accounting-friendly numbers, orders + items files), JSON (full structured data), or a printable HTML receipt (open in browser, print to PDF)
+- **Feature:** **New export columns** — marketplace seller(s), fulfillment type, delivered date, tracking numbers, refund, donations, per-card payment split, and a receipt barcode link
+- **Feature:** **Product thumbnails (opt-in)** — optionally embed product images in Excel exports; falls back to image links when images can't be fetched (default off)
+- **Feature:** **Filter awareness** — when your Walmart orders page has filters applied (date range, status, …), the panel now says so, since collection follows your filtered view
+
 ## [6.3] - March 25, 2026
 
 ### Improvements
