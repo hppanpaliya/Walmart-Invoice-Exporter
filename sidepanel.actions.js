@@ -84,20 +84,30 @@
     setCollectionButtonsState({ running: true });
     view.setButtonLoading(startButton, true);
 
-    chrome.runtime.sendMessage(
-      {
-        action: CONSTANTS.MESSAGES.START_COLLECTION,
-        url: app.currentOrdersUrl,
-        pageLimit: pageLimit,
-        incremental: Boolean(app.incrementalCollect),
-      },
-      function (response) {
-        if (response && response.status === "started") {
-          updateProgress();
+    // Collect in the user's current orders tab when possible — no second tab.
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      const activeTab = tabs && tabs[0];
+      const reuseTabId =
+        activeTab && String(activeTab.url || "").startsWith(CONSTANTS.URLS.WALMART_ORDERS)
+          ? activeTab.id
+          : null;
+
+      chrome.runtime.sendMessage(
+        {
+          action: CONSTANTS.MESSAGES.START_COLLECTION,
+          url: app.currentOrdersUrl,
+          pageLimit: pageLimit,
+          incremental: Boolean(app.incrementalCollect),
+          reuseTabId: reuseTabId,
+        },
+        function (response) {
+          if (response && response.status === "started") {
+            updateProgress();
+          }
+          view.setButtonLoading(startButton, false);
         }
-        view.setButtonLoading(startButton, false);
-      }
-    );
+      );
+    });
   }
 
   function stopCollection({ startLabel = "Restart Collection", showLoading = true } = {}) {
