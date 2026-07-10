@@ -54,15 +54,18 @@
 
         if (orderPath && /^\d{10,}$/.test(orderPath.split("?")[0])) {
           const orderNumber = orderPath.split("?")[0];
+          view.updateFilterNotice(null);
           view.displayOrderNumbers([orderNumber]);
           view.applyLayout(view.UI_MODES.SINGLE_ORDER);
         } else {
           view.applyLayout(view.UI_MODES.MAIN_ORDERS);
           app.currentOrdersUrl = url;
+          view.updateFilterNotice(url);
           loadCacheOnMainPage();
         }
       } else {
         app.currentOrdersUrl = null;
+        view.updateFilterNotice(null);
         showOffTabWarning();
       }
     });
