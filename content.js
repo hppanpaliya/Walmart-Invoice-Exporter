@@ -713,16 +713,23 @@ function extractPrintItem(item) {
     item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_TYPE)?.textContent
   ) || CONSTANTS.TEXT.DELIVERY_LABEL;
 
-  const quantity = cleanText(
+  // Walmart renders "Qty 2" — extract the number so quantities compare
+  // equal to the payload's numeric quantity in the item merge.
+  const quantityText = cleanText(
     item.querySelector('.print-bill-qty')?.textContent ||
     item.querySelector('.print-bill-qty-mobile-view')?.textContent ||
     item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_QTY)?.textContent
   );
+  const quantityMatch = quantityText.match(/(\d+(?:\.\d+)?)/);
+  const quantity = quantityMatch ? quantityMatch[1] : quantityText;
 
-  const price = cleanText(
+  // Walmart renders "Discount price $6.30$7.72" (label + charged price +
+  // struck-through original). The FIRST currency token is the charged price.
+  const priceText = cleanText(
     item.querySelector('.print-bill-price')?.textContent ||
     item.querySelector(CONSTANTS.SELECTORS.PRINT_BILL_PRICE)?.textContent
   );
+  const price = extractCurrencyValues(priceText)[0] || '';
 
   return {
     productName,
@@ -1107,7 +1114,8 @@ function mergeOrderItems(domItems, nextDataItems) {
   // which is exactly when dedup matters most.
   const itemKey = (item) => {
     const productName = normalizeLookupText(item?.productName || '');
-    const quantity = cleanText(String(item?.quantity ?? ''));
+    // 'Qty 2', ' 2 ', and 2 must all compare equal.
+    const quantity = String(item?.quantity ?? '').replace(/[^\d.]/g, '');
     return `${productName}|${quantity}`;
   };
 

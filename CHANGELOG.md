@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.24] - July 10, 2026
+
+### Fixes
+- **Fix (root cause of duplicated \$0.00 items, verified live against a real order page):** Walmart's print view renders quantities as "Qty 2" and prices as "Discount price \$6.30\$7.72" (charged + strikethrough). The DOM scraper passed these through raw, so item quantities never matched the payload ("Qty 2" ≠ "2"), the duplicate-merge never matched, and prices parsed to \$0.00. The scraper now extracts the numeric quantity and the first (charged) currency token, and the merge normalizes quantities defensively. Regression tests encode the exact live DOM shapes.
+
 ## [6.23] - July 10, 2026
 
 ### Improvements

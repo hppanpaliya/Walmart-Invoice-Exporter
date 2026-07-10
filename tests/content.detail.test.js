@@ -98,6 +98,37 @@ test('computeExtractionWarnings trips on blank data and stays quiet on healthy d
   assert.equal(warnings.length, 3);
 });
 
+test('extractPrintItem parses the 2026 Walmart print view (Qty label, double-price string)', () => {
+  const sandbox = loadDetailSandbox();
+  const el = (text) => ({ textContent: text });
+  const fakeItem = {
+    querySelector: (sel) => {
+      if (sel === '.flex.justify-between') {
+        return { querySelector: (s) => (s === ':scope > :first-child' ? el('Great Value Pepitas, 8 oz') : null) };
+      }
+      if (sel === '.print-bill-type') return el('12 shopped');
+      if (sel === '.print-bill-qty') return el('Qty 2');
+      if (sel === '.print-bill-price') return el('Discount price $6.30$7.72');
+      return null;
+    },
+  };
+
+  const item = sandbox.extractPrintItem(fakeItem);
+  assert.equal(item.productName, 'Great Value Pepitas, 8 oz');
+  assert.equal(item.quantity, '2', '"Qty 2" must parse to the number');
+  assert.equal(item.price, '$6.30', 'the FIRST currency token is the charged price, not the strikethrough');
+});
+
+test('mergeOrderItems matches DOM "Qty N" quantities against payload numerics', () => {
+  const sandbox = loadDetailSandbox();
+  const merged = sandbox.mergeOrderItems(
+    [{ productName: 'Great Value Pepitas, 8 oz', quantity: 'Qty 2', price: '' }],
+    [{ productName: 'Great Value Pepitas, 8 oz', quantity: '2', price: '$6.30' }]
+  );
+  assert.equal(merged.length, 1, 'the label-formatted quantity must not create a duplicate');
+  assert.equal(merged[0].price, '$6.30');
+});
+
 test('mergeOrderItems dedupes DOM garbage copies — payload prices win, no doubled items', () => {
   const sandbox = loadDetailSandbox();
   // Real-world failure: the DOM print-view scrape returned the same items
