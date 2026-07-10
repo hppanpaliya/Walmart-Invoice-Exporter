@@ -254,6 +254,140 @@
     return { failedOrders, cancelled: false };
   }
 
+  /**
+   * Fetch the background collection snapshot (order numbers, titles, summaries).
+   * @returns {Promise<Object>} GET_PROGRESS response from the service worker
+   */
+  function getCollectionSnapshot() {
+    return chromeCallbackPromise((callback) =>
+      chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.GET_PROGRESS }, callback)
+    );
+  }
+
+  /**
+   * Format an ISO order date for humans (e.g. "Jul 9, 2026").
+   * Falls back to the raw value when it does not parse as a date.
+   * @param {string} isoDate - ISO 8601 date string from the payload
+   * @returns {string}
+   */
+  function formatSummaryDate(isoDate) {
+    if (!isoDate) return "";
+    const parsed = new Date(isoDate);
+    if (isNaN(parsed.getTime())) return String(isoDate);
+    return parsed.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  /**
+   * Join summary items into a readable list, e.g. "2× Milk; Bread".
+   * @param {Array} items - Items from an order summary
+   * @returns {string}
+   */
+  function formatSummaryItemNames(items) {
+    if (!Array.isArray(items)) return "";
+    return items
+      .filter((item) => item && item.name)
+      .map((item) => {
+        const quantity = Number(item.quantity);
+        return quantity > 1 ? `${quantity}× ${item.name}` : item.name;
+      })
+      .join("; ");
+  }
+
+  /**
+   * Build Quick Export rows for every collected order. Orders collected via the
+   * DOM fallback have no payload summary — those degrade to order number plus
+   * the cached title, leaving the remaining cells blank.
+   * @param {string[]} orderNumbers - All collected order numbers
+   * @param {Object} additionalFields - Order number → title map
+   * @param {Object} orderSummaries - Order number → summary map
+   * @returns {Object[]} Rows for convertOrderSummariesToXlsx
+   */
+  function buildQuickExportRows(orderNumbers, additionalFields, orderSummaries) {
+    return orderNumbers.map((orderNumber) => {
+      const summary = orderSummaries[orderNumber];
+      if (!summary) {
+        return { orderNumber, itemNames: additionalFields[orderNumber] || "" };
+      }
+      return {
+        orderNumber,
+        orderDate: formatSummaryDate(summary.orderDate),
+        orderDateIso: summary.orderDate || "",
+        itemCount: summary.itemCount,
+        itemNames: formatSummaryItemNames(summary.items) || additionalFields[orderNumber] || "",
+        status: summary.status || "",
+        fulfillment: summary.fulfillmentTypes || "",
+        subTotal: summary.subTotal || "",
+        driverTip: summary.driverTip || "",
+        orderTotal: summary.orderTotal || "",
+      };
+    });
+  }
+
+  /**
+   * Export a one-row-per-order summary spreadsheet straight from the collected
+   * purchase-history payload — no order detail pages are opened.
+   */
+  async function quickExportSummaries() {
+    if (app && app.downloadInProgress) {
+      alert("Downloads are already in progress. Please wait.");
+      return;
+    }
+
+    const quickExportButton = document.getElementById("quickExportButton");
+    view.setButtonLoading(quickExportButton, true);
+    const progressDiv = createDownloadProgressElement();
+
+    try {
+      const response = await getCollectionSnapshot();
+      const orderNumbers = (response && response.orderNumbers) || [];
+      if (orderNumbers.length === 0) {
+        showTimedProgressMessage(
+          progressDiv,
+          createErrorMessage("No collected orders to export. Run Start Collection first."),
+          CONSTANTS.TIMING.EXPORT_FAIL_DISPLAY
+        );
+        return;
+      }
+
+      const orderSummaries = response.orderSummaries || {};
+      const summaryCount = orderNumbers.filter((orderNumber) => orderSummaries[orderNumber]).length;
+      if (summaryCount === 0) {
+        showTimedProgressMessage(
+          progressDiv,
+          createErrorMessage(
+            "The cached orders have no summary data (they were collected by an older version). Click Clear Cache, run Start Collection again, then retry Quick Export."
+          ),
+          CONSTANTS.TIMING.ERROR_DISPLAY_DURATION
+        );
+        return;
+      }
+
+      const rows = buildQuickExportRows(orderNumbers, response.additionalFields || {}, orderSummaries);
+      await convertOrderSummariesToXlsx(rows, ExcelJS);
+
+      const missingCount = orderNumbers.length - summaryCount;
+      const message =
+        missingCount > 0
+          ? `${CONSTANTS.TEXT.QUICK_EXPORT_SUCCESS}\n${missingCount} of ${orderNumbers.length} orders had no summary data — only their order number and title were exported.`
+          : CONSTANTS.TEXT.QUICK_EXPORT_SUCCESS;
+      showTimedProgressMessage(
+        progressDiv,
+        createSuccessMessage(message),
+        CONSTANTS.TIMING.SUCCESS_DISPLAY_DURATION
+      );
+      view.maybeShowRatingHint();
+    } catch (error) {
+      console.error("Quick Export failed:", error);
+      showTimedProgressMessage(
+        progressDiv,
+        createErrorMessage(`Quick Export failed: ${error.message}`),
+        CONSTANTS.TIMING.ERROR_DISPLAY_DURATION
+      );
+    } finally {
+      view.setButtonLoading(quickExportButton, false);
+    }
+  }
+
   async function downloadSelectedOrders() {
     try {
       if (app && app.downloadInProgress) {
@@ -394,5 +528,6 @@
   Sidepanel.download = {
     OrderDataFetcher,
     downloadSelectedOrders,
+    quickExportSummaries,
   };
 })();
