@@ -546,7 +546,19 @@ const MessageHandlers = {
     convertToXlsx(data, ExcelJS, { mode: 'single' });
     return { data };
   }),
-  [CONSTANTS.MESSAGES.GET_ORDER_DATA]: withImageBlocking(async () => ({ data: scrapeOrderData() })),
+  [CONSTANTS.MESSAGES.GET_ORDER_DATA]: withImageBlocking(async () => {
+    // scrapeOrderData() merges the __NEXT_DATA__ payload and DOM fallback paths,
+    // so validating its output covers both extraction strategies.
+    const data = scrapeOrderData();
+    data.extractionWarnings = computeExtractionWarnings(data);
+    if (data.extractionWarnings.length > 0) {
+      console.warn(
+        `Walmart Invoice Exporter: extraction warnings for order #${data.orderNumber || "unknown"}:`,
+        data.extractionWarnings
+      );
+    }
+    return { data };
+  }),
 };
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -1465,6 +1477,41 @@ function scrapeOrderData() {
     paymentMessages: paymentMessages.join('; '),
     items,
   };
+}
+
+/**
+ * Validates a scraped order-detail data object and returns human-readable
+ * warnings for fields that came back empty — a tripwire signal that Walmart
+ * may have changed their DOM or payload structure.
+ * Cheap and non-throwing by design: validation must NEVER break extraction.
+ * @param {object} data - Order data assembled by scrapeOrderData().
+ * @returns {string[]} Warning messages (empty array when data looks healthy).
+ */
+function computeExtractionWarnings(data) {
+  const warnings = [];
+
+  try {
+    const items = Array.isArray(data?.items) ? data.items : [];
+
+    if (items.length === 0) {
+      warnings.push("No items were extracted for this order");
+    } else if (items.every((item) => !cleanText(item?.productName || ""))) {
+      warnings.push("All extracted items have a blank product name");
+    }
+
+    if (!cleanText(data?.orderTotal || "")) {
+      warnings.push("Order total came back empty");
+    }
+
+    if (!data?.orderNumber) {
+      warnings.push("Order number is missing");
+    }
+  } catch (error) {
+    // Validation is best-effort; never let it interfere with extraction.
+    console.warn("Extraction validation failed (ignored):", error);
+  }
+
+  return warnings;
 }
 
 function extractOrderNumberFromText(text) {

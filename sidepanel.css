@@ -452,6 +452,58 @@ body {
   color: #005bb0;
 }
 
+/* Extraction warning banner (possible Walmart site change) */
+.extraction-warning {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #856404;
+}
+
+.extraction-warning .warning-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.extraction-warning svg {
+  flex-shrink: 0;
+  stroke: #856404;
+}
+
+.extraction-warning a {
+  color: var(--primary);
+  font-weight: 500;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.extraction-warning a:hover {
+  color: #005bb0;
+}
+
+.extraction-warning .dismiss-warning {
+  background: transparent;
+  border: none;
+  color: #856404;
+  cursor: pointer;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.extraction-warning .dismiss-warning:hover {
+  color: var(--text);
+}
+
 /* View switching */
 .view {
   display: none;
