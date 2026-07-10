@@ -6,42 +6,27 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# shellcheck source=scripts/release-files.lib.sh
+. "$REPO_ROOT/scripts/release-files.lib.sh"
+
 OUT="dist/firefox"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
-# --- Same file set as .github/workflows/release.yml ------------------------
-cp -r _locales "$OUT/"
-cp -r images "$OUT/"
-cp background.js "$OUT/"
-cp content.js "$OUT/"
-cp exceljs.bare.min.js "$OUT/"
-cp pdflite.js "$OUT/"
-cp manifest.json "$OUT/"
-cp utils.js "$OUT/"
-
-# Side panel files
-cp sidepanel.html "$OUT/"
-cp sidepanel.js "$OUT/"
-cp sidepanel.css "$OUT/"
-cp sidepanel.state.js "$OUT/"
-cp sidepanel.view.js "$OUT/"
-cp sidepanel.actions.js "$OUT/"
-cp sidepanel.download.js "$OUT/"
-
-# Helpful documentation files (optional)
-cp README.md "$OUT/" || true
-cp CHANGELOG.md "$OUT/" || true
-cp Privacy-Policy.md "$OUT/" || true
+# --- File list derived at runtime from .github/workflows/release.yml --------
+# (single source of truth — see scripts/release-files.lib.sh).
+copy_release_files "$OUT"
 
 # --- Firefox-only additions -------------------------------------------------
 cp firefox-shim.js "$OUT/"
 
 # --- Transform manifest.json for Firefox MV3 --------------------------------
 # - Firefox MV3 has no background service workers: use background.scripts
-#   (event page). firefox-shim.js must load first (importScripts no-op +
-#   chrome.sidePanel -> browser.sidebarAction bridge), then utils.js, then
-#   background.js.
+#   (event page). The script list is DERIVED from background.js's own
+#   importScripts(...) call, so new background dependencies (e.g. orderdb.js)
+#   flow in automatically: firefox-shim.js first (importScripts no-op +
+#   chrome.sidePanel -> browser.sidebarAction bridge), then the imported
+#   scripts in order, then background.js itself.
 # - Firefox has no side_panel / "sidePanel" permission: use sidebar_action.
 # - AMO requires browser_specific_settings.gecko.id for signing.
 node -e '
@@ -59,7 +44,17 @@ node -e '
     default_icon: "images/icon48.png",
   };
 
-  m.background = { scripts: ["firefox-shim.js", "utils.js", "background.js"] };
+  // Derive background.scripts from background.js importScripts(...) so the
+  // event page loads exactly what the Chrome service worker imports.
+  const bgSource = fs.readFileSync("background.js", "utf8");
+  const call = bgSource.match(/importScripts\(([^)]*)\)/);
+  const imports = call
+    ? call[1]
+        .split(",")
+        .map((s) => s.trim().replace(/^["'\'']|["'\'']$/g, ""))
+        .filter(Boolean)
+    : [];
+  m.background = { scripts: ["firefox-shim.js", ...imports, "background.js"] };
 
   m.browser_specific_settings = {
     gecko: {
@@ -70,6 +65,7 @@ node -e '
 
   fs.writeFileSync(path, JSON.stringify(m, null, 2) + "\n");
   console.log("Transformed " + path);
+  console.log("background.scripts: " + JSON.stringify(m.background.scripts));
 '
 
 # --- Zip (manifest.json at the zip root, as AMO requires) --------------------
