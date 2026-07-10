@@ -16,7 +16,8 @@ const CollectionState = {
   maxRetries: 3,
   retryCount: 0,
   pageLimit: 0,
-  pageLoadDelay: 100,
+  pageLoadDelay: 1000,
+  initialPageLoaded: false,
   cacheKey: CONSTANTS.CACHE_KEYS.ORDER_COLLECTION,
   pagesCached: {},
   
@@ -24,6 +25,7 @@ const CollectionState = {
   reset() {
     this.currentPage = 1;
     this.retryCount = 0;
+    this.initialPageLoaded = false;
   },
   
   // Clear all collected data
@@ -129,22 +131,30 @@ function handleStartCollection(request, sendResponse) {
 }
 
 function handleStopCollection(_request, sendResponse) {
-  if (CollectionState.isCollecting) {
-    CollectionState.isCollecting = false;
-    if (CollectionState.tabId) {
-      chrome.tabs.remove(CollectionState.tabId).catch(() => {
-        // Tab may already be closed
-      });
-      chrome.tabs.onUpdated.removeListener(onTabUpdated);
-    }
-    // Save to cache before sending response
-    saveToCache();
+  if (!CollectionState.isCollecting) {
     sendResponse({
-      status: "stopped",
+      status: "idle",
       currentPage: CollectionState.currentPage,
       orderNumbers: Array.from(CollectionState.allOrderNumbers),
     });
+    return false; // Synchronous response
   }
+
+  CollectionState.isCollecting = false;
+  if (CollectionState.tabId) {
+    chrome.tabs.remove(CollectionState.tabId).catch(() => {
+      // Tab may already be closed
+    });
+    chrome.tabs.onUpdated.removeListener(onTabUpdated);
+  }
+  // Save to cache before sending response
+  saveToCache();
+  sendResponse({
+    status: "stopped",
+    currentPage: CollectionState.currentPage,
+    orderNumbers: Array.from(CollectionState.allOrderNumbers),
+  });
+
   return false; // Synchronous response
 }
 
@@ -187,6 +197,10 @@ function startCollection(url) {
 
 function onTabUpdated(updatedTabId, changeInfo, tab) {
   if (CollectionState.tabId && updatedTabId === CollectionState.tabId && changeInfo.status === "complete") {
+    if (CollectionState.initialPageLoaded) {
+      return;
+    }
+    CollectionState.initialPageLoaded = true;
     console.log("Tab updated, collecting order numbers for page:", CollectionState.currentPage);
     setTimeout(() => collectOrderNumbers(), CollectionState.pageLoadDelay);
   }
@@ -207,9 +221,13 @@ function collectOrderNumbers() {
   }
 
   // Always collect order numbers to ensure cache is up to date with any changes
-
-
-  chrome.tabs.sendMessage(CollectionState.tabId, { action: CONSTANTS.MESSAGES.COLLECT_ORDER_NUMBERS }, (response) => {
+  chrome.tabs.sendMessage(
+    CollectionState.tabId,
+    {
+      action: CONSTANTS.MESSAGES.COLLECT_ORDER_NUMBERS,
+      currentPage: CollectionState.currentPage,
+    },
+    (response) => {
     if (chrome.runtime.lastError) {
       console.error("Error collecting order numbers:", chrome.runtime.lastError);
       retryCollection();
@@ -239,8 +257,6 @@ function collectOrderNumbers() {
       saveToCache();
 
       if (response.hasNextPage && (CollectionState.pageLimit === 0 || CollectionState.currentPage < CollectionState.pageLimit)) {
-        CollectionState.currentPage++;
-        CollectionState.retryCount = 0;
         goToNextPage();
       } else {
         console.log("No more pages to collect or reached limit. Finishing collection.");
@@ -250,7 +266,8 @@ function collectOrderNumbers() {
       console.log("No order numbers received. Retrying.");
       retryCollection();
     }
-  });
+    }
+  );
 }
 
 function goToNextPage() {
@@ -259,13 +276,16 @@ function goToNextPage() {
     return;
   }
 
-  console.log("Attempting to go to next page:", CollectionState.currentPage);
+  console.log("Attempting to go to next page:", CollectionState.currentPage + 1);
   chrome.tabs.sendMessage(CollectionState.tabId, { action: CONSTANTS.MESSAGES.CLICK_NEXT_BUTTON }, (response) => {
     if (chrome.runtime.lastError) {
       console.error("Error clicking next button:", chrome.runtime.lastError);
       retryCollection();
     } else if (response && response.success) {
-      console.log("Successfully clicked next button. Waiting for page to load.");
+      CollectionState.currentPage++;
+      CollectionState.retryCount = 0;
+      console.log("Successfully clicked next button. Collecting page:", CollectionState.currentPage);
+      setTimeout(() => collectOrderNumbers(), CollectionState.pageLoadDelay);
     } else {
       console.log("Failed to click next button. Retrying.");
       retryCollection();
