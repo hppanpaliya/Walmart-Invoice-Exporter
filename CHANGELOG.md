@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.9] - July 10, 2026
+
+### Features
+- **Feature:** **In-store purchases** — a new 'Order Type' column in every export (Excel, CSV, JSON, Quick Export) distinguishes in-store purchases from online orders, completing the full Walmart spending picture.
+
 ## [6.8] - July 10, 2026
 
 ### Features
