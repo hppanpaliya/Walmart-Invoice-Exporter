@@ -89,6 +89,62 @@ function configureMultipleOrdersColumns(worksheet) {
 }
 
 /**
+ * Configure columns for the Quick Export order summary worksheet
+ * @param {ExcelJS.Worksheet} worksheet - The worksheet to configure
+ */
+function configureOrderSummaryColumns(worksheet) {
+  worksheet.columns = [
+    { header: 'Order Number', key: 'orderNumber', width: 20, style: { alignment: { horizontal: "center" } } },
+    { header: 'Order Date', key: 'orderDate', width: 22, style: { alignment: { horizontal: "center" } } },
+    { header: 'Order Date (ISO)', key: 'orderDateIso', width: 28, style: { alignment: { horizontal: "center" } } },
+    { header: 'Items', key: 'itemCount', width: 10, style: { numFmt: "#,##0", alignment: { horizontal: "center" } } },
+    { header: 'Item Names', key: 'itemNames', width: 80 },
+    { header: 'Status', key: 'status', width: 30, style: { alignment: { horizontal: "center" } } },
+    { header: 'Fulfillment', key: 'fulfillment', width: 20, style: { alignment: { horizontal: "center" } } },
+    { header: 'Subtotal', key: 'subTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Driver Tip', key: 'driverTip', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Order Total', key: 'orderTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+  ];
+}
+
+/**
+ * Convert Quick Export summary rows to a single XLSX file (one row per order)
+ * Rows without summary data keep their cells blank instead of showing zeros.
+ * @param {Array} summaryRows - Array of pre-built summary row objects
+ * @param {Object} ExcelJS - The ExcelJS library
+ * @param {string} filename - Optional custom filename
+ */
+async function convertOrderSummariesToXlsx(summaryRows, ExcelJS, filename = null) {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Order Summaries');
+
+  configureOrderSummaryColumns(worksheet);
+
+  const rowsArray = Array.isArray(summaryRows) ? summaryRows : [];
+  rowsArray.forEach((row) => {
+    worksheet.addRow({
+      orderNumber: row.orderNumber || '',
+      orderDate: row.orderDate || '',
+      orderDateIso: row.orderDateIso || '',
+      itemCount: row.itemCount === '' || row.itemCount === null || row.itemCount === undefined ? '' : parseNumericValue(row.itemCount),
+      itemNames: row.itemNames || '',
+      status: row.status || '',
+      fulfillment: row.fulfillment || '',
+      subTotal: row.subTotal ? parseNumericValue(row.subTotal) : '',
+      driverTip: row.driverTip ? parseNumericValue(row.driverTip) : '',
+      orderTotal: row.orderTotal ? parseNumericValue(row.orderTotal) : '',
+    });
+  });
+
+  // Apply styling (bold header row, matching the multi-order export)
+  styleMultipleOrdersWorksheet(worksheet);
+
+  // Download
+  const downloadFilename = filename || 'Walmart_Orders_Summary.xlsx';
+  await downloadWorkbook(workbook, downloadFilename);
+}
+
+/**
  * Add items from a single order to a worksheet
  * @param {ExcelJS.Worksheet} worksheet - The worksheet to add items to
  * @param {Array} items - The items to add
@@ -552,6 +608,8 @@ const CONSTANTS = {
     CART_ICON_TITLE: 'Walmart Invoice Exporter',
     SELECT_ORDERS: 'Select orders to download',
     CLEAR_CACHE_BTN: 'Clear Cache',
+    QUICK_EXPORT: 'Quick Export',
+    QUICK_EXPORT_SUCCESS: 'Quick Export completed successfully!',
     USING_CACHE: 'Using cached data:',
     ORDERS: 'orders from',
     PAGES: 'pages',
