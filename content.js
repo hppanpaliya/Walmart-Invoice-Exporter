@@ -886,10 +886,14 @@ function extractNextDataPaymentMethods(orderNode) {
     .map((paymentMethod, index) => {
       const brand = cleanText(paymentMethod?.cardType || paymentMethod?.paymentType || '');
       const ending = cleanText(paymentMethod?.description || paymentMethod?.title || '');
+      const displayValues = Array.isArray(paymentMethod?.displayValues)
+        ? paymentMethod.displayValues
+        : [];
       const amount = cleanText(
-        paymentMethod?.displayValues?.[0]?.displayValue ||
-          paymentMethod?.displayValues?.[0] ||
-          ''
+        displayValues
+          .map((value) => (typeof value === 'string' ? value : value?.displayValue || ''))
+          .filter(Boolean)
+          .join(' + ')
       );
       const message = extractTextFromNextData(paymentMethod?.message);
 
@@ -921,6 +925,83 @@ function extractNextDataFeeBreakdown(orderNode) {
       };
     })
     .filter((entry) => entry.label || entry.amount || entry.originalAmount);
+}
+
+/**
+ * Extract per-shipment metadata (marketplace sellers, fulfillment types,
+ * delivered dates, tracking numbers) from the order payload's groups.
+ * Payload-only data — the print-view DOM has no reliable equivalent, so
+ * these fields stay blank when the payload is unavailable.
+ * @param {Object} orderNode - Order node from __NEXT_DATA__
+ * @returns {{sellers: string, fulfillmentTypes: string, deliveredDate: string, trackingNumbers: string}}
+ */
+function extractNextDataShipmentDetails(orderNode) {
+  const groups = Array.isArray(orderNode?.groups_2101) && orderNode.groups_2101.length > 0
+    ? orderNode.groups_2101
+    : Array.isArray(orderNode?.groups)
+      ? orderNode.groups
+      : [];
+
+  const sellers = [];
+  const fulfillmentTypes = [];
+  const deliveredDates = [];
+  const trackingNumbers = [];
+
+  const pushUnique = (list, value) => {
+    const clean = cleanText(value);
+    if (clean && !list.includes(clean)) {
+      list.push(clean);
+    }
+  };
+
+  groups.forEach((group) => {
+    pushUnique(
+      sellers,
+      group?.seller?.sellerDisplayName || group?.seller?.displayName || group?.seller?.name || ''
+    );
+    pushUnique(fulfillmentTypes, group?.fulfillmentType || '');
+
+    const deliveredRaw = group?.deliveredDate || group?.deliveryDate || '';
+    // Dates arrive as ISO strings or epoch milliseconds depending on the field.
+    const deliveredValue = /^\d{12,}$/.test(String(deliveredRaw)) ? Number(deliveredRaw) : deliveredRaw;
+    pushUnique(deliveredDates, formatOrderDateFromIsoString(deliveredValue));
+
+    const packages = [
+      group?.shipment,
+      ...(Array.isArray(group?.shipment?.multiPackageDetails) ? group.shipment.multiPackageDetails : []),
+      ...(Array.isArray(group?.multiPackageDetails) ? group.multiPackageDetails : []),
+    ];
+    packages.forEach((pkg) => {
+      pushUnique(trackingNumbers, pkg?.trackingNumber || pkg?.trackingNo || pkg?.trackingId || '');
+    });
+  });
+
+  return {
+    sellers: sellers.join('; '),
+    fulfillmentTypes: fulfillmentTypes.join(', '),
+    deliveredDate: deliveredDates.join('; '),
+    trackingNumbers: trackingNumbers.join('; '),
+  };
+}
+
+/**
+ * Format the per-card charge split, e.g. "VISA ending in 1234: $10.00; Gift Card: $5.00".
+ * Works for both payload- and DOM-sourced payment method details.
+ * @param {Array} paymentMethodDetails - Entries with brand/ending/amount
+ * @returns {string}
+ */
+function buildPaymentSplit(paymentMethodDetails) {
+  const details = Array.isArray(paymentMethodDetails) ? paymentMethodDetails : [];
+  return details
+    .map((method) => {
+      if (!method?.amount) {
+        return '';
+      }
+      const label = [method.brand, method.ending].filter(Boolean).join(' ');
+      return label ? `${label}: ${method.amount}` : method.amount;
+    })
+    .filter(Boolean)
+    .join('; ');
 }
 
 function collectItemsFromNextDataGroups(groups, pushItem) {
@@ -1063,6 +1144,7 @@ function extractOrderDataFromNextData() {
   );
 
   const addressDetails = extractNextDataAddressDetails(orderNode);
+  const shipmentDetails = extractNextDataShipmentDetails(orderNode);
 
   return {
     orderNumber: normalizeOrderNumberValue(orderNode?.id || orderNode?.displayId),
@@ -1077,6 +1159,12 @@ function extractOrderDataFromNextData() {
     bagFee: getFeeAmount(feeBreakdown, 'bag fee') || getFeeAmount(feeBreakdown, 'bag') || '',
     tax: cleanText(priceDetails?.taxTotal?.displayValue || ''),
     tip: cleanText(priceDetails?.driverTip?.displayValue || ''),
+    refund: cleanText(priceDetails?.refund?.displayValue || ''),
+    donations: cleanText(priceDetails?.donations?.displayValue || ''),
+    sellers: shipmentDetails.sellers,
+    fulfillmentTypes: shipmentDetails.fulfillmentTypes,
+    deliveredDate: shipmentDetails.deliveredDate,
+    trackingNumbers: shipmentDetails.trackingNumbers,
     address: addressDetails.address,
     addressRecipient: addressDetails.recipient,
     addressLine: addressDetails.line,
@@ -1511,7 +1599,7 @@ function scrapeOrderData() {
   const resolvedOrderDate = orderDate || cleanText(nextDataOrder?.orderDate || '');
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     orderNumber: resolvedOrderNumber,
     orderDate: resolvedOrderDate,
     orderSubtotal,
@@ -1522,6 +1610,13 @@ function scrapeOrderData() {
     bagFee,
     tax,
     tip,
+    refund: cleanText(nextDataOrder?.refund || ''),
+    donations: cleanText(nextDataOrder?.donations || ''),
+    sellers: cleanText(nextDataOrder?.sellers || ''),
+    fulfillmentTypes: cleanText(nextDataOrder?.fulfillmentTypes || ''),
+    deliveredDate: cleanText(nextDataOrder?.deliveredDate || ''),
+    trackingNumbers: cleanText(nextDataOrder?.trackingNumbers || ''),
+    paymentSplit: buildPaymentSplit(paymentMethodDetails),
     address,
     addressRecipient: addressDetails.recipient,
     addressLine: addressDetails.line,
