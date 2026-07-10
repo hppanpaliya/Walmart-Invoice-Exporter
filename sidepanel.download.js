@@ -22,13 +22,10 @@
       });
     };
 
-    const isValidInvoiceData = (data) => {
+    // Valid under any schema version — used to decide whether stale cached
+    // data is still worth returning when a forced re-fetch fails.
+    const isUsableInvoiceData = (data) => {
       if (!data || typeof data !== "object") {
-        return false;
-      }
-
-      const schemaVersion = Number(data.schemaVersion || 0);
-      if (schemaVersion < MIN_ORDER_SCHEMA_VERSION) {
         return false;
       }
 
@@ -36,6 +33,11 @@
       const orderTotal = String(data.orderTotal || "").trim();
 
       return hasUsableOrderItems(data) && (Boolean(normalizedOrderNumber) || Boolean(orderTotal));
+    };
+
+    const isValidInvoiceData = (data) => {
+      const schemaVersion = Number(data?.schemaVersion || 0);
+      return schemaVersion >= MIN_ORDER_SCHEMA_VERSION && isUsableInvoiceData(data);
     };
 
     const buildOrderUrls = (orderNumber) => {
@@ -160,22 +162,31 @@
 
     const fetchOrderData = async (orderNumber, options = {}) => {
       const cachedData = await getCachedInvoice(orderNumber);
-      if (cachedData) {
-        if (isValidInvoiceData(cachedData)) {
-          view.updateOrderCacheStatus(orderNumber);
-          return cachedData;
-        }
-
-        // Auto-heal stale cache entries created with outdated selectors.
-        await deleteInvoiceCache(orderNumber);
+      if (cachedData && isValidInvoiceData(cachedData)) {
+        view.updateOrderCacheStatus(orderNumber);
+        return cachedData;
       }
 
+      // Cached data is stale (older schema) — re-fetch, but keep the stale
+      // entry untouched until the fetch succeeds (fetchFromUrl overwrites the
+      // cache on success) so a failed re-fetch never destroys usable data.
       const [primaryUrl, fallbackUrl] = buildOrderUrls(orderNumber);
       try {
         return await fetchFromUrl(orderNumber, primaryUrl, options);
       } catch (error) {
         console.error(`Primary fetch failed for order #${orderNumber}:`, error);
-        return await fetchFromUrl(orderNumber, fallbackUrl, options);
+        try {
+          return await fetchFromUrl(orderNumber, fallbackUrl, options);
+        } catch (fallbackError) {
+          if (isUsableInvoiceData(cachedData)) {
+            console.warn(
+              `Both fetches failed for order #${orderNumber}; falling back to stale cached data`
+            );
+            view.updateOrderCacheStatus(orderNumber);
+            return cachedData;
+          }
+          throw fallbackError;
+        }
       }
     };
 
@@ -270,7 +281,7 @@
   async function exportCombinedOrders(collectedOrdersData) {
     const format = getExportFormat();
     if (format === CONSTANTS.EXPORT_FORMATS.CSV) {
-      convertOrdersToCsv(collectedOrdersData);
+      await convertOrdersToCsv(collectedOrdersData);
       return;
     }
     if (format === CONSTANTS.EXPORT_FORMATS.JSON) {
@@ -291,7 +302,7 @@
     const format = getExportFormat();
     const orderNumber = data.orderNumber || "order";
     if (format === CONSTANTS.EXPORT_FORMATS.CSV) {
-      convertOrdersToCsv([data], {
+      await convertOrdersToCsv([data], {
         ordersFilename: `Order_${orderNumber}.csv`,
         itemsFilename: `Order_${orderNumber}_Items.csv`,
       });
@@ -344,7 +355,12 @@
    */
   function formatSummaryDate(isoDate) {
     if (!isoDate) return "";
-    const parsed = new Date(isoDate);
+    // Date-only strings parse as UTC midnight and would render a day early
+    // in US timezones — construct those as local dates instead.
+    const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate).trim());
+    const parsed = dateOnlyMatch
+      ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
+      : new Date(isoDate);
     if (isNaN(parsed.getTime())) return String(isoDate);
     return parsed.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   }
@@ -404,10 +420,17 @@
       alert("Downloads are already in progress. Please wait.");
       return;
     }
+    if (app && app.collectionInProgress) {
+      alert("Collection is still running. Wait for it to finish so the summary is complete.");
+      return;
+    }
 
     const quickExportButton = document.getElementById("quickExportButton");
     view.setButtonLoading(quickExportButton, true);
     const progressDiv = createDownloadProgressElement();
+    if (app) {
+      app.downloadInProgress = true;
+    }
 
     try {
       const response = await getCollectionSnapshot();
@@ -456,6 +479,9 @@
         CONSTANTS.TIMING.ERROR_DISPLAY_DURATION
       );
     } finally {
+      if (app) {
+        app.downloadInProgress = false;
+      }
       view.setButtonLoading(quickExportButton, false);
     }
   }

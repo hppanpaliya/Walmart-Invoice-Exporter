@@ -822,7 +822,12 @@ function formatOrderDateFromIsoString(value) {
     return '';
   }
 
-  const parsedDate = new Date(value);
+  // Date-only strings ("2026-07-09") parse as UTC midnight, which renders as
+  // the previous day in negative-offset timezones — treat them as local.
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value).trim());
+  const parsedDate = dateOnlyMatch
+    ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
+    : new Date(value);
   if (Number.isNaN(parsedDate.getTime())) {
     return cleanText(value);
   }
@@ -889,12 +894,17 @@ function extractNextDataPaymentMethods(orderNode) {
       const displayValues = Array.isArray(paymentMethod?.displayValues)
         ? paymentMethod.displayValues
         : [];
-      const amount = cleanText(
-        displayValues
-          .map((value) => (typeof value === 'string' ? value : value?.displayValue || ''))
-          .filter(Boolean)
-          .join(' + ')
-      );
+      // Keep only amount-shaped entries ("$25.00", "-12.50") — Walmart mixes
+      // descriptive strings into this array on some orders.
+      const amountValues = displayValues
+        .map((value) => cleanText(typeof value === 'string' ? value : value?.displayValue || ''))
+        .filter((value) => /-?\$\s*\d|\d+\.\d{2}/.test(value));
+      const amount = amountValues.length > 0
+        ? amountValues.join(' + ')
+        : cleanText(
+            displayValues[0]?.displayValue ||
+              (typeof displayValues[0] === 'string' ? displayValues[0] : '')
+          );
       const message = extractTextFromNextData(paymentMethod?.message);
 
       return {
