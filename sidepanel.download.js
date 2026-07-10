@@ -261,6 +261,11 @@
     return (app && app.exportFormat) || CONSTANTS.EXPORT_FORMATS.XLSX;
   }
 
+  /** Whether the user opted in to thumbnail embedding (Excel only, default off). */
+  function shouldIncludeThumbnails() {
+    return Boolean(app && app.includeThumbnails);
+  }
+
   /** Export all collected orders combined, honoring the selected format. */
   async function exportCombinedOrders(collectedOrdersData) {
     const format = getExportFormat();
@@ -272,7 +277,9 @@
       convertOrdersToJson(collectedOrdersData, "Walmart_Orders.json");
       return;
     }
-    await convertMultipleOrdersToXlsx(collectedOrdersData, ExcelJS, "Walmart_Orders.xlsx");
+    await convertMultipleOrdersToXlsx(collectedOrdersData, ExcelJS, "Walmart_Orders.xlsx", {
+      includeThumbnails: shouldIncludeThumbnails(),
+    });
   }
 
   /** Export one order as its own file, honoring the selected format. */
@@ -290,7 +297,7 @@
       convertOrdersToJson(data, `Order_${orderNumber}.json`);
       return;
     }
-    await convertToXlsx(data, ExcelJS, { mode: "single" });
+    await convertToXlsx(data, ExcelJS, { mode: "single", includeThumbnails: shouldIncludeThumbnails() });
   }
 
   /** Export Quick Export summary rows, honoring the selected format. */
