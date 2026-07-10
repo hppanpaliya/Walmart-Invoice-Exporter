@@ -120,7 +120,9 @@ const OrderDb = (() => {
       const existing = (await requestToPromise(store.get(orderNumber))) || null;
       store.put({
         orderNumber,
-        orderDate: existing?.orderDate || '',
+        // Keep the summary's ISO date when we have it; otherwise take the
+        // invoice's (human-format) date so the record is never dateless.
+        orderDate: existing?.orderDate || invoice.orderDate || '',
         title: existing?.title || '',
         summary: existing?.summary || null,
         invoice,

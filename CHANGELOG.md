@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.22] - July 10, 2026
+
+### Fixes
+- **Fix:** Monthly spend no longer drops orders whose stored date is in human format (or lives only on the invoice) — every measured dollar now lands in a month bucket. Previously the bars could show a fraction of the real total (e.g. \$1.84 of \$27.49).
+- **Fix:** Saving an invoice now records the order's date even when the order was never summary-collected.
+- Clearer dashboard empty states explaining that repurchases/price history need items appearing across multiple downloaded invoices.
+
 ## [6.21] - July 10, 2026
 
 ### Changed
