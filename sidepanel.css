@@ -897,3 +897,122 @@ body {
 .main-footer {
   margin-top: 24px;
 }
+
+/* Spending dashboard */
+.header .faq-button + .faq-button {
+  margin-left: 8px;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.stat-card {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.stat-card .stat-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.stat-card .stat-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.stat-card .stat-note {
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.dashboard-section {
+  margin-bottom: 16px;
+}
+
+.dashboard-section-title {
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.bar-row .bar-label {
+  width: 56px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.bar-row .bar-track {
+  flex: 1;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.bar-row .bar-fill {
+  height: 14px;
+  background: var(--primary);
+  border-radius: 3px;
+}
+
+.bar-row .bar-amount {
+  width: 64px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.dashboard-list {
+  list-style: none;
+  font-size: 12px;
+}
+
+.dashboard-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.dashboard-list .dashboard-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-muted {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.dashboard-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+}
+
+.dashboard-empty {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+  padding: 32px 0;
+}
