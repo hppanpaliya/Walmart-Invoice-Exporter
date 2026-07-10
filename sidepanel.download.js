@@ -277,6 +277,11 @@
     return (app && app.exportFormat) || CONSTANTS.EXPORT_FORMATS.XLSX;
   }
 
+  /** Currently selected CSV preset (generic orders + items files by default). */
+  function getCsvPreset() {
+    return (app && app.csvPreset) || CONSTANTS.CSV_PRESETS.GENERIC;
+  }
+
   /** Whether the user opted in to thumbnail embedding (Excel only, default off). */
   function shouldIncludeThumbnails() {
     return Boolean(app && app.includeThumbnails);
@@ -286,6 +291,12 @@
   async function exportCombinedOrders(collectedOrdersData) {
     const format = getExportFormat();
     if (format === CONSTANTS.EXPORT_FORMATS.CSV) {
+      const preset = getCsvPreset();
+      if (preset !== CONSTANTS.CSV_PRESETS.GENERIC) {
+        // Accounting presets emit one bank-statement style file.
+        convertOrdersToAccountingCsv(collectedOrdersData, preset);
+        return;
+      }
       await convertOrdersToCsv(collectedOrdersData);
       return;
     }
@@ -307,6 +318,12 @@
     const format = getExportFormat();
     const orderNumber = data.orderNumber || "order";
     if (format === CONSTANTS.EXPORT_FORMATS.CSV) {
+      const preset = getCsvPreset();
+      if (preset !== CONSTANTS.CSV_PRESETS.GENERIC) {
+        const presetLabel = preset === CONSTANTS.CSV_PRESETS.XERO ? "Xero" : "QuickBooks";
+        convertOrdersToAccountingCsv([data], preset, `Order_${orderNumber}_${presetLabel}.csv`);
+        return;
+      }
       await convertOrdersToCsv([data], {
         ordersFilename: `Order_${orderNumber}.csv`,
         itemsFilename: `Order_${orderNumber}_Items.csv`,
