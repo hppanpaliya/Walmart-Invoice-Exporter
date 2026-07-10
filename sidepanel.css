@@ -168,6 +168,16 @@ body {
   cursor: pointer;
 }
 
+.dashboard-coverage {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 9px;
+  margin-bottom: 10px;
+}
+
 .db-stats {
   display: flex;
   align-items: center;

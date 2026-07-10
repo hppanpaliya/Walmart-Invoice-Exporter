@@ -15,10 +15,10 @@ function roundMoneyToCents(value) {
 /**
  * Aggregate spend statistics from order-database records.
  *
- * Money fields prefer the deep-export invoice values and fall back to the
- * purchase-history summary (e.g. total = invoice orderTotal, else summary
- * orderTotal). Savings / tax / refunds / donations only exist on invoices,
- * so those totals cover downloaded invoices only.
+ * ONLY fully downloaded invoices are measured — mixing summary-level
+ * collection data in would produce misleading half-measurements (owner
+ * decision). `orderCount` reports everything stored so the UI can show
+ * coverage; every money metric covers invoices exclusively.
  *
  * @param {Array} records - OrderDb records ({orderNumber, orderDate, summary, invoice, ...})
  * @returns {{
@@ -50,37 +50,36 @@ function computeDashboardStats(records) {
   const itemsByKey = new Map();
 
   list.forEach((record) => {
-    const invoice = record?.invoice || null;
-    const summary = record?.summary || null;
-    if (invoice) invoiceCount += 1;
+    let invoice = record?.invoice || null;
+    // Pre-v3 invoices may contain doubled items / $0.00 prices — measuring
+    // them would corrupt every number. They count as not-downloaded.
+    if (invoice && Number(invoice.schemaVersion || 0) < CONSTANTS.ORDER_SCHEMA_VERSION) invoice = null;
+    if (!invoice) return; // summary-only orders are NOT measured
+    invoiceCount += 1;
 
-    // Prefer invoice values; fall back to the list-payload summary.
-    const total = parseNumericValue(invoice?.orderTotal) || parseNumericValue(summary?.orderTotal);
+    const total = parseNumericValue(invoice.orderTotal);
     if (total) {
       totalSpend += total;
       totaledOrders += 1;
     }
 
-    totalTips += parseNumericValue(invoice?.tip) || parseNumericValue(summary?.driverTip);
-    totalSavings += parseNumericValue(invoice?.savings);
-    totalTax += parseNumericValue(invoice?.tax);
-    totalRefunds += parseNumericValue(invoice?.refund);
-    totalDonations += parseNumericValue(invoice?.donations);
+    totalTips += parseNumericValue(invoice.tip);
+    totalSavings += parseNumericValue(invoice.savings);
+    totalTax += parseNumericValue(invoice.tax);
+    totalRefunds += parseNumericValue(invoice.refund);
+    totalDonations += parseNumericValue(invoice.donations);
 
     // Month comes from the ISO orderDate prefix (YYYY-MM).
-    const isoDate = String(record?.orderDate || summary?.orderDate || '');
+    const isoDate = String(record?.orderDate || record?.summary?.orderDate || '');
     const month = /^\d{4}-\d{2}/.test(isoDate) ? isoDate.slice(0, 7) : '';
     if (month && total) {
       monthlyTotals.set(month, (monthlyTotals.get(month) || 0) + total);
     }
 
-    // Item repurchase counts: invoice items carry productName, summary items
-    // carry name. Count each item at most once per order.
-    const rawItems = Array.isArray(invoice?.items)
+    // Item repurchase counts from invoice items. Count once per order.
+    const rawItems = Array.isArray(invoice.items)
       ? invoice.items.map((item) => ({ name: item?.productName, quantity: item?.quantity }))
-      : Array.isArray(summary?.items)
-        ? summary.items.map((item) => ({ name: item?.name, quantity: item?.quantity }))
-        : [];
+      : [];
 
     const seenInOrder = new Set();
     rawItems.forEach(({ name, quantity }) => {
@@ -156,6 +155,7 @@ function computePriceHistory(records) {
   list.forEach((record) => {
     const invoice = record?.invoice || null;
     if (!invoice || !Array.isArray(invoice.items)) return;
+    if (Number(invoice.schemaVersion || 0) < CONSTANTS.ORDER_SCHEMA_VERSION) return;
 
     const isoDate = String(record?.orderDate || record?.summary?.orderDate || '');
     const date = isoDate.slice(0, 10);
@@ -326,25 +326,62 @@ function computePriceHistory(records) {
     }
 
     const stats = computeDashboardStats(records);
-    const invoiceNote = stats.invoiceCount < stats.orderCount
-      ? `from ${stats.invoiceCount} downloaded invoices`
-      : '';
+
+    if (stats.invoiceCount === 0) {
+      container.innerHTML = `
+        <div class="dashboard-empty">
+          The dashboard measures fully downloaded invoices only — no half measurements
+          from summary data. You have ${stats.orderCount} orders stored; select them and
+          run "Download Selected" to add them to the dashboard.
+        </div>
+      `;
+      return;
+    }
+
+    const coverage = stats.invoiceCount < stats.orderCount
+      ? `<div class="dashboard-coverage">Measuring ${stats.invoiceCount} fully downloaded invoices
+          (of ${stats.orderCount} orders stored). Download the rest for complete numbers.</div>`
+      : `<div class="dashboard-coverage">Measuring all ${stats.invoiceCount} stored orders (full invoices).</div>`;
 
     container.innerHTML = `
+      ${coverage}
       <div class="stat-grid">
-        ${statCardHtml('Orders', String(stats.orderCount))}
+        ${statCardHtml('Invoices measured', String(stats.invoiceCount))}
         ${statCardHtml('Total spend', formatMoney(stats.totalSpend))}
         ${statCardHtml('Avg order', formatMoney(stats.avgOrder))}
         ${statCardHtml('Tips', formatMoney(stats.totalTips))}
-        ${statCardHtml('Savings', formatMoney(stats.totalSavings), invoiceNote)}
-        ${statCardHtml('Tax', formatMoney(stats.totalTax), invoiceNote)}
-        ${statCardHtml('Refunds', formatMoney(stats.totalRefunds), invoiceNote)}
-        ${statCardHtml('Donations', formatMoney(stats.totalDonations), invoiceNote)}
+        ${statCardHtml('Savings', formatMoney(stats.totalSavings))}
+        ${statCardHtml('Tax', formatMoney(stats.totalTax))}
+        ${statCardHtml('Refunds', formatMoney(stats.totalRefunds))}
+        ${statCardHtml('Donations', formatMoney(stats.totalDonations))}
       </div>
       ${monthlySectionHtml(stats.monthly)}
       ${topItemsSectionHtml(stats.topItems)}
       ${priceHistorySectionHtml(computePriceHistory(records))}
+      <div class="dashboard-section">
+        <button id="dashboardResetButton" class="btn btn-clear">Reset dashboard data</button>
+        <div class="dashboard-hint">Deletes every stored order and invoice from the local database.</div>
+      </div>
     `;
+
+    const resetButton = container.querySelector('#dashboardResetButton');
+    if (resetButton) {
+      resetButton.addEventListener('click', async () => {
+        const confirmed = window.confirm(
+          'Delete ALL stored orders and invoices from the local database? The dashboard starts over from zero.'
+        );
+        if (!confirmed) return;
+        try {
+          await OrderDb.clearAll();
+        } catch (error) {
+          console.error('Dashboard reset failed:', error);
+        }
+        renderDashboard();
+        if (Sidepanel.view && Sidepanel.view.updateDbStats) {
+          Sidepanel.view.updateDbStats();
+        }
+      });
+    }
   }
 
   Sidepanel.dashboard = {
