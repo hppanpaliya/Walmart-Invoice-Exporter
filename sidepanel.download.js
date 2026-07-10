@@ -277,6 +277,10 @@
       convertOrdersToJson(collectedOrdersData, "Walmart_Orders.json");
       return;
     }
+    if (format === CONSTANTS.EXPORT_FORMATS.RECEIPT) {
+      convertOrdersToReceiptHtml(collectedOrdersData, "Walmart_Orders_Receipts.html");
+      return;
+    }
     await convertMultipleOrdersToXlsx(collectedOrdersData, ExcelJS, "Walmart_Orders.xlsx", {
       includeThumbnails: shouldIncludeThumbnails(),
     });
@@ -297,6 +301,10 @@
       convertOrdersToJson(data, `Order_${orderNumber}.json`);
       return;
     }
+    if (format === CONSTANTS.EXPORT_FORMATS.RECEIPT) {
+      convertOrdersToReceiptHtml(data, `Order_${orderNumber}_Receipt.html`);
+      return;
+    }
     await convertToXlsx(data, ExcelJS, { mode: "single", includeThumbnails: shouldIncludeThumbnails() });
   }
 
@@ -309,6 +317,10 @@
     }
     if (format === CONSTANTS.EXPORT_FORMATS.JSON) {
       downloadTextFile(JSON.stringify(rows, null, 2), "Walmart_Orders_Summary.json", "application/json");
+      return;
+    }
+    if (format === CONSTANTS.EXPORT_FORMATS.RECEIPT) {
+      convertOrderSummariesToHtml(rows);
       return;
     }
     await convertOrderSummariesToXlsx(rows, ExcelJS);
