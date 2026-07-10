@@ -94,6 +94,25 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  // The dashboard is read-only (it only reads the local order database),
+  // so opening it never interrupts a running collection or download.
+  const dashboardButton = document.getElementById("dashboardButton");
+  if (dashboardButton) {
+    dashboardButton.addEventListener("click", function (e) {
+      e.preventDefault();
+      view.switchView("dashboard");
+      Sidepanel.dashboard.renderDashboard();
+    });
+  }
+
+  const dashboardBackButton = document.getElementById("dashboardBackButton");
+  if (dashboardBackButton) {
+    dashboardBackButton.addEventListener("click", function (e) {
+      e.preventDefault();
+      view.switchView("main", actions.checkCurrentTab);
+    });
+  }
+
   if (confirmDialogCancel) {
     confirmDialogCancel.addEventListener("click", view.hideConfirmDialog);
   }

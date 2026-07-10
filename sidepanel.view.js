@@ -42,19 +42,26 @@
     }
   }
 
+  /**
+   * Switch between the panel's top-level views.
+   * Unknown names fall back to the main view (matching the old behavior).
+   * @param {string} viewName - "main", "faq", or "dashboard"
+   * @param {Function} [onMain] - Invoked after switching to the main view
+   */
   function switchView(viewName, onMain) {
-    const mainView = document.getElementById("mainView");
-    const faqView = document.getElementById("faqView");
-    if (!mainView || !faqView) return;
+    const views = {
+      main: document.getElementById("mainView"),
+      faq: document.getElementById("faqView"),
+      dashboard: document.getElementById("dashboardView"),
+    };
+    const target = views[viewName] ? viewName : "main";
 
-    if (viewName === "faq") {
-      mainView.classList.remove("active");
-      faqView.classList.add("active");
-    } else {
-      faqView.classList.remove("active");
-      mainView.classList.add("active");
-      if (onMain) onMain();
-    }
+    Object.entries(views).forEach(([name, element]) => {
+      if (!element) return;
+      element.classList.toggle("active", name === target);
+    });
+
+    if (target === "main" && onMain) onMain();
   }
 
   function showConfirmDialog(message) {
