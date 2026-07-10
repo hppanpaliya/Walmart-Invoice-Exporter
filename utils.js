@@ -470,6 +470,177 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null)
 }
 
 /**
+ * CSV / JSON export
+ */
+
+/**
+ * Escape a single CSV field per RFC 4180: fields containing commas, quotes,
+ * or line breaks are wrapped in double quotes with inner quotes doubled.
+ * @param {*} value - The field value
+ * @returns {string}
+ */
+function csvEscape(value) {
+  const text = String(value ?? '');
+  if (/[",\r\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+/**
+ * Build RFC-4180 CSV content (CRLF line endings, trailing newline).
+ * @param {Array<string>} header - Column headers
+ * @param {Array<Array>} rows - Data rows
+ * @returns {string}
+ */
+function buildCsvContent(header, rows) {
+  return [header, ...rows]
+    .map((row) => row.map(csvEscape).join(','))
+    .join('\r\n') + '\r\n';
+}
+
+/**
+ * Trigger download of a text file (CSV, JSON)
+ * @param {string} content - File content
+ * @param {string} filename - Download filename
+ * @param {string} mimeType - MIME type
+ */
+function downloadTextFile(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  window.URL.revokeObjectURL(url);
+}
+
+/** Money helper for CSV: numeric value, or blank when the field is empty. */
+function csvMoney(value, { blankWhenEmpty = false } = {}) {
+  if (blankWhenEmpty && !value) return '';
+  return parseNumericValue(value);
+}
+
+/**
+ * Order-level CSV columns (one row per order) — accounting-friendly:
+ * money fields are plain numbers, not "$1.23" strings.
+ */
+const ORDER_CSV_COLUMNS = [
+  ['Order Number', (o) => o.orderNumber || ''],
+  ['Order Date', (o) => o.orderDate || ''],
+  ['Items', (o) => (Array.isArray(o.items) ? o.items.length : '')],
+  ['Address Recipient', (o) => o.addressRecipient || ''],
+  ['Shipping Address', (o) => o.address || ''],
+  ['Delivery Instructions', (o) => o.deliveryInstructions || ''],
+  ['Payment Method', (o) => formatPaymentMethodDetails(o)],
+  ['Payment Messages', (o) => o.paymentMessages || ''],
+  ['Payment Split', (o) => o.paymentSplit || ''],
+  ['Subtotal (Before Savings)', (o) => csvMoney(o.subtotalBeforeSavings)],
+  ['Savings', (o) => csvMoney(o.savings)],
+  ['Subtotal', (o) => csvMoney(o.orderSubtotal)],
+  ['Delivery Charges', (o) => csvMoney(o.deliveryCharges)],
+  ['Bag Fee', (o) => csvMoney(o.bagFee)],
+  ['Tax', (o) => csvMoney(o.tax)],
+  ['Tip', (o) => csvMoney(o.tip)],
+  ['Refund', (o) => csvMoney(o.refund, { blankWhenEmpty: true })],
+  ['Donations', (o) => csvMoney(o.donations, { blankWhenEmpty: true })],
+  ['Order Total', (o) => csvMoney(o.orderTotal)],
+  ['Seller(s)', (o) => o.sellers || ''],
+  ['Fulfillment', (o) => o.fulfillmentTypes || ''],
+  ['Delivered Date', (o) => o.deliveredDate || ''],
+  ['Tracking Numbers', (o) => o.trackingNumbers || ''],
+];
+
+/** Item-level CSV columns (one row per item) — the "items sheet" equivalent. */
+const ITEM_CSV_COLUMNS = [
+  ['Order Number', (o) => o.orderNumber || ''],
+  ['Order Date', (o) => o.orderDate || ''],
+  ['Product Name', (o, item) => item.productName || ''],
+  ['Quantity', (o, item) => parseNumericValue(item.quantity)],
+  ['Price', (o, item) => parseNumericValue(item.price)],
+  ['Delivery Status', (o, item) => item.deliveryStatus || ''],
+  ['Product Link', (o, item) => item.productLink || ''],
+];
+
+/**
+ * Export orders as accounting-friendly CSV: one file with a row per order,
+ * plus a companion items file with a row per item (CSV has no sheets).
+ * @param {Array|Object} ordersData - Order data object(s)
+ * @param {Object} options
+ * @param {string} options.ordersFilename - Filename for the per-order file
+ * @param {string} options.itemsFilename - Filename for the per-item file
+ */
+function convertOrdersToCsv(ordersData, options = {}) {
+  const {
+    ordersFilename = 'Walmart_Orders.csv',
+    itemsFilename = 'Walmart_Order_Items.csv',
+  } = options;
+  const ordersArray = Array.isArray(ordersData) ? ordersData : [ordersData];
+
+  const orderRows = ordersArray.map((order) =>
+    ORDER_CSV_COLUMNS.map(([, getter]) => getter(order))
+  );
+  downloadTextFile(
+    buildCsvContent(ORDER_CSV_COLUMNS.map(([header]) => header), orderRows),
+    ordersFilename,
+    'text/csv'
+  );
+
+  const itemRows = [];
+  ordersArray.forEach((order) => {
+    (order.items || []).forEach((item) => {
+      itemRows.push(ITEM_CSV_COLUMNS.map(([, getter]) => getter(order, item)));
+    });
+  });
+  downloadTextFile(
+    buildCsvContent(ITEM_CSV_COLUMNS.map(([header]) => header), itemRows),
+    itemsFilename,
+    'text/csv'
+  );
+}
+
+/**
+ * Export orders as pretty-printed JSON (full structured data, items nested).
+ * @param {Array|Object} ordersData - Order data object(s)
+ * @param {string} filename - Download filename
+ */
+function convertOrdersToJson(ordersData, filename = 'Walmart_Orders.json') {
+  const ordersArray = Array.isArray(ordersData) ? ordersData : [ordersData];
+  downloadTextFile(JSON.stringify(ordersArray, null, 2), filename, 'application/json');
+}
+
+/** Quick Export summary columns shared by the CSV and JSON writers. */
+const SUMMARY_CSV_COLUMNS = [
+  ['Order Number', (row) => row.orderNumber || ''],
+  ['Order Date', (row) => row.orderDate || ''],
+  ['Order Date (ISO)', (row) => row.orderDateIso || ''],
+  ['Items', (row) => (row.itemCount === '' || row.itemCount === null || row.itemCount === undefined ? '' : parseNumericValue(row.itemCount))],
+  ['Item Names', (row) => row.itemNames || ''],
+  ['Status', (row) => row.status || ''],
+  ['Fulfillment', (row) => row.fulfillment || ''],
+  ['Subtotal', (row) => csvMoney(row.subTotal, { blankWhenEmpty: true })],
+  ['Driver Tip', (row) => csvMoney(row.driverTip, { blankWhenEmpty: true })],
+  ['Order Total', (row) => csvMoney(row.orderTotal, { blankWhenEmpty: true })],
+];
+
+/**
+ * Export Quick Export summary rows as CSV (one row per order).
+ * @param {Array} summaryRows - Pre-built summary row objects
+ * @param {string} filename - Download filename
+ */
+function convertOrderSummariesToCsv(summaryRows, filename = 'Walmart_Orders_Summary.csv') {
+  const rowsArray = Array.isArray(summaryRows) ? summaryRows : [];
+  const rows = rowsArray.map((row) => SUMMARY_CSV_COLUMNS.map(([, getter]) => getter(row)));
+  downloadTextFile(
+    buildCsvContent(SUMMARY_CSV_COLUMNS.map(([header]) => header), rows),
+    filename,
+    'text/csv'
+  );
+}
+
+/**
  * SVG Icon constants - Centralized icon definitions used throughout the extension
  */
 const SVG_ICONS = {
@@ -705,6 +876,13 @@ const CONSTANTS = {
   EXPORT_MODES: {
     SINGLE: 'single',
     MULTIPLE: 'multiple',
+  },
+
+  // Export file formats
+  EXPORT_FORMATS: {
+    XLSX: 'xlsx',
+    CSV: 'csv',
+    JSON: 'json',
   },
 };
 
