@@ -372,6 +372,10 @@
     });
 
     if (orderNumbers.length > 0 && !document.getElementById("downloadButton")) {
+      // Paired action row: full download next to the instant quick export.
+      const actionRow = document.createElement("div");
+      actionRow.className = "action-row";
+
       const downloadButton = document.createElement("button");
       downloadButton.id = "downloadButton";
       downloadButton.className = CONSTANTS.CSS_CLASSES.BTN_SUCCESS;
@@ -381,10 +385,8 @@
         ${label}
       `;
       downloadButton.addEventListener("click", Sidepanel.download.downloadSelectedOrders);
-      container.appendChild(downloadButton);
-    }
+      actionRow.appendChild(downloadButton);
 
-    if (orderNumbers.length > 0 && !document.getElementById("quickExportButton")) {
       const quickExportButton = document.createElement("button");
       quickExportButton.id = "quickExportButton";
       quickExportButton.className = CONSTANTS.CSS_CLASSES.BTN_PRIMARY;
@@ -394,13 +396,15 @@
         <span class="btn-text">${CONSTANTS.TEXT.QUICK_EXPORT}</span>
       `;
       quickExportButton.addEventListener("click", Sidepanel.download.quickExportSummaries);
-      container.appendChild(quickExportButton);
+      actionRow.appendChild(quickExportButton);
 
       // displayOrderNumbers resolves asynchronously, so the single-order layout
       // may already be active by the time the button is created — hide it then.
       if (UI_STATE.mode === UI_MODES.SINGLE_ORDER) {
         quickExportButton.style.display = "none";
       }
+
+      container.appendChild(actionRow);
     }
 
     updateClearCacheVisibility();

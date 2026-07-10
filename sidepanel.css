@@ -43,9 +43,10 @@ body {
 .card {
   background: var(--background);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px;
+  border-radius: 10px;
+  padding: 14px;
   margin-bottom: 12px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
 }
 
 /* Disabled card state - allows scrolling but disables interactive elements */
@@ -90,14 +91,16 @@ body {
 
 .input-group select {
   width: 100%;
-  padding: 6px;
+  padding: 7px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 12px;
   background: white;
+  cursor: pointer;
 }
 
-.input-group input:focus {
+.input-group input:focus,
+.input-group select:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 2px rgba(0, 113, 220, 0.1);
@@ -201,10 +204,51 @@ body {
   margin-top: 1px;
 }
 
-#quickExportButton {
-  width: 100%;
+/* Paired action buttons: Download + Quick Export side by side */
+.action-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.action-row .btn {
+  flex: 1;
+  width: auto;
+  margin-top: 0;
   justify-content: center;
-  margin-top: 8px;
+  padding: 9px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Collapsible export options section */
+.options-group {
+  border-top: 1px solid var(--border);
+  margin: 4px 0 12px;
+  padding-top: 8px;
+}
+
+.options-group summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 4px 0;
+  user-select: none;
+  list-style-position: inside;
+}
+
+.options-group summary:hover {
+  color: var(--primary);
+}
+
+.options-group[open] summary {
+  margin-bottom: 10px;
+}
+
+.options-group .input-group:last-of-type,
+.options-group .toggle-group:last-of-type {
+  margin-bottom: 4px;
 }
 
 .btn:disabled {
@@ -256,8 +300,21 @@ body {
 .order-list {
   max-height: 300px;
   overflow-y: auto;
-  margin-bottom: 16px;
-  padding-right: 4px;
+  margin-bottom: 4px;
+  padding: 2px 4px 2px 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+}
+
+.order-list .checkbox-container {
+  padding: 6px 8px;
+  border-radius: 6px;
+  transition: background 0.12s ease;
+}
+
+.order-list .checkbox-container:hover {
+  background: var(--background);
 }
 
 /* Custom scrollbar */
