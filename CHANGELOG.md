@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.12] - July 10, 2026
+
+### Features
+- **Feature:** **Microsoft Edge & Firefox packages** — every release now ships Edge and Firefox zips alongside Chrome. Firefox uses the browser sidebar (`sidebar_action`) instead of the side panel; the build derives its file list from the release workflow so packages never drift. Firefox build is validated structurally but not yet tested live.
+
 ## [6.11] - July 10, 2026
 
 ### Features
