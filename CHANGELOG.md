@@ -1,5 +1,11 @@
 # Changelog
 
+## [6.14] - July 10, 2026
+
+### Fixes
+- **Fix:** Quick Export now requires a selection and exports ONLY the ticked orders — identical contract to the Download button. No selection → prompt, never a surprise full export.
+- **Fix:** Wrong/incomplete Quick Export rows: collection now waits up to 6 seconds for Walmart's rich page payload before ever falling back to DOM scraping; DOM-scraped rows can no longer overwrite payload-quality data (in the live collection or the local database); the DOM scraper only trusts dates found in the order card title (body dates are delivery estimates, not order dates); and Quick Export upgrades any degraded row from the best copy stored in the local database.
+
 ## [6.13] - July 10, 2026
 
 ### Improvements
