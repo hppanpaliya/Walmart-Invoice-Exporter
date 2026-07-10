@@ -1,5 +1,19 @@
 # Changelog
 
+## [6.21] - July 10, 2026
+
+### Changed
+- **Reverted 6.20's in-tab collection** (owner decision): collection always runs in its own background tab again and never touches the tab you're using.
+
+### Fixes (from a deep multi-agent code review)
+- **Fix:** A mid-collection hiccup (content-script error, unexpected redirect) is no longer mistaken for a successful final page — collection retries instead of silently truncating, and the background verifies the collection tab is still on the orders list before each page.
+- **Fix:** Incremental collection ("only new orders") now hydrates the order list from the local database when it stops early, so every stored order stays selectable and exportable even after the 24h cache expires.
+- **Fix:** When the 24h cache is empty but the database has your orders, the panel now lists them (with a "Loaded N orders from the local database" note) — Quick Export and Download work without a forced re-collection.
+- **Fix:** Genuinely distinct order lines with the same product and quantity (e.g. a re-priced substitution) both survive the item merge again; the payload absorbs at most one DOM copy per line, and a blank payload price is backfilled from the DOM.
+- **Fix:** Accounting CSV presets skip orders with unknown totals instead of writing fake $0 transactions.
+- **Fix:** Price history sorts correctly when order dates are in mixed formats.
+- **Fix:** Removed the over-aggressive price sanity guard that could blank legitimate prices on partially canceled orders.
+
 ## [6.20] - July 10, 2026
 
 ### Improvements

@@ -222,7 +222,7 @@ function buildSummaryItemRows(orderNumbers, orderSummaries = {}, invoiceByOrder 
  * @param {ExcelJS.Worksheet} worksheet - The worksheet to add items to
  * @param {Array} items - The items to add
  */
-function addItemsToWorksheet(worksheet, items, orderTotal = '') {
+function addItemsToWorksheet(worksheet, items) {
   items.forEach((item) => {
     const productName = item.productName || "";
     const productLink = item.productLink || "";
@@ -233,7 +233,7 @@ function addItemsToWorksheet(worksheet, items, orderTotal = '') {
         hyperlink: productLink
       },
       quantity: excelNumber(item.quantity),
-      price: excelItemPrice(item.price, orderTotal),
+      price: excelNumber(item.price),
       deliveryStatus: item.deliveryStatus,
     });
     row.font = STYLES.productFont;
@@ -486,7 +486,7 @@ async function convertSingleOrderToXlsx(orderDetails, ExcelJS, filename = null, 
 
   // Add items
   const items = orderDetails.items || [];
-  addItemsToWorksheet(worksheet, items, orderDetails.orderTotal);
+  addItemsToWorksheet(worksheet, items);
 
   // Add order summary
   addOrderSummary(worksheet, orderDetails);
@@ -528,21 +528,6 @@ function orderDataLabel(orderDetails) {
     : 'Full invoice';
 }
 
-/**
- * Item price cell with a sanity guard: a line price that exceeds twice the
- * order's own total is corrupt (seen with legacy DOM-scraped invoices) and
- * exports as blank rather than as a wrong number.
- * @param {*} price - Raw item price
- * @param {*} orderTotal - The order's total, when known
- * @returns {number|string}
- */
-function excelItemPrice(price, orderTotal) {
-  const value = excelNumber(price);
-  if (value === '') return '';
-  const total = parseNumericValue(orderTotal);
-  if (total > 0 && value > total * 2) return '';
-  return value;
-}
 
 /**
  * Polish a worksheet: Walmart-blue bold header, frozen header row, and
@@ -675,7 +660,7 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
         orderDate: orderDetails.orderDate || '',
         productName,
         quantity: excelNumber(item.quantity),
-        price: excelItemPrice(item.price, orderDetails.orderTotal),
+        price: excelNumber(item.price),
         deliveryStatus: item.deliveryStatus || '',
         orderType: formatOrderType(orderDetails.orderType, orderDetails.isInStore),
         productLink: productLink && productLink !== 'N/A'
@@ -904,12 +889,16 @@ function buildAccountingDescription(order) {
  */
 function buildAccountingCsvRows(ordersData, preset) {
   const ordersArray = Array.isArray(ordersData) ? ordersData : [ordersData];
+  // Orders with an UNKNOWN total (summary-built, never scanned) are skipped
+  // outright — a fabricated $0.00 transaction corrupts a bank import.
+  const withTotals = ordersArray.filter((order) => String(order.orderTotal || '').trim() !== '');
   const spentAmount = (order) => -Math.abs(parseNumericValue(order.orderTotal));
 
   if (preset === CONSTANTS.CSV_PRESETS.XERO) {
     return {
       header: ['Date', 'Amount', 'Payee', 'Description', 'Reference'],
-      rows: ordersArray.map((order) => [
+      skipped: ordersArray.length - withTotals.length,
+      rows: withTotals.map((order) => [
         formatAccountingDate(order.orderDate),
         spentAmount(order),
         'Walmart',
@@ -922,7 +911,8 @@ function buildAccountingCsvRows(ordersData, preset) {
   // QuickBooks 3-column bank format (Date, Description, Amount).
   return {
     header: ['Date', 'Description', 'Amount'],
-    rows: ordersArray.map((order) => {
+    skipped: ordersArray.length - withTotals.length,
+    rows: withTotals.map((order) => {
       const itemCount = Array.isArray(order.items) ? order.items.length : 0;
       return [
         formatAccountingDate(order.orderDate),
