@@ -382,78 +382,11 @@
   }
 
   /**
-   * Build a deep-export-shaped order object from a Quick Export summary — used
-   * when no stored invoice exists, so Quick Export files have EXACTLY the same
-   * layout as Download Selected. Fields the list payload doesn't carry stay
-   * blank; per-item prices are unknown (the caller warns about this).
-   * @param {string} orderNumber - Digits-only order number
-   * @param {Object|null} summary - Quick Export summary from the list payload
-   * @param {string} title - Cached order title (tooltip text)
-   * @returns {Object} orderDetails shaped like scrapeOrderData() output
-   */
-  function buildOrderDetailsFromSummary(orderNumber, summary, title) {
-    const s = summary || {};
-    const items = (Array.isArray(s.items) ? s.items : []).map((item) => ({
-      productName: item.name || "",
-      quantity: item.quantity ?? "",
-      price: "",
-      // statusCode is a raw numeric Walmart code (e.g. "3700.0031") — never
-      // show it; the group-level status text ("Delivered") is the human one.
-      deliveryStatus: s.status || "",
-      productLink: "N/A",
-      thumbnailUrl: item.thumbnailUrl || "",
-    }));
-    if (items.length === 0) {
-      // Keep the order visible in the export even without item data.
-      items.push({
-        productName: title || "(items unknown — use Download Selected for full details)",
-        quantity: "",
-        price: "",
-        deliveryStatus: s.status || "",
-        productLink: "N/A",
-        thumbnailUrl: "",
-      });
-    }
-
-    return {
-      schemaVersion: CONSTANTS.ORDER_SCHEMA_VERSION,
-      dataSource: "summary",
-      orderNumber,
-      orderDate: formatSummaryDate(s.orderDate),
-      orderSubtotal: s.subTotal || "",
-      subtotalBeforeSavings: "",
-      savings: "",
-      orderTotal: s.orderTotal || "",
-      deliveryCharges: "",
-      bagFee: "",
-      tax: "",
-      tip: s.driverTip || "",
-      refund: "",
-      donations: "",
-      barcodeImageUrl: "",
-      sellers: "",
-      fulfillmentTypes: s.fulfillmentTypes || "",
-      deliveredDate: "",
-      trackingNumbers: "",
-      paymentSplit: "",
-      orderType: s.orderType || "",
-      isInStore: Boolean(s.isInStore),
-      address: "",
-      addressRecipient: "",
-      addressLine: "",
-      deliveryInstructions: "",
-      paymentMethods: "",
-      paymentMethodDetails: [],
-      paymentMessages: "",
-      items,
-    };
-  }
-
-  /**
-   * Quick Export: exports the SELECTED orders in exactly the same format and
-   * layout as Download Selected, but without opening any order pages. Orders
-   * with a stored invoice export with full fidelity; the rest are built from
-   * list-payload summaries (item prices unknown — the user is warned).
+   * Quick Export: INSTANTLY re-exports the selected orders that have already
+   * been downloaded (trusted stored invoices) in exactly the same format and
+   * layout as Download Selected — no pages opened, nothing synthesized.
+   * Orders that were never downloaded are skipped and reported, never
+   * fabricated from partial data.
    */
   async function quickExportSummaries() {
     if (app && app.downloadInProgress) {
@@ -518,60 +451,35 @@
         return;
       }
 
-      // Consult the durable DB once per order: upgrade degraded summaries to
-      // the richer stored copy, and collect stored invoices so the items
-      // sheet can carry per-item prices (the list payload has none).
-      const invoiceByOrder = {};
+      // Quick Export only exports TRUSTED stored invoices — it never
+      // synthesizes rows from partial list data (that produced garbage).
+      const ordersData = [];
+      let skippedCount = 0;
       try {
         for (const orderNumber of orderNumbers) {
           const record = await OrderDb.getOrder(orderNumber);
-          if (!record) continue;
           // Pre-v3 stored invoices carry the doubled-items bug — treat those
-          // orders as not-yet-scanned rather than exporting corrupt data.
-          if (record.invoice && Number(record.invoice.schemaVersion || 0) >= CONSTANTS.ORDER_SCHEMA_VERSION) {
-            invoiceByOrder[orderNumber] = record.invoice;
-          }
-          if (
-            record.summary &&
-            !isPayloadQualitySummary(orderSummaries[orderNumber]) &&
-            (!orderSummaries[orderNumber] || isPayloadQualitySummary(record.summary))
-          ) {
-            orderSummaries[orderNumber] = record.summary;
+          // orders as not-yet-downloaded rather than exporting corrupt data.
+          if (record?.invoice && Number(record.invoice.schemaVersion || 0) >= CONSTANTS.ORDER_SCHEMA_VERSION) {
+            ordersData.push({ ...record.invoice, dataSource: "invoice" });
+          } else {
+            skippedCount++;
           }
         }
       } catch (error) {
-        console.warn("Order DB unavailable for Quick Export upgrade:", error);
+        console.warn("Order DB unavailable for Quick Export:", error);
       }
 
-      const usableCount = orderNumbers.filter(
-        (orderNumber) => invoiceByOrder[orderNumber] || orderSummaries[orderNumber]
-      ).length;
-      if (usableCount === 0) {
+      if (ordersData.length === 0) {
         showTimedProgressMessage(
           progressDiv,
           createErrorMessage(
-            "The selected orders have no stored data. Run Start Collection again, then retry Quick Export."
+            "None of the selected orders have been downloaded yet. Quick Export instantly re-exports downloaded orders — run \"Download Selected\" on them once first."
           ),
           CONSTANTS.TIMING.ERROR_DISPLAY_DURATION
         );
         return;
       }
-
-      // Same data shape as Download Selected: full invoices where stored,
-      // summary-built orders otherwise.
-      const ordersData = [];
-      let missingPriceCount = 0;
-      orderNumbers.forEach((orderNumber) => {
-        const invoice = invoiceByOrder[orderNumber];
-        if (invoice) {
-          ordersData.push({ ...invoice, dataSource: "invoice" });
-          return;
-        }
-        missingPriceCount++;
-        ordersData.push(
-          buildOrderDetailsFromSummary(orderNumber, orderSummaries[orderNumber], additionalFields[orderNumber])
-        );
-      });
 
       // Same layout AND same export-mode semantics as Download Selected.
       if (app && app.exportMode === CONSTANTS.EXPORT_MODES.MULTIPLE) {
@@ -589,11 +497,11 @@
         await exportCombinedOrders(ordersData, "Walmart_Orders_Quick");
       }
 
-      if (missingPriceCount > 0) {
+      if (skippedCount > 0) {
         showTimedProgressMessage(
           progressDiv,
           createWarningMessage(
-            `${CONSTANTS.TEXT.QUICK_EXPORT_SUCCESS}\nHeads up: ${missingPriceCount} of ${ordersData.length} orders have no downloaded invoice, so their item prices (and fees, address, payment details) are blank.\nRun "Download Selected" on those orders once to fill everything in.`
+            `Exported ${ordersData.length} downloaded orders.\nSkipped ${skippedCount} selected orders that haven't been downloaded yet — run "Download Selected" on them once, then Quick Export includes them instantly.`
           ),
           CONSTANTS.TIMING.ERROR_DISPLAY_DURATION
         );
