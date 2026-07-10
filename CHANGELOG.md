@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.10] - July 10, 2026
+
+### Features
+- **Feature:** **QuickBooks & Xero CSV presets** — a CSV preset selector (shown when CSV format is chosen) exports bank-import-ready files: QuickBooks 3-column (Date, Description, Amount) or Xero (Date, Amount, Payee, Description, Reference), with negative amounts for money spent and MM/DD/YYYY dates.
+
 ## [6.9] - July 10, 2026
 
 ### Features
