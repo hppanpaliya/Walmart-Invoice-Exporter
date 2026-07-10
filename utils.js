@@ -676,6 +676,34 @@ const CONSTANTS = {
 };
 
 /**
+ * Query params on the orders URL that are tracking/navigation noise,
+ * not user-selected filters.
+ */
+const NON_FILTER_ORDER_PARAMS = ['page', 'povid', 'from', 'wmlspartner', 'athcpid', 'adsredirect'];
+
+/**
+ * Describe the Walmart filters active on an orders-page URL.
+ * Purely observational — the extension never builds filter URLs itself;
+ * it paginates whatever filtered view the user set on walmart.com.
+ * @param {string} url - The orders page URL
+ * @returns {string[]} Human-readable "key: value" filter descriptions
+ */
+function describeActiveFilters(url) {
+  try {
+    const params = new URL(url).searchParams;
+    const parts = [];
+    params.forEach((value, key) => {
+      if (NON_FILTER_ORDER_PARAMS.includes(key.toLowerCase())) return;
+      const cleanValue = String(value).trim();
+      parts.push(cleanValue ? `${key}: ${cleanValue}` : key);
+    });
+    return parts;
+  } catch (error) {
+    return [];
+  }
+}
+
+/**
  * Sidepanel UI helpers
  */
 const CACHE_INDICATOR_STYLE = 'cursor: pointer; margin-left: 6px; color: var(--primary); display: inline-flex; align-items: center; gap: 2px; font-size: 10px;';
