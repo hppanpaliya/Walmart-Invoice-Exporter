@@ -159,6 +159,41 @@
     document.body.insertBefore(warningBanner, document.body.firstChild);
   }
 
+  /**
+   * Show (or clear) a notice describing the Walmart filters active on the
+   * orders page. Collection paginates the user's filtered view as-is, so the
+   * notice tells them only matching orders will be collected.
+   * @param {string|null} url - Current orders-page URL, or null to clear
+   */
+  function updateFilterNotice(url) {
+    const existing = document.getElementById("filterNotice");
+    const filters = url ? describeActiveFilters(url) : [];
+
+    if (filters.length === 0) {
+      if (existing) existing.remove();
+      return;
+    }
+
+    let notice = existing;
+    if (!notice) {
+      notice = document.createElement("div");
+      notice.id = "filterNotice";
+      notice.className = "filter-notice";
+      const card = document.querySelector(".card");
+      const buttonGroup = document.getElementById("buttonGroup");
+      if (card && buttonGroup && buttonGroup.parentNode === card) {
+        card.insertBefore(notice, buttonGroup);
+      } else if (card) {
+        card.appendChild(notice);
+      }
+    }
+
+    notice.innerHTML = `
+      ${renderIcon("INFO_CIRCLE")}
+      <span>Filtered view — only matching orders will be collected (${escapeHtml(filters.join(", "))})</span>
+    `;
+  }
+
   function setUIEnabled(enabled) {
     const card = document.querySelector(".card");
     if (card) {
@@ -475,6 +510,7 @@
     ensureOffTabWarning,
     clearOffTabWarning,
     showExtractionWarning,
+    updateFilterNotice,
     setUIEnabled,
     updateProgressUI,
     createProgressElement,
