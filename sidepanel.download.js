@@ -349,15 +349,30 @@
     await convertToXlsx(data, ExcelJS, { mode: "single", includeThumbnails: shouldIncludeThumbnails() });
   }
 
-  /** Export Quick Export summary rows, honoring the selected format. */
-  async function exportSummaryRows(rows) {
+  /** Export Quick Export summary rows (+ per-item rows), honoring the format. */
+  async function exportSummaryRows(rows, itemRows = []) {
     const format = getExportFormat();
     if (format === CONSTANTS.EXPORT_FORMATS.CSV) {
       convertOrderSummariesToCsv(rows);
+      if (itemRows.length > 0) {
+        // Space out the second download for Chrome's multi-download throttle.
+        await delay(CONSTANTS.TIMING.RETRY_DELAY);
+        convertOrderSummaryItemsToCsv(itemRows);
+      }
       return;
     }
     if (format === CONSTANTS.EXPORT_FORMATS.JSON) {
-      downloadTextFile(JSON.stringify(rows, null, 2), "Walmart_Orders_Summary.json", "application/json");
+      const itemsByOrder = {};
+      itemRows.forEach((itemRow) => {
+        (itemsByOrder[itemRow.orderNumber] = itemsByOrder[itemRow.orderNumber] || []).push({
+          name: itemRow.name,
+          quantity: itemRow.quantity,
+          price: itemRow.price,
+          status: itemRow.status,
+        });
+      });
+      const structured = rows.map((row) => ({ ...row, items: itemsByOrder[row.orderNumber] || [] }));
+      downloadTextFile(JSON.stringify(structured, null, 2), "Walmart_Orders_Summary.json", "application/json");
       return;
     }
     if (format === CONSTANTS.EXPORT_FORMATS.RECEIPT) {
@@ -368,7 +383,7 @@
       convertOrderSummariesToPdf(rows);
       return;
     }
-    await convertOrderSummariesToXlsx(rows, ExcelJS);
+    await convertOrderSummariesToXlsx(rows, ExcelJS, null, { itemRows });
   }
 
   /**
@@ -513,14 +528,20 @@
         return;
       }
 
-      // Upgrade degraded rows from the durable DB, which may hold a richer
-      // payload-quality summary from a previous collection.
+      // Consult the durable DB once per order: upgrade degraded summaries to
+      // the richer stored copy, and collect stored invoices so the items
+      // sheet can carry per-item prices (the list payload has none).
+      const invoiceByOrder = {};
       try {
         for (const orderNumber of orderNumbers) {
-          if (isPayloadQualitySummary(orderSummaries[orderNumber])) continue;
           const record = await OrderDb.getOrder(orderNumber);
+          if (!record) continue;
+          if (record.invoice) {
+            invoiceByOrder[orderNumber] = record.invoice;
+          }
           if (
-            record?.summary &&
+            record.summary &&
+            !isPayloadQualitySummary(orderSummaries[orderNumber]) &&
             (!orderSummaries[orderNumber] || isPayloadQualitySummary(record.summary))
           ) {
             orderSummaries[orderNumber] = record.summary;
@@ -543,7 +564,9 @@
       }
 
       const rows = buildQuickExportRows(orderNumbers, additionalFields, orderSummaries);
-      await exportSummaryRows(rows);
+      const dateByOrder = Object.fromEntries(rows.map((row) => [row.orderNumber, row.orderDate]));
+      const itemRows = buildSummaryItemRows(orderNumbers, orderSummaries, invoiceByOrder, dateByOrder);
+      await exportSummaryRows(rows, itemRows);
 
       const missingCount = orderNumbers.length - summaryCount;
       const message =
