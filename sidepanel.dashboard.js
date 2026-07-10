@@ -7,6 +7,19 @@
  * dashboard never talks to walmart.com.
  */
 
+/**
+ * Normalize any stored order date (ISO '2026-06-14T…', human 'Jun 14, 2026',
+ * or empty) to a sortable 'YYYY-MM-DD' string, else ''.
+ */
+function normalizeDashboardDate(rawDate) {
+  const text = String(rawDate || '');
+  if (/^\d{4}-\d{2}/.test(text)) return text.slice(0, 10);
+  if (!text) return '';
+  const parsed = new Date(text);
+  if (isNaN(parsed.getTime())) return '';
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+}
+
 /** Round a money value to cents (floating-point sums drift otherwise). */
 function roundMoneyToCents(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
@@ -69,9 +82,11 @@ function computeDashboardStats(records) {
     totalRefunds += parseNumericValue(invoice.refund);
     totalDonations += parseNumericValue(invoice.donations);
 
-    // Month comes from the ISO orderDate prefix (YYYY-MM).
-    const isoDate = String(record?.orderDate || record?.summary?.orderDate || '');
-    const month = /^\d{4}-\d{2}/.test(isoDate) ? isoDate.slice(0, 7) : '';
+    // Month from any date format we may have stored (ISO or human).
+    const normalized = normalizeDashboardDate(
+      record?.orderDate || record?.summary?.orderDate || invoice.orderDate || ''
+    );
+    const month = normalized.slice(0, 7);
     if (month && total) {
       monthlyTotals.set(month, (monthlyTotals.get(month) || 0) + total);
     }
@@ -159,16 +174,9 @@ function computePriceHistory(records) {
 
     // Normalize to a sortable YYYY-MM-DD: DOM-collected orders store human
     // dates ('July 1, 2026'), which would otherwise sort alphabetically.
-    const rawDate = String(record?.orderDate || record?.summary?.orderDate || '');
-    let date = '';
-    if (/^\d{4}-\d{2}/.test(rawDate)) {
-      date = rawDate.slice(0, 10);
-    } else if (rawDate) {
-      const parsed = new Date(rawDate);
-      if (!isNaN(parsed.getTime())) {
-        date = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
-      }
-    }
+    const date = normalizeDashboardDate(
+      record?.orderDate || record?.summary?.orderDate || invoice.orderDate || ''
+    );
 
     // One price point per item per order.
     const seenInOrder = new Set();
@@ -275,7 +283,7 @@ function computePriceHistory(records) {
             `
           )
           .join('')
-      : '<li class="dashboard-muted">No repeat purchases yet.</li>';
+      : '<li class="dashboard-muted">No repeat purchases across the measured invoices yet — download more orders to grow this.</li>';
     return `
       <div class="dashboard-section">
         <h3 class="dashboard-section-title">Most repurchased</h3>
@@ -305,7 +313,7 @@ function computePriceHistory(records) {
             `
           )
           .join('')
-      : '<li class="dashboard-muted">No price changes detected yet.</li>';
+      : '<li class="dashboard-muted">No price changes across the measured invoices yet — an item must appear in two downloaded orders.</li>';
     return `
       <div class="dashboard-section">
         <h3 class="dashboard-section-title">Price history</h3>
