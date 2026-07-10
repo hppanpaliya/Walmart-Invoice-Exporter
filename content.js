@@ -1057,6 +1057,9 @@ function extractItemsFromNextData(orderNode) {
 
     const canonicalUrl = cleanText(item?.productInfo?.canonicalUrl || item?.canonicalUrl || '');
     const productLink = canonicalUrl ? toAbsoluteWalmartUrl(canonicalUrl) : 'N/A';
+    const thumbnailUrl = cleanText(
+      item?.productInfo?.imageInfo?.thumbnailUrl || item?.imageInfo?.thumbnailUrl || ''
+    );
 
     items.push({
       productName,
@@ -1064,6 +1067,7 @@ function extractItemsFromNextData(orderNode) {
       deliveryStatus: cleanText(groupStatus) || CONSTANTS.TEXT.DELIVERY_LABEL,
       quantity,
       price,
+      thumbnailUrl,
     });
   };
 
@@ -1092,28 +1096,37 @@ function mergeOrderItems(domItems, nextDataItems) {
     return primaryItems;
   }
 
-  const mergedItems = [...primaryItems];
-  const seen = new Set(
-    primaryItems.map((item) => {
-      const productName = normalizeLookupText(item?.productName || '');
-      const quantity = cleanText(item?.quantity || '');
-      const price = cleanText(item?.price || '');
-      return `${productName}|${quantity}|${price}`;
-    })
-  );
-
-  fallbackItems.forEach((item) => {
+  const itemKey = (item) => {
     const productName = normalizeLookupText(item?.productName || '');
     const quantity = cleanText(item?.quantity || '');
     const price = cleanText(item?.price || '');
-    const key = `${productName}|${quantity}|${price}`;
+    return `${productName}|${quantity}|${price}`;
+  };
 
+  const mergedItems = [...primaryItems];
+  const seen = new Set(primaryItems.map(itemKey));
+  const fallbackByKey = new Map(fallbackItems.map((item) => [itemKey(item), item]));
+
+  fallbackItems.forEach((item) => {
+    const key = itemKey(item);
     if (seen.has(key)) {
       return;
     }
 
     seen.add(key);
     mergedItems.push(item);
+  });
+
+  // DOM-sourced items win the merge but lack payload-only metadata
+  // (e.g. thumbnails) — backfill it from the matching payload item.
+  mergedItems.forEach((item) => {
+    if (item.thumbnailUrl) {
+      return;
+    }
+    const match = fallbackByKey.get(itemKey(item));
+    if (match?.thumbnailUrl) {
+      item.thumbnailUrl = match.thumbnailUrl;
+    }
   });
 
   return mergedItems;
