@@ -1078,6 +1078,7 @@ function extractItemsFromNextData(orderNode) {
       quantity,
       price,
       thumbnailUrl,
+      usItemId: cleanText(item?.productInfo?.usItemId || item?.usItemId || ''),
     });
   };
 

@@ -190,6 +190,119 @@ test('computeDashboardStats handles empty and malformed input', () => {
   assert.equal(stats.totalSpend, 0);
 });
 
+/** Build a minimal invoice-bearing record for price-history tests. */
+function invoiceRecord(orderNumber, isoDate, items) {
+  return {
+    orderNumber,
+    orderDate: isoDate,
+    summary: null,
+    invoice: { orderTotal: '$10.00', items },
+  };
+}
+
+test('computePriceHistory tracks unit prices across orders with quantity math', () => {
+  const sandbox = loadDashboardSandbox();
+  const records = [
+    // Later order first to prove points get sorted by date.
+    invoiceRecord('2', '2026-06-01T00:00:00.000Z', [
+      { productName: 'Test Milk 1 Gallon', usItemId: '10450114', quantity: '1', price: '$4.49' },
+    ]),
+    invoiceRecord('1', '2026-05-01T00:00:00.000Z', [
+      // Line price $7.96 for quantity 2 → unit price $3.98
+      { productName: 'Test Milk 1 Gallon', usItemId: '10450114', quantity: '2', price: '$7.96' },
+    ]),
+  ];
+
+  const history = toPlain(sandbox.computePriceHistory(records));
+  assert.equal(history.length, 1);
+  assert.deepEqual(history[0], {
+    name: 'Test Milk 1 Gallon',
+    usItemId: '10450114',
+    points: [
+      { date: '2026-05-01', unitPrice: 3.98 },
+      { date: '2026-06-01', unitPrice: 4.49 },
+    ],
+    minPrice: 3.98,
+    maxPrice: 4.49,
+    latestPrice: 4.49,
+    changed: true,
+  });
+});
+
+test('computePriceHistory keys by usItemId when present, else normalized name', () => {
+  const sandbox = loadDashboardSandbox();
+  const records = [
+    invoiceRecord('1', '2026-05-01T00:00:00.000Z', [
+      // Same usItemId under a renamed product — must group as one item.
+      { productName: 'Test Cereal 18oz', usItemId: '555', quantity: '1', price: '$3.00' },
+      { productName: 'Test Eggs Dozen', quantity: '1', price: '$2.50' },
+    ]),
+    invoiceRecord('2', '2026-06-01T00:00:00.000Z', [
+      { productName: 'Test Cereal Family Size 18oz', usItemId: '555', quantity: '1', price: '$3.50' },
+      // No usItemId — falls back to case-insensitive name keying.
+      { productName: 'TEST EGGS DOZEN', quantity: '1', price: '$3.10' },
+    ]),
+  ];
+
+  const history = toPlain(sandbox.computePriceHistory(records));
+  assert.equal(history.length, 2);
+
+  const cereal = history.find((entry) => entry.usItemId === '555');
+  assert.equal(cereal.points.length, 2);
+  assert.equal(cereal.name, 'Test Cereal 18oz');
+
+  const eggs = history.find((entry) => entry.usItemId === '');
+  assert.equal(eggs.name, 'Test Eggs Dozen');
+  assert.deepEqual(
+    eggs.points.map((point) => point.unitPrice),
+    [2.5, 3.1]
+  );
+});
+
+test('computePriceHistory includes stable prices with changed=false', () => {
+  const sandbox = loadDashboardSandbox();
+  const records = [
+    invoiceRecord('1', '2026-05-01T00:00:00.000Z', [
+      { productName: 'Test Bread', usItemId: '777', quantity: '1', price: '$2.48' },
+    ]),
+    invoiceRecord('2', '2026-06-01T00:00:00.000Z', [
+      { productName: 'Test Bread', usItemId: '777', quantity: '1', price: '$2.48' },
+    ]),
+  ];
+
+  const history = toPlain(sandbox.computePriceHistory(records));
+  assert.equal(history.length, 1);
+  assert.equal(history[0].changed, false);
+  assert.equal(history[0].minPrice, 2.48);
+  assert.equal(history[0].maxPrice, 2.48);
+});
+
+test('computePriceHistory excludes single-purchase items, invoiceless records, and bad quantities', () => {
+  const sandbox = loadDashboardSandbox();
+  const records = [
+    invoiceRecord('1', '2026-05-01T00:00:00.000Z', [
+      { productName: 'Test Once-Only Gadget', usItemId: '111', quantity: '1', price: '$9.99' },
+      { productName: 'Test Zero Qty', usItemId: '222', quantity: '0', price: '$5.00' },
+    ]),
+    invoiceRecord('2', '2026-06-01T00:00:00.000Z', [
+      { productName: 'Test Zero Qty', usItemId: '222', quantity: '0', price: '$6.00' },
+    ]),
+    {
+      // Summary-only record: item names but no per-item prices → no points.
+      orderNumber: '3',
+      orderDate: '2026-07-01T00:00:00.000Z',
+      summary: {
+        orderDate: '2026-07-01T00:00:00.000Z',
+        items: [{ name: 'Test Once-Only Gadget', quantity: 1 }],
+      },
+      invoice: null,
+    },
+  ];
+
+  assert.deepEqual(toPlain(sandbox.computePriceHistory(records)), []);
+  assert.deepEqual(toPlain(sandbox.computePriceHistory([])), []);
+});
+
 test('sidepanel.dashboard exposes renderDashboard on window.Sidepanel', () => {
   const sandbox = loadDashboardSandbox();
   assert.equal(typeof sandbox.window.Sidepanel.dashboard.renderDashboard, 'function');
