@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.23] - July 10, 2026
+
+### Improvements
+- The panel header now shows the running build version (e.g. "v6.23") so it's always clear whether the loaded extension is current.
+
 ## [6.22] - July 10, 2026
 
 ### Fixes
