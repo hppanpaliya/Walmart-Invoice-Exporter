@@ -152,6 +152,23 @@ body {
   background: #27ae60;
 }
 
+.filter-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--background);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 12px;
+}
+
+.filter-notice svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
 #quickExportButton {
   width: 100%;
   justify-content: center;
