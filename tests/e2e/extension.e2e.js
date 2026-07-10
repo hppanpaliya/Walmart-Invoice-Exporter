@@ -39,7 +39,7 @@ async function readSheet(filePath, sheetName) {
 }
 
 test('extension end-to-end', async (t) => {
-  const { panel, close } = await launch();
+  const { context, panel, close } = await launch();
   let progress;
 
   try {
@@ -148,6 +148,46 @@ test('extension end-to-end', async (t) => {
       const content = await panel.textContent('#dashboardContent');
       assert.match(content, /order/i);
       assert.ok(!content.includes('Collect orders to see analytics'), 'must not show the empty state');
+    });
+    await t.test('collection reuses an existing orders tab and never closes it', async () => {
+      const ordersPage = await context.newPage();
+      await ordersPage.goto('https://www.walmart.com/orders');
+
+      const [worker] = context.serviceWorkers();
+      const tabId = await worker.evaluate(async () => {
+        const tabs = await chrome.tabs.query({ url: 'https://www.walmart.com/orders*' });
+        return tabs.length ? tabs[tabs.length - 1].id : null;
+      });
+      assert.ok(tabId, 'the orders tab must be visible to the extension');
+
+      await panel.evaluate(({ tabId }) => {
+        window.Sidepanel.state.app.currentOrdersUrl = 'https://www.walmart.com/orders';
+        return new Promise((resolve) =>
+          chrome.runtime.sendMessage(
+            { action: 'startCollection', url: 'https://www.walmart.com/orders', pageLimit: 0, incremental: false, reuseTabId: tabId },
+            resolve
+          )
+        );
+      }, { tabId });
+
+      const deadline = Date.now() + 30000;
+      let reuseProgress;
+      for (;;) {
+        reuseProgress = await panel.evaluate(
+          () => new Promise((resolve) => chrome.runtime.sendMessage({ action: 'getProgress' }, resolve))
+        );
+        if (reuseProgress && !reuseProgress.isCollecting) break;
+        if (Date.now() > deadline) throw new Error('reused-tab collection did not finish');
+        await panel.waitForTimeout(400);
+      }
+
+      assert.ok(reuseProgress.orderNumbers.length >= 2, 'collection must succeed in the reused tab');
+      assert.ok(!ordersPage.isClosed(), "the user's own tab must never be closed");
+      const stillOpen = await worker.evaluate(async (id) => {
+        try { await chrome.tabs.get(id); return true; } catch { return false; }
+      }, tabId);
+      assert.ok(stillOpen, 'the extension must not have removed the reused tab');
+      await ordersPage.close();
     });
   } finally {
     await close();
