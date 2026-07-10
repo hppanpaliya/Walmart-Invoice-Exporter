@@ -151,7 +151,8 @@ profiles in modern Chrome; profile-copying was ruled out):
 2. `export PLAYWRIGHT_MCP_EXTENSION_TOKEN=…; playwright-cli attach --extension=chrome`
 3. Drive with `playwright-cli --s=chrome goto/eval/…`. Load the unpacked extension build via
    `git archive <ref> | tar -x -C <dir>` + relaunch Chrome with `--load-extension=<dir>`.
-4. Good live fixtures: multi-shipment order `200010000000042` (duplicate detail buttons,
-   canceled items); list page has orders with 2-3 duplicate buttons.
-5. There is NO automated test suite yet (roadmap item: fixture-based CI). Minimum bar:
-   `node --check` all files + live smoke of collect → quick export → deep export.
+4. Good live test targets: any multi-shipment order (these render duplicate detail buttons
+   and often contain canceled items); the list page shows orders with 2-3 duplicate buttons.
+   No real order numbers or amounts belong in this repo — synthetic fixtures live in `tests/fixtures/`.
+5. Fixture-based CI landed in 6.5 (`tests/` + `ci.yml`). Minimum bar beyond CI:
+   live smoke of collect → quick export → deep export.
