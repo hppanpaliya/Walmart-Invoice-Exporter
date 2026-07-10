@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.18] - July 10, 2026
+
+### Improvements
+- **Redesigned Excel workbook** (Download and Quick Export both): an **Orders sheet** (one clean row per order — sum any money column safely) plus an **Items sheet** (one row per item: order, date, product, qty, price, status, type, link). No more 29-column rows with item fields buried behind repeated address/payment noise.
+- **Unknown values are now BLANK, never \$0.00** — a missing price or tax no longer masquerades as zero.
+- Frozen header rows, auto-filters, and Walmart-blue styled headers on every sheet.
+
 ## [6.17] - July 10, 2026
 
 ### Internal
