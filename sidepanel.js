@@ -29,15 +29,40 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   const exportFormatSelect = document.getElementById("exportFormat");
+  const csvPresetGroup = document.getElementById("csvPresetGroup");
+  const csvPresetSelect = document.getElementById("csvPreset");
+
+  // The CSV preset only applies to CSV exports — hide it otherwise.
+  function updateCsvPresetVisibility() {
+    if (csvPresetGroup) {
+      csvPresetGroup.style.display =
+        app.exportFormat === CONSTANTS.EXPORT_FORMATS.CSV ? "" : "none";
+    }
+  }
+
   chrome.storage.local.get(["exportFormat"], (res) => {
     app.exportFormat = res.exportFormat || CONSTANTS.EXPORT_FORMATS.XLSX;
     if (exportFormatSelect) exportFormatSelect.value = app.exportFormat;
+    updateCsvPresetVisibility();
   });
 
   if (exportFormatSelect) {
     exportFormatSelect.addEventListener("change", () => {
       app.exportFormat = exportFormatSelect.value;
       chrome.storage.local.set({ exportFormat: app.exportFormat });
+      updateCsvPresetVisibility();
+    });
+  }
+
+  chrome.storage.local.get(["csvPreset"], (res) => {
+    app.csvPreset = res.csvPreset || CONSTANTS.CSV_PRESETS.GENERIC;
+    if (csvPresetSelect) csvPresetSelect.value = app.csvPreset;
+  });
+
+  if (csvPresetSelect) {
+    csvPresetSelect.addEventListener("change", () => {
+      app.csvPreset = csvPresetSelect.value;
+      chrome.storage.local.set({ csvPreset: app.csvPreset });
     });
   }
 
