@@ -123,6 +123,15 @@ function handleStartCollection(request, sendResponse) {
     CollectionState.isCollecting = true;
     // Load cached order numbers before starting collection
     loadCachedOrderNumbers().then(() => {
+      // Caches from versions without Quick Export summaries would export
+      // degraded rows forever — start those collections from scratch.
+      const hasOrders = CollectionState.allOrderNumbers.size > 0;
+      const hasSummaries = Object.keys(CollectionState.allOrderSummaries).length > 0;
+      if (hasOrders && !hasSummaries) {
+        console.log("Cached collection lacks Quick Export summaries; re-collecting from scratch.");
+        CollectionState.clearAll();
+      }
+
       CollectionState.reset();
       CollectionState.pageLimit = request.pageLimit || 0;
       CollectionState.incremental = Boolean(request.incremental);
