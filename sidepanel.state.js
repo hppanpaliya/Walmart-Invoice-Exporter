@@ -6,6 +6,7 @@
     collectionInProgress: false,
     exportMode: CONSTANTS.EXPORT_MODES.MULTIPLE,
     exportFormat: CONSTANTS.EXPORT_FORMATS.XLSX,
+    includeThumbnails: false,
     currentOrdersUrl: null,
   };
 
