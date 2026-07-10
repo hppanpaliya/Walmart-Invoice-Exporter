@@ -129,5 +129,5 @@ test('order-level CSV columns produce accounting-friendly numbers', () => {
 test('CONSTANTS exposes the export formats used by the panel', () => {
   const sandbox = loadUtils();
   const formats = toPlain(evalIn(sandbox, 'CONSTANTS.EXPORT_FORMATS'));
-  assert.deepEqual(formats, { XLSX: 'xlsx', CSV: 'csv', JSON: 'json', RECEIPT: 'receipt' });
+  assert.deepEqual(formats, { XLSX: 'xlsx', CSV: 'csv', JSON: 'json', RECEIPT: 'receipt', PDF: 'pdf' });
 });

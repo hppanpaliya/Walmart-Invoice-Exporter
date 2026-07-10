@@ -46,6 +46,7 @@ jobs:
           cp background.js temp/Walmart-Invoice-Exporter/
           cp content.js temp/Walmart-Invoice-Exporter/
           cp exceljs.bare.min.js temp/Walmart-Invoice-Exporter/
+          cp pdflite.js temp/Walmart-Invoice-Exporter/
           cp manifest.json temp/Walmart-Invoice-Exporter/
           cp utils.js temp/Walmart-Invoice-Exporter/
           cp orderdb.js temp/Walmart-Invoice-Exporter/
