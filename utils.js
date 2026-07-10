@@ -49,22 +49,26 @@ function formatPaymentMethodDetails(orderDetails) {
  * Configure columns for a single order export worksheet
  * @param {ExcelJS.Worksheet} worksheet - The worksheet to configure
  */
-function configureSingleOrderColumns(worksheet) {
-  worksheet.columns = [
+function configureSingleOrderColumns(worksheet, options = {}) {
+  const columns = [
     { header: "Product Name", key: "productName", width: 60 },
     { header: "Quantity", key: "quantity", width: 20, style: { numFmt: "#,##0", alignment: { horizontal: "center" } } },
     { header: "Price", key: "price", width: 20, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: "Delivery Status", key: "deliveryStatus", width: 30, style: { alignment: { horizontal: "center" } } },
     { header: "Product Link", key: "productLink", width: 60, style: { font: STYLES.linkFont } },
   ];
+  if (options.includeThumbnails) {
+    columns.push({ header: "Thumbnail", key: "thumbnail", width: 9, style: { alignment: { horizontal: "center" } } });
+  }
+  worksheet.columns = columns;
 }
 
 /**
  * Configure columns for a combined multiple orders export worksheet
  * @param {ExcelJS.Worksheet} worksheet - The worksheet to configure
  */
-function configureMultipleOrdersColumns(worksheet) {
-  worksheet.columns = [
+function configureMultipleOrdersColumns(worksheet, options = {}) {
+  const columns = [
     { header: 'Order Number', key: 'orderNumber', width: 20, style: { alignment: { horizontal: "center" } } },
     { header: 'Order Date', key: 'orderDate', width: 20, style: { alignment: { horizontal: "center" } } },
     { header: 'Address Recipient', key: 'addressRecipient', width: 24, style: { alignment: { horizontal: "center" } } },
@@ -93,6 +97,10 @@ function configureMultipleOrdersColumns(worksheet) {
     { header: 'Refund', key: 'refund', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Donations', key: 'donations', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
   ];
+  if (options.includeThumbnails) {
+    columns.push({ header: 'Thumbnail', key: 'thumbnail', width: 9, style: { alignment: { horizontal: "center" } } });
+  }
+  worksheet.columns = columns;
 }
 
 /**
@@ -339,6 +347,52 @@ function addOrderSummary(worksheet, orderDetails) {
 }
 
 /**
+ * Embed product thumbnails into a worksheet's Thumbnail column.
+ * The extension has no host permission for i5.walmartimages.com, so fetches
+ * may be blocked — each failure falls back to a hyperlink cell instead.
+ * Never throws: thumbnails are cosmetic and must not break an export.
+ * @param {ExcelJS.Workbook} workbook - Workbook (owns the image store)
+ * @param {ExcelJS.Worksheet} worksheet - Worksheet with a trailing Thumbnail column
+ * @param {Array} items - Item objects (uses item.thumbnailUrl), one per data row
+ * @param {number} columnIndex - 1-based index of the Thumbnail column
+ * @param {number} firstDataRow - 1-based row number of the first item row
+ */
+async function embedItemThumbnails(workbook, worksheet, items, columnIndex, firstDataRow = 2) {
+  const imageIdByUrl = new Map();
+
+  for (let i = 0; i < items.length; i++) {
+    const url = String(items[i]?.thumbnailUrl || '');
+    if (!url) continue;
+    const rowNumber = firstDataRow + i;
+
+    try {
+      let imageId = imageIdByUrl.get(url);
+      if (imageId === undefined) {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const buffer = await response.arrayBuffer();
+        const extension = /\.png(\?|$)/i.test(url) ? 'png' : 'jpeg';
+        imageId = workbook.addImage({ buffer, extension });
+        imageIdByUrl.set(url, imageId);
+      }
+      worksheet.addImage(imageId, {
+        tl: { col: columnIndex - 1, row: rowNumber - 1 },
+        ext: { width: 40, height: 40 },
+        editAs: 'oneCell',
+      });
+      worksheet.getRow(rowNumber).height = 32;
+    } catch (error) {
+      // Blocked (no host permission / CORS) or failed — hyperlink fallback.
+      const cell = worksheet.getRow(rowNumber).getCell(columnIndex);
+      cell.value = { text: 'Image', hyperlink: url };
+      cell.font = STYLES.linkFont;
+    }
+  }
+}
+
+/**
  * Trigger download of a workbook as an Excel file
  * @param {ExcelJS.Workbook} workbook - The workbook to download
  * @param {string} filename - The filename for the download
@@ -367,14 +421,14 @@ async function downloadWorkbook(workbook, filename) {
  * @param {string} options.filename - Optional custom filename
  */
 async function convertToXlsx(orderDetails, ExcelJS, options = {}) {
-  const { mode = 'single', filename = null } = options;
+  const { mode = 'single', filename = null, includeThumbnails = false } = options;
 
   if (mode === 'single') {
     // Single order export with full details
-    return convertSingleOrderToXlsx(orderDetails, ExcelJS, filename);
+    return convertSingleOrderToXlsx(orderDetails, ExcelJS, filename, { includeThumbnails });
   } else if (mode === 'multiple') {
     // Multiple orders combined into one sheet
-    return convertMultipleOrdersToXlsx(orderDetails, ExcelJS, filename);
+    return convertMultipleOrdersToXlsx(orderDetails, ExcelJS, filename, { includeThumbnails });
   }
 }
 
@@ -384,21 +438,26 @@ async function convertToXlsx(orderDetails, ExcelJS, options = {}) {
  * @param {Object} ExcelJS - The ExcelJS library
  * @param {string} filename - Optional custom filename
  */
-async function convertSingleOrderToXlsx(orderDetails, ExcelJS, filename = null) {
+async function convertSingleOrderToXlsx(orderDetails, ExcelJS, filename = null, options = {}) {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("Order Invoice");
 
   // Configure columns for single order
-  configureSingleOrderColumns(worksheet);
+  configureSingleOrderColumns(worksheet, options);
 
   // Add items
-  addItemsToWorksheet(worksheet, orderDetails.items || []);
+  const items = orderDetails.items || [];
+  addItemsToWorksheet(worksheet, items);
 
   // Add order summary
   addOrderSummary(worksheet, orderDetails);
 
   // Apply styling
   styleSingleOrderWorksheet(worksheet);
+
+  if (options.includeThumbnails) {
+    await embedItemThumbnails(workbook, worksheet, items, worksheet.columns.length);
+  }
 
   // Download
   const downloadFilename = filename || `Order_${orderDetails.orderNumber}.xlsx`;
@@ -411,12 +470,12 @@ async function convertSingleOrderToXlsx(orderDetails, ExcelJS, filename = null) 
  * @param {Object} ExcelJS - The ExcelJS library
  * @param {string} filename - Optional custom filename
  */
-async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null) {
+async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null, options = {}) {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Walmart Orders');
 
   // Configure columns for multiple orders
-  configureMultipleOrdersColumns(worksheet);
+  configureMultipleOrdersColumns(worksheet, options);
 
   // Flatten all items from all orders into a single list with order info
   const allItems = [];
@@ -443,6 +502,7 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null)
         price: item.price,
         deliveryStatus: item.deliveryStatus || '',
         productLink: item.productLink || '',
+        thumbnailUrl: item.thumbnailUrl || '',
         deliveryCharges: orderDetails.deliveryCharges || '',
         bagFee: orderDetails.bagFee || '',
         tax: orderDetails.tax || '',
@@ -463,6 +523,10 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null)
 
   // Apply styling
   styleMultipleOrdersWorksheet(worksheet);
+
+  if (options.includeThumbnails) {
+    await embedItemThumbnails(workbook, worksheet, allItems, worksheet.columns.length);
+  }
 
   // Download
   const downloadFilename = filename || 'Walmart_Orders.xlsx';

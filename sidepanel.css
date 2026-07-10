@@ -152,6 +152,19 @@ body {
   background: #27ae60;
 }
 
+.toggle-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.toggle-group label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
 .filter-notice {
   display: flex;
   align-items: flex-start;

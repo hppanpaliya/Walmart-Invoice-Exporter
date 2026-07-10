@@ -41,6 +41,19 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  const thumbnailToggle = document.getElementById("includeThumbnails");
+  chrome.storage.local.get(["includeThumbnails"], (res) => {
+    app.includeThumbnails = Boolean(res.includeThumbnails);
+    if (thumbnailToggle) thumbnailToggle.checked = app.includeThumbnails;
+  });
+
+  if (thumbnailToggle) {
+    thumbnailToggle.addEventListener("change", () => {
+      app.includeThumbnails = thumbnailToggle.checked;
+      chrome.storage.local.set({ includeThumbnails: app.includeThumbnails });
+    });
+  }
+
   const faqButton = document.getElementById("faqButton");
   const backButton = document.getElementById("backButton");
   const confirmDialog = document.getElementById("confirmDialog");
