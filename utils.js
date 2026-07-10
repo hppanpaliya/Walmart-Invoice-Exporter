@@ -726,6 +726,106 @@ async function convertOrdersToCsv(ordersData, options = {}) {
 }
 
 /**
+ * Format an order date as MM/DD/YYYY for accounting imports.
+ * Accepts ISO 8601 strings (with or without a time part) and the short
+ * "Jul 01, 2026" form the detail extraction produces. A leading
+ * YYYY-MM-DD is used as-is so timezone offsets never shift the calendar
+ * date; anything unparseable falls back to the raw string.
+ * @param {string} value - Date string from the order data
+ * @returns {string}
+ */
+function formatAccountingDate(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  const parsed = isoMatch
+    ? new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]))
+    : new Date(text);
+  if (isNaN(parsed.getTime())) return text;
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${month}/${day}/${parsed.getFullYear()}`;
+}
+
+/**
+ * Summarize an order's items for the Xero description field: the first
+ * few product names, truncated to ~120 characters. Falls back to the
+ * order title, then to the order number.
+ * @param {Object} order - Order data object
+ * @returns {string}
+ */
+function buildAccountingDescription(order) {
+  const names = (Array.isArray(order?.items) ? order.items : [])
+    .map((item) => String(item?.productName || '').trim())
+    .filter(Boolean);
+  let description = names.slice(0, 3).join('; ');
+  if (names.length > 3) {
+    description += `; +${names.length - 3} more`;
+  }
+  if (!description) {
+    description = String(order?.title || '').trim() || `Walmart order #${order?.orderNumber || ''}`;
+  }
+  if (description.length > 120) {
+    description = `${description.slice(0, 117)}...`;
+  }
+  return description;
+}
+
+/**
+ * Build header + rows for an accounting CSV preset. Amounts are the
+ * NEGATIVE order total (money spent), matching bank-statement imports.
+ * @param {Array|Object} ordersData - Order data object(s)
+ * @param {string} preset - A CONSTANTS.CSV_PRESETS value
+ * @returns {{header: string[], rows: Array[]}}
+ */
+function buildAccountingCsvRows(ordersData, preset) {
+  const ordersArray = Array.isArray(ordersData) ? ordersData : [ordersData];
+  const spentAmount = (order) => -Math.abs(parseNumericValue(order.orderTotal));
+
+  if (preset === CONSTANTS.CSV_PRESETS.XERO) {
+    return {
+      header: ['Date', 'Amount', 'Payee', 'Description', 'Reference'],
+      rows: ordersArray.map((order) => [
+        formatAccountingDate(order.orderDate),
+        spentAmount(order),
+        'Walmart',
+        buildAccountingDescription(order),
+        order.orderNumber || '',
+      ]),
+    };
+  }
+
+  // QuickBooks 3-column bank format (Date, Description, Amount).
+  return {
+    header: ['Date', 'Description', 'Amount'],
+    rows: ordersArray.map((order) => {
+      const itemCount = Array.isArray(order.items) ? order.items.length : 0;
+      return [
+        formatAccountingDate(order.orderDate),
+        `Walmart order #${order.orderNumber || ''} (${itemCount} items)`,
+        spentAmount(order),
+      ];
+    }),
+  };
+}
+
+/**
+ * Export orders as a single accounting-preset CSV (QuickBooks or Xero).
+ * Goes through buildCsvContent so the UTF-8 BOM and RFC-4180 escaping
+ * (incl. formula-injection neutralization) apply.
+ * @param {Array|Object} ordersData - Order data object(s)
+ * @param {string} preset - A CONSTANTS.CSV_PRESETS value
+ * @param {string} filename - Optional download filename
+ */
+function convertOrdersToAccountingCsv(ordersData, preset, filename = null) {
+  const { header, rows } = buildAccountingCsvRows(ordersData, preset);
+  const defaultFilename = preset === CONSTANTS.CSV_PRESETS.XERO
+    ? 'Walmart_Orders_Xero.csv'
+    : 'Walmart_Orders_QuickBooks.csv';
+  downloadTextFile(buildCsvContent(header, rows), filename || defaultFilename, 'text/csv');
+}
+
+/**
  * Export orders as pretty-printed JSON (full structured data, items nested).
  * @param {Array|Object} ordersData - Order data object(s)
  * @param {string} filename - Download filename
@@ -1146,6 +1246,13 @@ const CONSTANTS = {
     CSV: 'csv',
     JSON: 'json',
     RECEIPT: 'receipt',
+  },
+
+  // CSV preset targets (accounting imports)
+  CSV_PRESETS: {
+    GENERIC: 'generic',
+    QUICKBOOKS: 'quickbooks',
+    XERO: 'xero',
   },
 };
 
