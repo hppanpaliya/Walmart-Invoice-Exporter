@@ -215,7 +215,88 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  * Extracts product details, pricing, and order metadata from the print view.
  * @returns {Object} Order data including items, totals, and order info
  */
+/**
+ * Primary scraper: parse the order straight out of Next.js SSR data.
+ * Walmart removed the hidden print-bill markup the CSS scraper relied on,
+ * but full page loads embed the complete order object at
+ * __NEXT_DATA__.props.pageProps.initialData.data.order. The bulk exporter
+ * opens each order as a full navigation, so this is always populated there.
+ * Returns null when the JSON isn't available (SPA soft-nav, layout change)
+ * so the caller can fall back to the legacy DOM scrape.
+ */
+function scrapeOrderDataFromNextData() {
+  try {
+    const el = document.getElementById("__NEXT_DATA__");
+    if (!el) return null;
+    const order = JSON.parse(el.textContent)?.props?.pageProps?.initialData?.data?.order;
+    if (!order || !order.displayId) return null;
+
+    const money = (m) => {
+      if (!m) return "$0.00";
+      if (typeof m === "string") return m;
+      if (m.displayValue) return m.displayValue;
+      if (typeof m.value === "number") return "$" + m.value.toFixed(2);
+      return "$0.00";
+    };
+
+    const items = [];
+    let address = "";
+    (order.groups_2101 || []).forEach((group) => {
+      const status =
+        group.status?.statusType || group.fulfillmentText || CONSTANTS.TEXT.DELIVERY_LABEL;
+      if (!address) {
+        address = group.deliveryAddress?.address?.addressString || "";
+      }
+      (group.items || []).forEach((it) => {
+        const usItemId = it.productInfo?.usItemId;
+        items.push({
+          productName: it.productInfo?.name || "",
+          productLink: usItemId ? "https://www.walmart.com/ip/" + usItemId : "N/A",
+          deliveryStatus: status,
+          quantity: String(it.quantity ?? 1),
+          price: money(it.priceInfo?.linePrice),
+        });
+      });
+    });
+
+    const pd = order.priceDetails || {};
+    const deliveryFee = (pd.fees || []).find((f) => /deliver|shipping/i.test(f.label || ""));
+    const paymentMethods = (order.paymentMethods || [])
+      .map((pm) =>
+        [pm.description || pm.cardType, ...(pm.displayValues || [])].filter(Boolean).join(" "))
+      .join("; ");
+
+    let orderDate = order.orderDate || "";
+    const d = new Date(orderDate);
+    if (orderDate && !isNaN(d)) {
+      orderDate = d.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+    }
+
+    return {
+      orderNumber: order.displayId,
+      orderDate,
+      orderSubtotal: money(pd.subTotal),
+      orderTotal: money(pd.grandTotalWithTips || pd.grandTotal),
+      deliveryCharges: deliveryFee ? money(deliveryFee) : money(pd.shippingTotal),
+      tax: money(pd.taxTotal),
+      tip: money(pd.driverTip),
+      address,
+      paymentMethods,
+      items,
+    };
+  } catch (e) {
+    console.warn("WIE: __NEXT_DATA__ parse failed, falling back to DOM scrape", e);
+    return null;
+  }
+}
+
 function scrapeOrderData() {
+  // JSON path first — survives Walmart's CSS churn. DOM scrape is the fallback.
+  const fromJson = scrapeOrderDataFromNextData();
+  if (fromJson && fromJson.items.length) {
+    return fromJson;
+  }
+
   const orderItems = [];
 
   // Query the hidden print items list which contains reliable product data
