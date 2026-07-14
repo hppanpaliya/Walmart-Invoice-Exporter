@@ -152,7 +152,7 @@
           <line x1="12" y1="16" x2="12.01" y2="16"></line>
         </svg>
         <span>Walmart may have changed their website — some exported fields came back empty. Please <a href="${CONSTANTS.URLS.GITHUB_ISSUES}" target="_blank">report this</a> so we can fix it quickly.</span>
-        <button class="dismiss-warning" title="Dismiss">
+        <button class="dismiss-warning" title="Dismiss" aria-label="Dismiss">
           ${renderIcon("X_CLOSE")}
         </button>
       </div>
@@ -489,7 +489,7 @@
               ${renderIcon("STAR")}
               Find this helpful? Consider rating it
             </a>
-            <button class="dismiss-hint" title="Don't show again">
+            <button class="dismiss-hint" title="Don't show again" aria-label="Don't show again">
               ${renderIcon("X_CLOSE")}
             </button>
           `;
