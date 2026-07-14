@@ -1,12 +1,22 @@
 /**
  * Background service worker for Walmart Invoice Exporter
- * Handles order collection, pagination, and caching
+ * Handles order collection, pagination, and durable storage
  */
 
 // Load shared constants, utilities, and the durable order database
 importScripts('utils.js', 'orderdb.js');
 
-// Encapsulate state to reduce global namespace pollution
+// Encapsulate state to reduce global namespace pollution.
+//
+// CollectionState.isCollecting reflects only THIS worker instance — Chrome
+// can evict an idle service worker (~30s) at any time, resetting every
+// module global back to these defaults. Everything else is mirrored to
+// chrome.storage.session (sessionKey) after every meaningful change, so a
+// collection's progress survives an eviction/restart and a side-panel
+// close/reopen (spec §4.1/P9) — but isCollecting itself is never read back
+// from that snapshot (see handleGetProgress): only the live in-memory
+// instance can truthfully claim to be actively driving a crawl, so a dead
+// worker never leaves the panel stuck showing "collecting" forever.
 const CollectionState = {
   allOrderNumbers: new Set(),
   allAdditionalFields: {},
@@ -19,8 +29,7 @@ const CollectionState = {
   pageLimit: 0,
   pageLoadDelay: 1000,
   initialPageLoaded: false,
-  cacheKey: CONSTANTS.CACHE_KEYS.ORDER_COLLECTION,
-  pagesCached: {},
+  sessionKey: CONSTANTS.CACHE_KEYS.COLLECTION_SESSION,
   incremental: false,
   knownAtStart: null,
 
@@ -30,18 +39,14 @@ const CollectionState = {
     this.retryCount = 0;
     this.initialPageLoaded = false;
   },
-  
+
   // Clear all collected data
   clearAll() {
     this.allOrderNumbers.clear();
     this.allAdditionalFields = {};
     this.allOrderSummaries = {};
-    this.pagesCached = {};
   }
 };
-
-// Cache expiration time (24 hours in milliseconds) - use shared constant
-const CACHE_EXPIRATION = CONSTANTS.TIMING.CACHE_EXPIRATION;
 
 // Reset rating hint per browser session (stored in local, cleared on startup)
 chrome.runtime.onStartup.addListener(() => {
@@ -62,43 +67,48 @@ chrome.action.onClicked.addListener((tab) => {
   }
 });
 
-// Function to load cached order data
-function loadCachedOrderNumbers() {
+/**
+ * Load any collection progress mirrored to chrome.storage.session into
+ * CollectionState. Unlike the old 24h chrome.storage.local cache, there is
+ * no expiry math here — chrome.storage.session is cleared automatically
+ * when the browser closes, and IndexedDB (OrderDb) is the durable
+ * long-term store; this is scratch space just for "is a collection still
+ * going / where did it leave off" (spec §4.1).
+ * Deliberately does NOT touch CollectionState.isCollecting — see the big
+ * comment above CollectionState for why.
+ */
+function loadSessionState() {
   return new Promise((resolve) => {
-    chrome.storage.local.get([CollectionState.cacheKey], (result) => {
-      if (result[CollectionState.cacheKey]) {
-        const cachedData = result[CollectionState.cacheKey];
-
-        // Check if cache is expired
-        if (Date.now() - cachedData.timestamp > CACHE_EXPIRATION) {
-          console.log("Cache is expired. Clearing.");
-          chrome.storage.local.remove(CollectionState.cacheKey);
-          CollectionState.clearAll();
-        } else {
-          CollectionState.allOrderNumbers = new Set(cachedData.orderNumbers);
-          CollectionState.allAdditionalFields = cachedData.additionalFields || {};
-          CollectionState.allOrderSummaries = cachedData.orderSummaries || {};
-          CollectionState.pagesCached = cachedData.pagesCached || {};
-          console.log(`Loaded ${CollectionState.allOrderNumbers.size} orders from cache with ${Object.keys(CollectionState.pagesCached).length} pages cached`);
-        }
+    chrome.storage.session.get([CollectionState.sessionKey], (result) => {
+      const saved = result[CollectionState.sessionKey];
+      if (saved) {
+        CollectionState.allOrderNumbers = new Set(saved.orderNumbers || []);
+        CollectionState.allAdditionalFields = saved.additionalFields || {};
+        CollectionState.allOrderSummaries = saved.orderSummaries || {};
+        CollectionState.currentPage = saved.currentPage || 1;
+        CollectionState.pageLimit = saved.pageLimit || 0;
+        console.log(`Restored ${CollectionState.allOrderNumbers.size} orders from session state.`);
       }
       resolve();
     });
   });
 }
 
-// Function to save order data to cache
-function saveToCache() {
-  const dataToCache = {
+/** Mirror live collection progress to chrome.storage.session (best-effort). */
+function saveSessionState() {
+  const dataToSave = {
     orderNumbers: Array.from(CollectionState.allOrderNumbers),
     additionalFields: CollectionState.allAdditionalFields,
     orderSummaries: CollectionState.allOrderSummaries,
-    pagesCached: CollectionState.pagesCached,
-    timestamp: Date.now(),
+    currentPage: CollectionState.currentPage,
+    pageLimit: CollectionState.pageLimit,
+    isCollecting: CollectionState.isCollecting,
   };
 
-  chrome.storage.local.set({ [CollectionState.cacheKey]: dataToCache }, () => {
-    console.log(`Saved ${CollectionState.allOrderNumbers.size} orders and ${Object.keys(CollectionState.pagesCached).length} pages to cache`);
+  chrome.storage.session.set({ [CollectionState.sessionKey]: dataToSave }, () => {
+    if (chrome.runtime.lastError) {
+      console.warn("Failed to save session collection state:", chrome.runtime.lastError.message);
+    }
   });
 }
 
@@ -121,25 +131,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 function handleStartCollection(request, sendResponse) {
   if (!CollectionState.isCollecting) {
     CollectionState.isCollecting = true;
-    // Load cached order numbers before starting collection
-    loadCachedOrderNumbers().then(() => {
-      // Caches from versions without Quick Export summaries would export
-      // degraded rows forever — start those collections from scratch.
-      const hasOrders = CollectionState.allOrderNumbers.size > 0;
-      const hasSummaries = Object.keys(CollectionState.allOrderSummaries).length > 0;
-      if (hasOrders && !hasSummaries) {
-        console.log("Cached collection lacks Quick Export summaries; re-collecting from scratch.");
-        CollectionState.clearAll();
-      }
-
+    // Hydrate from session first — e.g. this worker was just (re)spawned
+    // after an eviction and the panel is resuming a collection.
+    loadSessionState().then(() => {
       CollectionState.reset();
       CollectionState.pageLimit = request.pageLimit || 0;
       CollectionState.incremental = Boolean(request.incremental);
       CollectionState.knownAtStart = null;
-      // Always refresh the first page to avoid missing new orders within the cache window
-      if (CollectionState.pagesCached[1]) {
-        delete CollectionState.pagesCached[1];
-      }
 
       if (!CollectionState.incremental) {
         startCollection(request.url);
@@ -165,12 +163,16 @@ function handleStartCollection(request, sendResponse) {
 
 function handleStopCollection(_request, sendResponse) {
   if (!CollectionState.isCollecting) {
-    sendResponse({
-      status: "idle",
-      currentPage: CollectionState.currentPage,
-      orderNumbers: Array.from(CollectionState.allOrderNumbers),
+    // Hydrate first so "Stop" right after a panel reopen (post-eviction)
+    // reports actually-known progress instead of fresh-worker defaults.
+    loadSessionState().then(() => {
+      sendResponse({
+        status: "idle",
+        currentPage: CollectionState.currentPage,
+        orderNumbers: Array.from(CollectionState.allOrderNumbers),
+      });
     });
-    return false; // Synchronous response
+    return true; // Async response
   }
 
   CollectionState.isCollecting = false;
@@ -180,8 +182,8 @@ function handleStopCollection(_request, sendResponse) {
     });
     chrome.tabs.onUpdated.removeListener(onTabUpdated);
   }
-  // Save to cache before sending response
-  saveToCache();
+  // Save progress before sending response
+  saveSessionState();
   sendResponse({
     status: "stopped",
     currentPage: CollectionState.currentPage,
@@ -200,26 +202,29 @@ function handleGetProgress(_request, sendResponse) {
       additionalFields: CollectionState.allAdditionalFields,
       orderSummaries: CollectionState.allOrderSummaries,
       isCollecting: CollectionState.isCollecting,
-      pagesCached: CollectionState.pagesCached,
     });
   };
 
   // While collecting, the in-memory state is authoritative — reloading the
-  // storage snapshot here would race the per-page merge (losing pages) and
-  // the cache-expiry path could clearAll() mid-collection.
+  // session snapshot here would race the per-page merge (losing pages).
   if (CollectionState.isCollecting) {
     respond();
     return true;
   }
 
-  loadCachedOrderNumbers().then(respond);
+  // Not collecting from THIS worker instance's point of view — it may have
+  // just been (re)spawned after Chrome evicted the previous, possibly
+  // mid-collection, instance. Hydrate order data from session so a panel
+  // reopen still shows progress; isCollecting always reflects the CURRENT
+  // instance (see the CollectionState comment), never a stale session
+  // snapshot, so a dead crawl never reports itself as still running.
+  loadSessionState().then(respond);
   return true; // Indicate async response
 }
 
 function handleClearCache(_request, sendResponse) {
-  chrome.storage.local.remove(CollectionState.cacheKey, () => {
-    // Clear only collection cache (preserve other local storage data)
-    console.log("Cache cleared");
+  chrome.storage.session.remove(CollectionState.sessionKey, () => {
+    console.log("Session collection state cleared");
     CollectionState.clearAll();
     sendResponse({ status: "cache_cleared" });
   });
@@ -328,16 +333,8 @@ function collectOrderNumbers() {
         (error) => console.warn("Failed to persist page to order DB:", error)
       );
 
-      // Cache page data
-      CollectionState.pagesCached[CollectionState.currentPage] = {
-        hasNextPage: response.hasNextPage,
-        orderNumbers: response.orderNumbers,
-        additionalFields: response.additionalFields || {},
-        timestamp: Date.now(),
-      };
-
-      // Save to cache after each page
-      saveToCache();
+      // Mirror live progress to chrome.storage.session after each page.
+      saveSessionState();
 
       // Incremental sync: a page consisting entirely of already-stored orders
       // means everything older is stored too — stop here.
@@ -409,7 +406,7 @@ function retryCollection() {
 /**
  * Merge every order stored in the durable DB into the live collection so an
  * incremental early-stop still leaves the full history selectable in the
- * panel (the 24h cache may have expired since the last full collection).
+ * panel (session state only covers this browser session's live progress).
  */
 async function hydrateCollectionFromDb() {
   try {
@@ -433,8 +430,8 @@ async function hydrateCollectionFromDb() {
 
 function finishCollection() {
   CollectionState.isCollecting = false;
-  // Save to cache before closing
-  saveToCache();
+  // Save progress before closing
+  saveSessionState();
   if (CollectionState.tabId) {
     chrome.tabs.onUpdated.removeListener(onTabUpdated);
     chrome.tabs.remove(CollectionState.tabId).catch(() => {
