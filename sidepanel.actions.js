@@ -213,7 +213,7 @@
         app.collectionInProgress = false;
         view.updateProgressUI(response.currentPage, response.pageLimit, false);
         renderOrderList(response);
-        setCollectionButtonsState({ running: false, startLabel: "Start Collection" });
+        setCollectionButtonsState({ running: false, startLabel: "Collect orders" });
         setCheckboxesDisabled(false);
       }
     });
