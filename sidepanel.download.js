@@ -3,6 +3,21 @@
   const app = Sidepanel.state.app;
   const view = Sidepanel.view;
 
+  /**
+   * Inline, dismissible replacement for the blocking alert() guards below
+   * ("downloads in progress" / "select at least one order") — same trigger
+   * conditions, same message text, just non-blocking. Reuses one banner id
+   * so a fresh guard message replaces any stale one instead of stacking.
+   * @param {string} message
+   */
+  function showGuardBanner(message) {
+    view.renderStatusBanner("downloadGuardBanner", {
+      variant: "warning",
+      message,
+      dismissible: true,
+    });
+  }
+
   const OrderDataFetcher = (() => {
     let downloadTab = null;
     // Older cached invoices (pre-v3 item-dedup fix) may contain doubled
@@ -404,7 +419,7 @@
    */
   async function quickExportSummaries() {
     if (app && app.downloadInProgress) {
-      alert("Downloads are already in progress. Please wait.");
+      showGuardBanner("Downloads are already in progress. Please wait.");
       return;
     }
     if (app && app.collectionInProgress) {
@@ -415,7 +430,7 @@
     // Same contract as Download: operate on the SELECTED orders only.
     const selectedOrders = getSelectedOrderNumbers();
     if (selectedOrders.length === 0) {
-      alert("Please select at least one order to quick export.");
+      showGuardBanner("Please select at least one order to quick export.");
       return;
     }
 
@@ -546,13 +561,13 @@
   async function downloadSelectedOrders() {
     try {
       if (app && app.downloadInProgress) {
-        alert("Downloads are already in progress. Please wait.");
+        showGuardBanner("Downloads are already in progress. Please wait.");
         return;
       }
 
       const selectedOrders = getSelectedOrderNumbers();
       if (selectedOrders.length === 0) {
-        alert("Please select at least one order to download.");
+        showGuardBanner("Please select at least one order to download.");
         return;
       }
 
