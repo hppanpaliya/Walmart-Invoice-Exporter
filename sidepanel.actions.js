@@ -122,19 +122,38 @@
   }
 
   /**
-   * The 24h collection cache expired but the durable DB still has orders —
-   * render them so selection, Download, and Quick Export keep working
-   * without forcing a full re-collection.
+   * The panel's order list is derived from the durable database — the
+   * source of truth for anything collected in any prior run — optionally
+   * overlaid with order numbers an in-progress (or just-finished-this-
+   * session) collection has found that haven't landed in the DB yet.
+   * Replaces the old "cache snapshot, DB only as a fallback" fork
+   * (spec §4.3). Collection still upserts every page into OrderDb via
+   * putSummaries as it goes, so the overlay only ever needs to cover a
+   * short lag, not the whole in-progress result set.
+   * @param {Object|null} [progress] - a GET_PROGRESS response to overlay
+   * @returns {Promise<boolean>} whether anything was rendered
    */
-  async function displayOrdersFromDb() {
+  async function displayOrdersFromDb(progress = null) {
     try {
       const records = await OrderDb.getAllOrders();
       const withData = records.filter((record) => record.summary || record.invoice);
-      if (withData.length === 0) return;
-
       withData.sort((a, b) => String(b.orderDate).localeCompare(String(a.orderDate)));
+
       const orderNumbers = withData.map((record) => record.orderNumber);
       const titles = Object.fromEntries(withData.map((record) => [record.orderNumber, record.title || ""]));
+
+      if (progress && Array.isArray(progress.orderNumbers)) {
+        const known = new Set(orderNumbers);
+        progress.orderNumbers.forEach((orderNumber) => {
+          if (known.has(orderNumber)) return;
+          known.add(orderNumber);
+          orderNumbers.unshift(orderNumber);
+          titles[orderNumber] = (progress.additionalFields && progress.additionalFields[orderNumber]) || "";
+        });
+      }
+
+      if (orderNumbers.length === 0) return false;
+
       await view.displayOrderNumbers(orderNumbers, titles);
 
       const card = document.querySelector(".card");
@@ -144,54 +163,36 @@
         info.textContent = `Loaded ${orderNumbers.length} orders from the local database`;
         card.appendChild(info);
       }
+      return true;
     } catch (error) {
       console.warn("Could not load orders from the DB:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Render the panel's order list for a GET_PROGRESS response: DB history
+   * overlaid with whatever this response's live/session order numbers add
+   * (displayOrdersFromDb). Falls back to the raw response list when the DB
+   * has nothing yet — e.g. a brand new user, first page of a first-ever
+   * collection, before that page's OrderDb.putSummaries write has landed.
+   * @param {Object} response - a GET_PROGRESS response
+   * @returns {Promise<void>}
+   */
+  async function renderOrderList(response) {
+    const shown = await displayOrdersFromDb(response);
+    if (!shown && response && response.orderNumbers && response.orderNumbers.length > 0) {
+      await view.displayOrderNumbers(response.orderNumbers, response.additionalFields);
     }
   }
 
   function loadCacheOnMainPage() {
     chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.GET_PROGRESS }, function (response) {
-      if (!response || !response.orderNumbers || response.orderNumbers.length === 0) {
-        displayOrdersFromDb();
-        return;
-      }
-      if (response && response.orderNumbers && response.orderNumbers.length > 0) {
-        view.displayOrderNumbers(response.orderNumbers, response.additionalFields);
-
-        const cachePages = Object.keys(response.pagesCached || {}).length;
-        const cacheInfo = document.createElement("div");
-        cacheInfo.className = "cache-info";
-
-        let cacheTimeInfo = "";
-        if (response.pagesCached && Object.keys(response.pagesCached).length > 0) {
-          const timestamps = Object.values(response.pagesCached)
-            .map((page) => page.timestamp)
-            .filter((ts) => ts);
-
-          if (timestamps.length > 0) {
-            const earliestTimestamp = Math.min(...timestamps);
-            const cacheDate = new Date(earliestTimestamp);
-            const formattedDate = cacheDate.toLocaleString();
-            cacheTimeInfo = `<div class="cache-time">Cached on: ${formattedDate}</div>`;
-          }
-        }
-
-        cacheInfo.innerHTML = `
-          <div>
-            <span>${CONSTANTS.TEXT.USING_CACHE} ${response.orderNumbers.length} ${CONSTANTS.TEXT.ORDERS} ${cachePages} ${CONSTANTS.TEXT.PAGES}</span>
-            ${cacheTimeInfo}
-          </div>
-        `;
-
-        const cardClass = document.querySelector(".card");
-        if (cardClass && !cardClass.querySelector(".cache-info")) {
-          cardClass.appendChild(cacheInfo);
-        }
-
-        if (response.orderNumbers.length > 4) {
+      renderOrderList(response).then(() => {
+        if (response && response.orderNumbers && response.orderNumbers.length > 4) {
           view.maybeShowRatingHint();
         }
-      }
+      });
     });
   }
 
@@ -204,20 +205,22 @@
 
   function updateProgress() {
     chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.GET_PROGRESS }, function (response) {
-      if (response && response.isCollecting) {
+      if (!response) return;
+
+      if (response.isCollecting) {
         app.collectionInProgress = true;
         setCollectionButtonsState({ running: true });
         view.updateProgressUI(response.currentPage, response.pageLimit, true);
-        view.displayOrderNumbers(response.orderNumbers, response.additionalFields).then(() => {
+        renderOrderList(response).then(() => {
           // Quick Export mid-collection would export a partial snapshot.
           setQuickExportDisabled(app.collectionInProgress);
         });
         setTimeout(updateProgress, 1000);
         setCheckboxesDisabled(true);
-      } else if (response) {
+      } else {
         app.collectionInProgress = false;
         view.updateProgressUI(response.currentPage, response.pageLimit, false);
-        view.displayOrderNumbers(response.orderNumbers, response.additionalFields).then(() => {
+        renderOrderList(response).then(() => {
           setQuickExportDisabled(false);
         });
         setCollectionButtonsState({ running: false, startLabel: "Start Collection" });
@@ -234,6 +237,8 @@
     handleStartCollection,
     handleStopCollection,
     stopCollection,
+    displayOrdersFromDb,
+    renderOrderList,
     loadCacheOnMainPage,
     updateProgress,
   };
