@@ -1,3 +1,38 @@
+// Theme (spec §5.5): apply a persisted appearance preference before first
+// paint. Runs synchronously at script-parse time (this file is the last
+// <script> in sidepanel.html, so document.documentElement already exists —
+// no need to wait for DOMContentLoaded) rather than inside the
+// DOMContentLoaded handler below, to keep the flash of the wrong theme as
+// short as possible while chrome.storage.local resolves.
+//
+// "system" (the default, and the only mode reachable today) removes
+// data-theme entirely so sidepanel.css's `@media (prefers-color-scheme)`
+// rule applies. The Settings view (a later phase) will let a user pin
+// "light" or "dark" via chrome.storage.local's "theme" key, stamping
+// data-theme so the matching `:root[data-theme=...]` override in
+// sidepanel.css wins over the OS preference in both directions.
+function applyTheme(theme) {
+  const root = document.documentElement;
+  if (theme === "dark" || theme === "light") {
+    root.setAttribute("data-theme", theme);
+  } else {
+    root.removeAttribute("data-theme");
+  }
+}
+
+if (chrome?.storage?.local?.get) {
+  chrome.storage.local.get(["theme"], (result) => {
+    applyTheme(result && result.theme);
+  });
+} else {
+  applyTheme("system");
+}
+
+// Exposed for reuse once a Settings theme toggle exists (it will call this
+// again immediately after writing a new "theme" preference).
+window.Sidepanel = window.Sidepanel || {};
+window.Sidepanel.applyTheme = applyTheme;
+
 // Global error handler for unhandled promise rejections
 window.addEventListener("unhandledrejection", (event) => {
   console.error("Unhandled promise rejection:", event.reason);
