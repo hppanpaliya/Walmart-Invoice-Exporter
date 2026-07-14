@@ -112,7 +112,7 @@ async function renderOrderList(panel, progress) {
   await panel.evaluate(async ({ orderNumbers, additionalFields }) => {
     await window.Sidepanel.view.displayOrderNumbers(orderNumbers, additionalFields);
   }, { orderNumbers: progress.orderNumbers, additionalFields: progress.additionalFields });
-  await panel.waitForSelector('#quickExportButton');
+  await panel.waitForSelector('#singleFileDownload');
 }
 
 /** Click a button and capture the next N downloads it triggers. */

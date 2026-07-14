@@ -73,13 +73,6 @@
             </div>
             <details class="options-group" id="exportOptionsGroup">
                 <summary>Export options</summary>
-                <div class="input-group" id="exportModeGroup">
-                    <label for="exportMode">Export mode</label>
-                    <select id="exportMode">
-                        <option value="multiple">Multiple files (one per order)</option>
-                        <option value="single">Single file (all items)</option>
-                    </select>
-                </div>
                 <div class="input-group" id="exportFormatGroup">
                     <label for="exportFormat">Export format</label>
                     <select id="exportFormat">
@@ -127,23 +120,33 @@
                     <p class="no-orders-message">No orders collected yet.</p>
                 </div>
                 <div class="action-row">
-                    <button id="downloadButtonPlaceholder" class="btn btn-success" disabled>
+                    <button id="singleFileDownload" class="btn btn-accent-pair" disabled>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                             <polyline points="7 10 12 15 17 10"/>
                             <line x1="12" y1="15" x2="12" y2="3"/>
                         </svg>
-                        Download
+                        <span class="btn-text">Single file</span>
                     </button>
-                    <button id="quickExportPlaceholder" class="btn btn-primary" disabled>
+                    <button id="multiFileDownload" class="btn btn-accent-pair" disabled>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                            <line x1="12" y1="22.08" x2="12" y2="12"/>
                         </svg>
-                        Quick Export
+                        <span class="btn-text">Multiple files</span>
                     </button>
                 </div>
             </div>
         </div>
+
+        <!-- Static (spec §5.1): survives every re-render of
+             #orderNumbersContainer above, so an in-progress download's
+             status/progress/cancel controls are never wiped out from under
+             the user by an unrelated order-list refresh. -->
+        <p class="action-caption">Single = one file with every order. Multiple = one file per order.</p>
+        <p class="action-hint" id="downloadDisabledReason">Select at least one order to download.</p>
+        <div id="downloadProgressArea" class="download-progress-area" hidden></div>
 
         <!-- Main View Footer -->
         <footer class="footer main-footer">
