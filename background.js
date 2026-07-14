@@ -125,7 +125,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     [CONSTANTS.MESSAGES.START_COLLECTION]: handleStartCollection,
     [CONSTANTS.MESSAGES.STOP_COLLECTION]: handleStopCollection,
     [CONSTANTS.MESSAGES.GET_PROGRESS]: handleGetProgress,
-    [CONSTANTS.MESSAGES.CLEAR_CACHE]: handleClearCache,
+    [CONSTANTS.MESSAGES.RESET_SESSION_STATE]: handleResetSessionState,
   };
 
   const handler = handlers[request.action];
@@ -230,11 +230,18 @@ function handleGetProgress(_request, sendResponse) {
   return true; // Indicate async response
 }
 
-function handleClearCache(_request, sendResponse) {
+/**
+ * Wipe chrome.storage.session's live collection progress and reset the
+ * in-memory CollectionState (spec §4.4). Sent by Settings' "Delete all
+ * saved data" alongside OrderDb.clearAll() so a delete-all truly leaves
+ * nothing behind — no stray in-progress collection reappearing on the next
+ * GET_PROGRESS poll.
+ */
+function handleResetSessionState(_request, sendResponse) {
   chrome.storage.session.remove(CollectionState.sessionKey, () => {
     console.log("Session collection state cleared");
     CollectionState.clearAll();
-    sendResponse({ status: "cache_cleared" });
+    sendResponse({ status: "session_state_reset" });
   });
   return true; // Indicate async response
 }

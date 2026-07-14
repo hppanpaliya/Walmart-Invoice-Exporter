@@ -1817,7 +1817,6 @@ const CONSTANTS = {
     DELIVERY_LABEL: 'Delivered',
     CART_ICON_TITLE: 'Walmart Invoice Exporter',
     SELECT_ORDERS: 'Select orders to download',
-    CLEAR_CACHE_BTN: 'Clear Cache',
   },
 
   // Chrome Messages
@@ -1825,7 +1824,13 @@ const CONSTANTS = {
     START_COLLECTION: 'startCollection',
     STOP_COLLECTION: 'stopCollection',
     GET_PROGRESS: 'getProgress',
-    CLEAR_CACHE: 'clearCache',
+    // Clears chrome.storage.session's live collection progress + resets
+    // background.js's in-memory CollectionState (spec §4.4) — the ONLY
+    // thing left of the old "Clear Cache" concept. Sent by Settings'
+    // "Delete all saved data" alongside OrderDb.clearAll(); renamed from
+    // the retired 'clearCache' to describe what it actually does now that
+    // there is no more chrome.storage invoice cache to clear.
+    RESET_SESSION_STATE: 'resetSessionState',
     COLLECT_ORDER_NUMBERS: 'collectOrderNumbers',
     CLICK_NEXT_BUTTON: 'clickNextButton',
     BLOCK_IMAGES: 'blockImagesForDownload',
