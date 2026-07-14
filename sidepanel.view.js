@@ -546,10 +546,7 @@
         const linkText = link.dataset.link;
         try {
           await navigator.clipboard.writeText(linkText);
-          toast.classList.add("show");
-          setTimeout(() => {
-            toast.classList.remove("show");
-          }, 2000);
+          Sidepanel.components.Toast("Link copied to clipboard!");
         } catch (err) {
           console.error("Failed to copy text: ", err);
         }
