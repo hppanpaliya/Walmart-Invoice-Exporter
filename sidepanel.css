@@ -688,35 +688,45 @@ body {
   }
 }
 
-.faq-button {
+/* Compact icon buttons in the main header (spec §5.4/P4) — Dashboard,
+   Settings, Help & FAQ. Same visual language as .back-button (32x32,
+   centered icon) rather than the old text+icon .faq-button, which crowded
+   the header at narrow widths. */
+.header-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px var(--space-3);
+  gap: var(--space-1);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   background-color: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  text-decoration: none;
-  transition: all 0.2s ease;
-  margin-left: auto;
   cursor: pointer;
+  transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
-.faq-button:hover {
+.icon-button:hover {
   background-color: var(--accent);
   border-color: var(--accent);
   color: var(--on-accent);
 }
 
-.faq-button:hover svg {
+.icon-button:hover svg {
   stroke: var(--on-accent);
 }
 
-.faq-button svg {
+.icon-button svg {
   stroke: var(--text);
   transition: stroke 0.2s ease;
 }
@@ -1127,10 +1137,6 @@ body {
 }
 
 /* Spending dashboard */
-.header .faq-button + .faq-button {
-  margin-left: var(--space-2);
-}
-
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

@@ -160,17 +160,38 @@ document.addEventListener("DOMContentLoaded", async function () {
   const confirmDialogCancel = document.getElementById("confirmDialogCancel");
   const confirmDialogProceed = document.getElementById("confirmDialogProceed");
 
+  // Both FAQ and Settings are navigated-away-from-main views guarded by the
+  // same "operation in progress" confirm dialog (spec P4: Settings "respects
+  // the existing operation-in-progress guard, like the FAQ nav does").
+  // The dialog's own markup only has one Proceed button, so remember which
+  // view was actually requested and send Proceed there instead of assuming FAQ.
+  let pendingNavTarget = "faq";
+  const NAV_TARGET_LABELS = { faq: "FAQ", settings: "Settings" };
+
+  function requestViewSwitch(viewName) {
+    if (actions.isOperationRunning()) {
+      const opType = app.collectionInProgress ? "collection" : "download";
+      pendingNavTarget = viewName;
+      view.showConfirmDialog(
+        `A ${opType} is currently running. Navigating to ${NAV_TARGET_LABELS[viewName] || viewName} will stop the operation. Your collected data will be preserved.`
+      );
+    } else {
+      view.switchView(viewName, actions.checkCurrentTab);
+    }
+  }
+
   if (faqButton) {
     faqButton.addEventListener("click", function (e) {
       e.preventDefault();
-      if (actions.isOperationRunning()) {
-        const opType = app.collectionInProgress ? "collection" : "download";
-        view.showConfirmDialog(
-          `A ${opType} is currently running. Navigating to FAQ will stop the operation. Your collected data will be preserved.`
-        );
-      } else {
-        view.switchView("faq", actions.checkCurrentTab);
-      }
+      requestViewSwitch("faq");
+    });
+  }
+
+  const settingsButton = document.getElementById("settingsButton");
+  if (settingsButton) {
+    settingsButton.addEventListener("click", function (e) {
+      e.preventDefault();
+      requestViewSwitch("settings");
     });
   }
 
@@ -200,6 +221,14 @@ document.addEventListener("DOMContentLoaded", async function () {
     });
   }
 
+  const settingsBackButton = document.getElementById("settingsBackButton");
+  if (settingsBackButton) {
+    settingsBackButton.addEventListener("click", function (e) {
+      e.preventDefault();
+      view.switchView("main", actions.checkCurrentTab);
+    });
+  }
+
   if (confirmDialogCancel) {
     confirmDialogCancel.addEventListener("click", view.hideConfirmDialog);
   }
@@ -211,7 +240,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         actions.stopCollection({ startLabel: "Restart Collection", showLoading: false });
       }
       app.downloadInProgress = false;
-      view.switchView("faq", actions.checkCurrentTab);
+      view.switchView(pendingNavTarget, actions.checkCurrentTab);
     });
   }
 
