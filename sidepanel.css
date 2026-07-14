@@ -1468,3 +1468,97 @@ summary:focus-visible,
 .dialog-actions .btn {
   justify-content: center;
 }
+
+/* ==========================================================================
+   Settings view (spec §5.4) — Appearance / Collection / Export defaults /
+   Data on this device / About. Sections reuse the same .card-like surface
+   as the rest of the panel (bordered, rounded, --surface background) so the
+   view doesn't introduce a new visual language.
+   ========================================================================== */
+.settings-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 14px;
+  margin-bottom: var(--space-3);
+}
+
+.settings-section-title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: var(--space-3);
+}
+
+.settings-section .input-group:last-child,
+.settings-section .toggle-group:last-child {
+  margin-bottom: 0;
+}
+
+/* Theme System/Light/Dark segmented control. */
+.segmented-control {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.segmented-option {
+  flex: 1;
+  padding: 7px 4px;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.segmented-option:first-child {
+  border-left: none;
+}
+
+.segmented-option:hover:not(.active) {
+  background: var(--hover-overlay);
+}
+
+.segmented-option.active {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 500;
+}
+
+.settings-stats-line {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+}
+
+.settings-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settings-actions .btn {
+  justify-content: center;
+  width: 100%;
+}
+
+.settings-about-line {
+  font-size: var(--font-size-sm);
+  color: var(--text);
+  margin-bottom: var(--space-2);
+}
+
+.settings-about-note {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-4);
+  line-height: 1.5;
+}
+
+.settings-section .rating-button {
+  margin-bottom: 0;
+}
