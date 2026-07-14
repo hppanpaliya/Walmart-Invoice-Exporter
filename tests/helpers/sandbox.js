@@ -40,6 +40,178 @@ function makeFakeElement() {
 }
 
 /**
+ * A stateful, chrome.storage.{local,session}-shaped fake backed by a plain
+ * object, supporting the get/set/remove call shapes actually used in the
+ * codebase (get(undefined|string|string[]), set(object), remove(string|
+ * string[])). Callback-style only (matches MV3's non-promise callback form,
+ * which is what every call site here uses).
+ */
+function createFakeStorageArea() {
+  let data = {};
+
+  function normalizeKeys(keys) {
+    if (keys === undefined || keys === null) return Object.keys(data);
+    return Array.isArray(keys) ? keys : [keys];
+  }
+
+  return {
+    get(keys, callback) {
+      const result = {};
+      normalizeKeys(keys).forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(data, key)) result[key] = data[key];
+      });
+      if (callback) queueMicrotask(() => callback(result));
+    },
+    set(items, callback) {
+      data = { ...data, ...items };
+      if (callback) queueMicrotask(() => callback());
+    },
+    remove(keys, callback) {
+      normalizeKeys(keys).forEach((key) => delete data[key]);
+      if (callback) queueMicrotask(() => callback());
+    },
+    /** Test-only inspection hook — not part of the chrome.storage API. */
+    _dump() { return { ...data }; },
+  };
+}
+
+/**
+ * A tiny fake `indexedDB` sufficient for orderdb.js's usage: open (with
+ * onupgradeneeded/onsuccess), a single object store, get/getAll/getAllKeys/
+ * put/clear, and transaction oncomplete. Databases persist for the lifetime
+ * of the sandbox (module-level Map), matching real IndexedDB surviving a
+ * connection close() — a fresh `loadSandbox()` call always starts empty.
+ *
+ * Individual requests resolve on a microtask (fast); transaction completion
+ * is a "dirty flag, wait one more macrotask tick" loop so it only ever
+ * fires *after* the calling code (orderdb.js's withStore) has had a chance
+ * to assign tx.oncomplete — assigning it happens after `await`ing the last
+ * request, which is a microtask-scale delay, so waiting for a clean
+ * macrotask tick is the only way to avoid a firing race either way.
+ */
+function createFakeIndexedDB() {
+  const databases = new Map();
+
+  class FakeRequest {
+    constructor() {
+      this.result = undefined;
+      this.error = null;
+      this.onsuccess = null;
+      this.onerror = null;
+      this.onupgradeneeded = null;
+    }
+    _succeed(result) {
+      this.result = result;
+      queueMicrotask(() => { if (this.onsuccess) this.onsuccess({ target: this }); });
+    }
+  }
+
+  class FakeObjectStore {
+    constructor(records, keyPath, notifyActivity) {
+      this._records = records;
+      this.keyPath = keyPath;
+      this._notify = notifyActivity;
+    }
+    createIndex() { /* no-op — tests here never query by index */ }
+    get(key) {
+      this._notify();
+      const req = new FakeRequest();
+      queueMicrotask(() => req._succeed(this._records.get(key)));
+      return req;
+    }
+    getAll() {
+      this._notify();
+      const req = new FakeRequest();
+      queueMicrotask(() => req._succeed(Array.from(this._records.values())));
+      return req;
+    }
+    getAllKeys() {
+      this._notify();
+      const req = new FakeRequest();
+      queueMicrotask(() => req._succeed(Array.from(this._records.keys())));
+      return req;
+    }
+    put(value) {
+      this._notify();
+      const key = value[this.keyPath];
+      this._records.set(key, value);
+      const req = new FakeRequest();
+      queueMicrotask(() => req._succeed(key));
+      return req;
+    }
+    clear() {
+      this._notify();
+      this._records.clear();
+      const req = new FakeRequest();
+      queueMicrotask(() => req._succeed(undefined));
+      return req;
+    }
+  }
+
+  class FakeTransaction {
+    constructor() {
+      this._store = null;
+      this.oncomplete = null;
+      this.onerror = null;
+      this.onabort = null;
+      this._dirty = true;
+      this._tick();
+    }
+    _tick() {
+      setTimeout(() => {
+        if (this._dirty) {
+          this._dirty = false;
+          this._tick();
+        } else if (this.oncomplete) {
+          this.oncomplete();
+        }
+      }, 0);
+    }
+    objectStore() {
+      return this._store;
+    }
+  }
+
+  class FakeDB {
+    constructor(name) {
+      this.name = name;
+      this._stores = new Map(); // storeName -> { records: Map, keyPath }
+      this.objectStoreNames = { contains: (n) => this._stores.has(n) };
+    }
+    createObjectStore(name, { keyPath }) {
+      const records = new Map();
+      this._stores.set(name, { records, keyPath });
+      return new FakeObjectStore(records, keyPath, () => {});
+    }
+    transaction(storeName) {
+      const info = this._stores.get(storeName);
+      const tx = new FakeTransaction();
+      tx._store = new FakeObjectStore(info.records, info.keyPath, () => { tx._dirty = true; });
+      return tx;
+    }
+    close() { /* no-op — data persists like real IndexedDB does past close() */ }
+  }
+
+  return {
+    open(name, _version) {
+      const req = new FakeRequest();
+      queueMicrotask(() => {
+        let db = databases.get(name);
+        const isNew = !db;
+        if (!db) {
+          db = new FakeDB(name);
+          databases.set(name, db);
+        }
+        req.result = db;
+        if (isNew && req.onupgradeneeded) req.onupgradeneeded({ target: req });
+        if (req.onsuccess) req.onsuccess({ target: req });
+      });
+      return req;
+    },
+  };
+}
+
+/**
  * Create a sandbox and load the given scripts into it.
  * @param {Object} options
  * @param {Object|null} options.nextData - Parsed JSON served as script#__NEXT_DATA__
@@ -93,24 +265,79 @@ function loadSandbox({
   window.document = document;
   window.window = window;
 
+  /** Records every call so tests can assert e.g. "no tab was ever created". */
+  function createTabsStub() {
+    const calls = { create: [], get: [], update: [], remove: [], sendMessage: [], query: [] };
+    let nextTabId = 1;
+    const tabsById = new Map();
+
+    return {
+      _calls: calls,
+      _tabsById: tabsById,
+      query(queryInfo, callback) {
+        calls.query.push(queryInfo);
+        if (callback) queueMicrotask(() => callback([]));
+      },
+      create(createProperties, callback) {
+        calls.create.push(createProperties);
+        const tab = { id: nextTabId++, url: createProperties.url, status: 'complete' };
+        tabsById.set(tab.id, tab);
+        if (callback) queueMicrotask(() => callback(tab));
+      },
+      update(tabId, updateProperties, callback) {
+        calls.update.push({ tabId, updateProperties });
+        const tab = tabsById.get(tabId) || { id: tabId };
+        Object.assign(tab, updateProperties, { status: 'complete' });
+        tabsById.set(tabId, tab);
+        if (callback) queueMicrotask(() => callback(tab));
+      },
+      get(tabId, callback) {
+        calls.get.push(tabId);
+        const tab = tabsById.get(tabId);
+        if (callback) queueMicrotask(() => callback(tab));
+      },
+      remove(tabId, callback) {
+        calls.remove.push(tabId);
+        tabsById.delete(tabId);
+        if (callback) {
+          queueMicrotask(() => callback());
+          return undefined;
+        }
+        return Promise.resolve();
+      },
+      sendMessage(tabId, message, callback) {
+        calls.sendMessage.push({ tabId, message });
+        // No content script is present in unit tests — every call fails
+        // fast (via chrome.runtime.lastError) instead of hanging/timing out.
+        chrome.runtime.lastError = { message: 'Could not establish connection.' };
+        if (callback) {
+          queueMicrotask(() => {
+            callback(undefined);
+            chrome.runtime.lastError = null;
+          });
+        }
+      },
+      onUpdated: { addListener() {}, removeListener() {} },
+      onActivated: { addListener() {} },
+    };
+  }
+
   const chrome = {
     runtime: {
       lastError: null,
       onMessage: { addListener() {}, removeListener() {} },
+      onStartup: { addListener() {} },
+      onInstalled: { addListener() {} },
       sendMessage() {},
+      getManifest: () => ({ version: '0.0.0-test' }),
     },
     storage: {
-      local: {
-        get: (_keys, cb) => cb && cb({}),
-        set: (_obj, cb) => cb && cb(),
-        remove: (_keys, cb) => cb && cb(),
-      },
+      local: createFakeStorageArea(),
+      session: createFakeStorageArea(),
     },
-    tabs: {
-      query() {},
-      onUpdated: { addListener() {}, removeListener() {} },
-      onActivated: { addListener() {} },
-    },
+    tabs: createTabsStub(),
+    action: { onClicked: { addListener() {} } },
+    sidePanel: { open() {} },
   };
 
   const sandbox = {
@@ -121,6 +348,7 @@ function loadSandbox({
     clearTimeout,
     setInterval,
     clearInterval,
+    queueMicrotask,
     TextEncoder,
     TextDecoder,
     Blob: function Blob(parts, opts) { this.parts = parts; this.opts = opts; },
@@ -135,9 +363,20 @@ function loadSandbox({
     window,
     chrome,
     ExcelJS: {},
+    indexedDB: createFakeIndexedDB(),
   };
   sandbox.globalThis = sandbox;
   sandbox.self = sandbox;
+  // Service-worker-only global (background.js's first line). Loads each
+  // named repo-relative file into this SAME context, synchronously, just
+  // like the real one — lets tests load background.js by itself and have
+  // its own `importScripts('utils.js', 'orderdb.js')` pull in the rest.
+  sandbox.importScripts = (...files) => {
+    files.forEach((file) => {
+      const source = fs.readFileSync(path.join(REPO_ROOT, file), 'utf8');
+      vm.runInContext(source, sandbox, { filename: file });
+    });
+  };
 
   vm.createContext(sandbox);
   for (const script of scripts) {

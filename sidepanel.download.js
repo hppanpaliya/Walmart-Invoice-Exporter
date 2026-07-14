@@ -155,26 +155,40 @@
         throw new Error(`No data received for order #${orderNumber}`);
       }
 
-      await cacheInvoice(orderNumber, response.data);
-      // Also persist durably (best-effort) — powers analytics and survives
-      // the 24h cache expiry.
-      OrderDb.putInvoice(orderNumber, response.data).catch((error) =>
-        console.warn(`Failed to persist invoice #${orderNumber} to order DB:`, error)
-      );
+      // IndexedDB is the only durable store for invoices now (spec §4.1) —
+      // no more chrome.storage invoice cache to duplicate this into.
+      try {
+        await OrderDb.putInvoice(orderNumber, response.data);
+      } catch (error) {
+        console.warn(`Failed to persist invoice #${orderNumber} to order DB:`, error);
+      }
       view.updateOrderCacheStatus(orderNumber);
       return response.data;
     };
 
     const fetchOrderData = async (orderNumber, options = {}) => {
-      const cachedData = await getCachedInvoice(orderNumber);
-      if (cachedData && isValidInvoiceData(cachedData)) {
-        view.updateOrderCacheStatus(orderNumber);
-        return cachedData;
+      // Fast path (spec §4.2): an already-downloaded, current-schema
+      // invoice sits in IndexedDB — return it and open NO tab at all. This
+      // is what makes re-exporting an already-downloaded order instant,
+      // even long after the old 24h chrome.storage cache would have
+      // expired.
+      let storedInvoice = null;
+      try {
+        const record = await OrderDb.getOrder(orderNumber);
+        storedInvoice = (record && record.invoice) || null;
+      } catch (error) {
+        console.warn(`Order DB unavailable for fast-path lookup of #${orderNumber}:`, error);
       }
 
-      // Cached data is stale (older schema) — re-fetch, but keep the stale
-      // entry untouched until the fetch succeeds (fetchFromUrl overwrites the
-      // cache on success) so a failed re-fetch never destroys usable data.
+      if (storedInvoice && isValidInvoiceData(storedInvoice)) {
+        view.updateOrderCacheStatus(orderNumber);
+        return storedInvoice;
+      }
+
+      // Nothing usable stored yet, or it predates the current schema —
+      // fetch live, but keep the stale record around unused unless every
+      // live fetch fails, so a failed re-fetch never destroys usable data
+      // (fetchFromUrl overwrites the DB record on success).
       const [primaryUrl, fallbackUrl] = buildOrderUrls(orderNumber);
       try {
         return await fetchFromUrl(orderNumber, primaryUrl, options);
@@ -183,12 +197,12 @@
         try {
           return await fetchFromUrl(orderNumber, fallbackUrl, options);
         } catch (fallbackError) {
-          if (isUsableInvoiceData(cachedData)) {
+          if (isUsableInvoiceData(storedInvoice)) {
             console.warn(
-              `Both fetches failed for order #${orderNumber}; falling back to stale cached data`
+              `Both fetches failed for order #${orderNumber}; falling back to stale stored data`
             );
             view.updateOrderCacheStatus(orderNumber);
-            return cachedData;
+            return storedInvoice;
           }
           throw fallbackError;
         }
