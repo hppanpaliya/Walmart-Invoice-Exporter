@@ -63,17 +63,24 @@
         <div id="statusRegion" role="status" aria-live="polite"></div>
 
         <div class="card">
-            <div class="input-group" id="pageLimitGroup">
-                <label for="pageLimit">Number of pages to crawl (0 = unlimited)</label>
-                <input type="number" id="pageLimit" min="0" value="0">
-            </div>
-            <div class="toggle-group" id="incrementalToggleGroup">
-                <input type="checkbox" id="incrementalCollect">
-                <label for="incrementalCollect" title="Stops paginating when a whole page of already-stored orders is reached. Uses the local order database, which persists across sessions.">Only collect new orders (stop at known)</label>
-            </div>
+            <!-- Collect-step demotion (spec §5.1/P6): the primary action is
+                 a single [Collect orders] button; page-limit + "only new"
+                 move behind a small disclosure. Same behavior/storage keys
+                 as before, just visually secondary now. -->
+            <details class="options-group" id="collectionOptionsGroup">
+                <summary>Options</summary>
+                <div class="input-group" id="pageLimitGroup">
+                    <label for="pageLimit">Number of pages to crawl (0 = unlimited)</label>
+                    <input type="number" id="pageLimit" min="0" value="0">
+                </div>
+                <div class="toggle-group" id="incrementalToggleGroup">
+                    <input type="checkbox" id="incrementalCollect">
+                    <label for="incrementalCollect" title="Stops paginating when a whole page of already-stored orders is reached. Uses the local order database, which persists across sessions.">Only collect new orders (stop at known)</label>
+                </div>
+            </details>
             <div class="button-group" id="buttonGroup">
                 <button id="startCollection" class="btn btn-primary">
-                    <span class="btn-text">Start Collection</span>
+                    <span class="btn-text">Collect orders</span>
                 </button>
                 <button id="stopCollection" class="btn btn-danger" style="display: none;">
                     Stop Collection
@@ -229,11 +236,10 @@
                     <ol>
                         <li>Go to your Walmart order history page (walmart.com/orders)</li>
                         <li>Click the extension icon</li>
-                        <li>Set the number of pages to crawl (0 = unlimited)</li>
-                        <li>Click "Start Collection"</li>
+                        <li>Click "Collect orders" (page limit and "only new" are under Options)</li>
                         <li>Wait for the order numbers to load</li>
                         <li>Select the orders you want to download</li>
-                        <li>Click "Download Selected Orders"</li>
+                        <li>Click "Single file" (one workbook) or "Multiple files" (one per order)</li>
                     </ol>
 
                     <div class="note">
