@@ -2393,176 +2393,59 @@ function truncateText(text, maxLength = 60, suffix = '...') {
 }
 
 /**
- * Invoice Caching Utilities
+ * Invoice storage helpers (storage unification, spec §4.1)
+ *
+ * Invoices used to be duplicated into a chrome.storage.local
+ * "walmart_invoice_cache" blob with its own 24h TTL and a quota-recovery
+ * path that could silently replace the whole cache with a single order.
+ * That entire layer is retired: IndexedDB (OrderDb, see orderdb.js) is now
+ * the single source of truth for downloaded invoices — see
+ * OrderDataFetcher.fetchOrderData in sidepanel.download.js for the
+ * IndexedDB-first fetch path that replaces getCachedInvoice/cacheInvoice.
+ *
+ * getCachedOrderNumbers, deleteInvoiceCache, and clearAllInvoiceCache are
+ * kept (as DB-backed reads / inert no-ops) purely because existing UI still
+ * calls them — the per-order cache badge and the "Clear Cache" button,
+ * both removed in a later phase. A one-time migration folds any surviving
+ * walmart_invoice_cache data into OrderDb (see migrateLegacyStorage).
  */
-
-const INVOICE_CACHE_KEY = CONSTANTS.CACHE_KEYS.INVOICE;
-const INVOICE_CACHE_EXPIRATION = CONSTANTS.TIMING.CACHE_EXPIRATION;
 
 /**
- * Get cached invoice data for an order
- * @param {string} orderNumber - The order number
- * @returns {Promise<Object|null>} Cached invoice data or null if not cached or expired
+ * Which orders have a full invoice stored durably in IndexedDB. Powers the
+ * per-order "already downloaded" badge and the Clear Cache button's
+ * enabled/muted state — replaces the old chrome.storage cache scan.
+ * @returns {Promise<string[]>} order numbers with a stored invoice
  */
-function getCachedInvoice(orderNumber) {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([INVOICE_CACHE_KEY], (result) => {
-      if (!result[INVOICE_CACHE_KEY]) {
-        resolve(null);
-        return;
-      }
-      
-      const cache = result[INVOICE_CACHE_KEY];
-      const cached = cache[orderNumber];
-      
-      if (!cached) {
-        resolve(null);
-        return;
-      }
-      
-      // Check if cache is expired
-      if (Date.now() - cached.timestamp > INVOICE_CACHE_EXPIRATION) {
-        // Remove expired cache
-        deleteInvoiceCache(orderNumber);
-        resolve(null);
-        return;
-      }
-      
-      resolve(cached.data);
-    });
-  });
+async function getCachedOrderNumbers() {
+  try {
+    const records = await OrderDb.getAllOrders();
+    return records.filter((record) => record && record.invoice).map((record) => record.orderNumber);
+  } catch (error) {
+    console.warn('Order DB unavailable for cached-order lookup:', error);
+    return [];
+  }
 }
 
 /**
- * Save invoice data to cache
- * @param {string} orderNumber - The order number
- * @param {Object} invoiceData - The invoice data to cache
+ * Formerly deleted one order's chrome.storage invoice-cache entry. There is
+ * no more per-order cache to delete now that invoices live only in
+ * IndexedDB (bulk deletion is a future "Delete all saved data" control) —
+ * an inert no-op so the existing per-order cache-badge click handler
+ * (createCacheIndicator, above) stays safe.
  * @returns {Promise<void>}
  */
-function cacheInvoice(orderNumber, invoiceData) {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([INVOICE_CACHE_KEY], (result) => {
-      const cache = result[INVOICE_CACHE_KEY] || {};
-      
-      cache[orderNumber] = {
-        data: invoiceData,
-        timestamp: Date.now(),
-      };
-      
-      chrome.storage.local.set({ [INVOICE_CACHE_KEY]: cache }, () => {
-        if (chrome.runtime.lastError) {
-          // Handle storage quota exceeded error
-          console.warn(`Failed to cache order ${orderNumber}:`, chrome.runtime.lastError.message);
-          // If quota exceeded, try clearing old entries and retry once
-          if (chrome.runtime.lastError.message.includes('QUOTA_BYTES')) {
-            console.log('Storage quota exceeded, clearing old cache entries...');
-            clearOldCacheEntries().then(() => {
-              // Retry caching after clearing old entries
-              chrome.storage.local.set({ [INVOICE_CACHE_KEY]: { [orderNumber]: cache[orderNumber] } }, () => {
-                if (chrome.runtime.lastError) {
-                  console.error('Still failed to cache after cleanup:', chrome.runtime.lastError.message);
-                }
-                resolve();
-              });
-            });
-            return;
-          }
-        } else {
-          console.log(`Cached invoice data for order ${orderNumber}`);
-        }
-        resolve();
-      });
-    });
-  });
+function deleteInvoiceCache(_orderNumber) {
+  return Promise.resolve();
 }
 
 /**
- * Clear cache entries older than 12 hours to free up space
- * @returns {Promise<void>}
- */
-function clearOldCacheEntries() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([INVOICE_CACHE_KEY], (result) => {
-      if (!result[INVOICE_CACHE_KEY]) {
-        resolve();
-        return;
-      }
-      
-      const cache = result[INVOICE_CACHE_KEY];
-      const twelveHoursAgo = Date.now() - (12 * 60 * 60 * 1000);
-      let entriesRemoved = 0;
-      
-      for (const orderNumber of Object.keys(cache)) {
-        if (cache[orderNumber].timestamp < twelveHoursAgo) {
-          delete cache[orderNumber];
-          entriesRemoved++;
-        }
-      }
-      
-      console.log(`Cleared ${entriesRemoved} old cache entries`);
-      chrome.storage.local.set({ [INVOICE_CACHE_KEY]: cache }, resolve);
-    });
-  });
-}
-
-/**
- * Delete cached invoice for a specific order
- * @param {string} orderNumber - The order number
- * @returns {Promise<void>}
- */
-function deleteInvoiceCache(orderNumber) {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([INVOICE_CACHE_KEY], (result) => {
-      const cache = result[INVOICE_CACHE_KEY] || {};
-      delete cache[orderNumber];
-      
-      if (Object.keys(cache).length === 0) {
-        chrome.storage.local.remove(INVOICE_CACHE_KEY, resolve);
-      } else {
-        chrome.storage.local.set({ [INVOICE_CACHE_KEY]: cache }, () => {
-          console.log(`Deleted cache for order ${orderNumber}`);
-          resolve();
-        });
-      }
-    });
-  });
-}
-
-/**
- * Get all cached order numbers
- * @returns {Promise<Array>} Array of cached order numbers
- */
-function getCachedOrderNumbers() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([INVOICE_CACHE_KEY], (result) => {
-      if (!result[INVOICE_CACHE_KEY]) {
-        resolve([]);
-        return;
-      }
-      
-      const orderNumbers = Object.keys(result[INVOICE_CACHE_KEY]);
-      // Filter out expired ones
-      const validOrders = [];
-      for (const order of orderNumbers) {
-        const cached = result[INVOICE_CACHE_KEY][order];
-        if (Date.now() - cached.timestamp <= INVOICE_CACHE_EXPIRATION) {
-          validOrders.push(order);
-        }
-      }
-      resolve(validOrders);
-    });
-  });
-}
-
-/**
- * Clear all invoice cache
+ * Formerly cleared the entire chrome.storage invoice cache. There is
+ * nothing left to clear (invoices live only in IndexedDB) — an inert no-op
+ * so the existing "Clear Cache" button handler (sidepanel.js) stays safe.
+ * Real data deletion is a future "Delete all saved data" control
+ * (OrderDb.clearAll).
  * @returns {Promise<void>}
  */
 function clearAllInvoiceCache() {
-  return new Promise((resolve) => {
-    chrome.storage.local.remove(INVOICE_CACHE_KEY, () => {
-      console.log('All invoice cache cleared');
-      resolve();
-    });
-  });
+  return Promise.resolve();
 }
