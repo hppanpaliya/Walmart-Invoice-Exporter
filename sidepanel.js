@@ -3,11 +3,19 @@ window.addEventListener("unhandledrejection", (event) => {
   console.error("Unhandled promise rejection:", event.reason);
 });
 
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", async function () {
   const Sidepanel = window.Sidepanel;
   const app = Sidepanel.state.app;
   const view = Sidepanel.view;
   const actions = Sidepanel.actions;
+
+  // One-time, idempotent cleanup of retired chrome.storage.local caches
+  // (spec §4.5) — awaited before the order list (below) is first rendered
+  // from the DB, so a freshly-upgraded user's old invoice cache has
+  // already landed in IndexedDB by the time it would otherwise show up.
+  await migrateLegacyStorage().catch((error) =>
+    console.warn("Legacy storage migration failed:", error)
+  );
 
   const orderNumbersContainer = document.getElementById("orderNumbersContainer");
   view.setInitialPlaceholder(orderNumbersContainer);
