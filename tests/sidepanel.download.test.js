@@ -2,7 +2,9 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const ExcelJS = require('exceljs');
 const { loadSandbox, evalIn } = require('./helpers/sandbox');
+const { captureDownloads, blobBuffer } = require('./helpers/capture-downloads');
 
 function loadDownloadSandbox() {
   return loadSandbox({
@@ -127,4 +129,87 @@ test('fetchFromUrl (via fetchOrderData) persists newly-fetched invoices to Order
   const createCallsBefore = sandbox.chrome.tabs._calls.create.length;
   await fetchOrderData(sandbox, ORDER_NUMBER);
   assert.equal(sandbox.chrome.tabs._calls.create.length, createCallsBefore, 're-fetch must be served from IndexedDB');
+});
+
+/**
+ * Legacy Excel toggle routing (design spec §5.3): exportCombinedOrders /
+ * exportOneOrder (exposed on Sidepanel.download for exactly this purpose)
+ * must pick convert*Legacy over the default writer when app.legacyExcel is
+ * true and the format is Excel, and must leave every other format alone.
+ * The legacy converters' own output shape is pinned in
+ * tests/legacy-excel.test.js — these tests only pin the ROUTING decision.
+ */
+function loadRoutingSandbox({ legacyExcel, exportFormat }) {
+  const sandbox = loadDownloadSandbox();
+  // exportCombinedOrders/exportOneOrder read the bare `ExcelJS` global (the
+  // real page loads it via <script src="exceljs.bare.min.js">); the sandbox
+  // only stubs it as `{}`, so swap in the real, host-side library.
+  sandbox.ExcelJS = ExcelJS;
+  sandbox.window.Sidepanel.state.app.legacyExcel = Boolean(legacyExcel);
+  sandbox.window.Sidepanel.state.app.exportFormat = exportFormat;
+  return sandbox;
+}
+
+test('legacy toggle routing: legacyExcel=false (default) keeps the Orders+Items writer for exportCombinedOrders', async () => {
+  const sandbox = loadRoutingSandbox({ legacyExcel: false, exportFormat: 'xlsx' });
+  const downloads = captureDownloads(sandbox);
+
+  await sandbox.window.Sidepanel.download.exportCombinedOrders([sampleInvoice()], 'Test');
+
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(blobBuffer(downloads[0].blob));
+  assert.deepEqual(workbook.worksheets.map((w) => w.name), ['Orders', 'Items']);
+});
+
+test('legacy toggle routing: legacyExcel=true selects the legacy single-sheet writer for exportCombinedOrders', async () => {
+  const sandbox = loadRoutingSandbox({ legacyExcel: true, exportFormat: 'xlsx' });
+  const downloads = captureDownloads(sandbox);
+
+  await sandbox.window.Sidepanel.download.exportCombinedOrders([sampleInvoice()], 'Test');
+
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(blobBuffer(downloads[0].blob));
+  assert.deepEqual(
+    workbook.worksheets.map((w) => w.name),
+    ['Walmart Orders'],
+    'legacyExcel=true must route through convertMultipleOrdersToXlsxLegacy'
+  );
+});
+
+test('legacy toggle routing: legacyExcel=true selects the legacy writer for exportOneOrder too (no frozen-header polish)', async () => {
+  const legacySandbox = loadRoutingSandbox({ legacyExcel: true, exportFormat: 'xlsx' });
+  const legacyDownloads = captureDownloads(legacySandbox);
+  await legacySandbox.window.Sidepanel.download.exportOneOrder(sampleInvoice());
+  const legacyWorkbook = new ExcelJS.Workbook();
+  await legacyWorkbook.xlsx.load(blobBuffer(legacyDownloads[0].blob));
+  const legacySheet = legacyWorkbook.worksheets[0];
+  assert.equal(legacySheet.name, 'Order Invoice');
+  assert.ok(
+    !legacySheet.views || legacySheet.views.length === 0,
+    'legacy single-order writer skips polishWorksheet (no frozen header)'
+  );
+
+  const defaultSandbox = loadRoutingSandbox({ legacyExcel: false, exportFormat: 'xlsx' });
+  const defaultDownloads = captureDownloads(defaultSandbox);
+  await defaultSandbox.window.Sidepanel.download.exportOneOrder(sampleInvoice());
+  const defaultWorkbook = new ExcelJS.Workbook();
+  await defaultWorkbook.xlsx.load(blobBuffer(defaultDownloads[0].blob));
+  const defaultSheet = defaultWorkbook.worksheets[0];
+  assert.equal(defaultSheet.name, 'Order Invoice');
+  assert.ok(defaultSheet.views.length > 0, 'default writer calls polishWorksheet (frozen header)');
+});
+
+test('legacy toggle routing: legacyExcel=true is ignored for non-Excel formats (CSV still exports normally)', async () => {
+  const sandbox = loadRoutingSandbox({ legacyExcel: true, exportFormat: 'csv' });
+  const downloads = captureDownloads(sandbox);
+
+  await sandbox.window.Sidepanel.download.exportCombinedOrders([sampleInvoice()], 'Test');
+
+  // Generic CSV preset writes an orders file + a companion items file —
+  // the point here is just that it's still plain CSV, unaffected by the
+  // Excel-only legacy toggle (no .xlsx / no "Walmart Orders" sheet).
+  assert.equal(downloads.length, 2);
+  downloads.forEach((download) => {
+    assert.match(download.filename, /\.csv$/, 'CSV format must ignore the Excel-only legacy toggle');
+  });
 });
