@@ -153,6 +153,106 @@
     `;
   }
 
+  function dataSectionHtml(stats) {
+    const line =
+      stats.orders === 0
+        ? "No orders saved on this device yet."
+        : `${stats.orders} order${stats.orders === 1 ? "" : "s"} saved · ${stats.invoices} with full invoice`;
+    return `
+      <div class="settings-section">
+        <h3 class="settings-section-title">Data on this device</h3>
+        <p class="settings-stats-line" id="settingsStatsLine">${escapeHtml(line)}</p>
+        <div class="settings-actions">
+          <button type="button" id="deleteAllDataButton" class="btn btn-danger" ${stats.orders === 0 ? "disabled" : ""}>
+            ${renderIcon("TRASH")}
+            <span class="btn-text">Delete all saved data</span>
+          </button>
+          <button type="button" id="resetSettingsButton" class="btn btn-clear">Reset settings to defaults</button>
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * The single honest clear-data control (spec §4.4): wipes IndexedDB
+   * (OrderDb.clearAll — orders + invoices) AND chrome.storage.session's
+   * live collection progress (RESET_SESSION_STATE, background.js), then
+   * refreshes both Settings' own stats line and the main view/dashboard so
+   * every surface lands on a true empty state. Confirmed via the
+   * focus-trapped Dialog component, whose confirm button echoes the exact
+   * count about to be deleted.
+   */
+  function confirmDeleteAllData(stats) {
+    const count = stats.orders;
+    Sidepanel.components.Dialog({
+      title: "Delete all saved data",
+      bodyHtml:
+        "Removes all saved orders, invoices, and dashboard data from this device. Exports, the dashboard, and collection start over. This can't be undone.",
+      confirmLabel: `Delete ${count} order${count === 1 ? "" : "s"}`,
+      confirmVariant: "danger",
+      cancelLabel: "Cancel",
+      onConfirm: async () => {
+        try {
+          await OrderDb.clearAll();
+        } catch (error) {
+          console.error("Failed to clear the order database:", error);
+        }
+        await new Promise((resolve) => {
+          chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.RESET_SESSION_STATE }, () => resolve());
+        });
+
+        Sidepanel.components.Toast("Saved data cleared");
+        renderSettings();
+        if (Sidepanel.actions && Sidepanel.actions.checkCurrentTab) {
+          Sidepanel.actions.checkCurrentTab();
+        }
+      },
+    });
+  }
+
+  /**
+   * Restore every settings key (NOT stored data — see confirmDeleteAllData
+   * above for that) to its default, then refresh both Settings and the
+   * main view's own controls so the reset is visible immediately.
+   */
+  async function resetSettingsToDefaults() {
+    await new Promise((resolve) => chrome.storage.local.set(SETTINGS_DEFAULTS, resolve));
+
+    const app = state.app;
+    app.exportMode = SETTINGS_DEFAULTS.exportMode;
+    app.exportFormat = SETTINGS_DEFAULTS.exportFormat;
+    app.csvPreset = SETTINGS_DEFAULTS.csvPreset;
+    app.includeThumbnails = SETTINGS_DEFAULTS.includeThumbnails;
+    app.incrementalCollect = SETTINGS_DEFAULTS.incrementalCollect;
+    app.legacyExcel = SETTINGS_DEFAULTS[CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL];
+
+    Sidepanel.applyTheme(SETTINGS_DEFAULTS.theme);
+
+    const mainCsvPresetSelect = document.getElementById("csvPreset");
+    if (mainCsvPresetSelect) mainCsvPresetSelect.value = app.csvPreset;
+
+    syncMainView("exportFormat", app.exportFormat);
+    syncMainView("includeThumbnails", app.includeThumbnails);
+    syncMainView(CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL, app.legacyExcel);
+    syncMainView("incrementalCollect", app.incrementalCollect);
+    syncMainView("pageLimit", SETTINGS_DEFAULTS.pageLimit);
+
+    if (Sidepanel.components) Sidepanel.components.Toast("Settings reset to defaults");
+    renderSettings();
+  }
+
+  function wireDataControls(container, stats) {
+    const deleteButton = container.querySelector("#deleteAllDataButton");
+    if (deleteButton) {
+      deleteButton.addEventListener("click", () => confirmDeleteAllData(stats));
+    }
+
+    const resetButton = container.querySelector("#resetSettingsButton");
+    if (resetButton) {
+      resetButton.addEventListener("click", () => resetSettingsToDefaults());
+    }
+  }
+
   function wireThemeControl(container) {
     const control = container.querySelector("#themeControl");
     if (!control) return;
@@ -233,15 +333,24 @@
     const includeThumbnails = Boolean(stored.includeThumbnails);
     const legacyExcel = Boolean(stored[CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL]);
 
+    let stats = { orders: 0, invoices: 0 };
+    try {
+      stats = await OrderDb.getStats();
+    } catch (error) {
+      console.warn("Settings: order database unavailable for stats:", error);
+    }
+
     container.innerHTML = [
       themeSectionHtml(theme),
       collectionSectionHtml(pageLimit, incrementalCollect),
       exportDefaultsSectionHtml({ exportFormat, includeThumbnails, legacyExcel }),
+      dataSectionHtml(stats),
     ].join("");
 
     wireThemeControl(container);
     wireCollectionControls(container);
     wireExportDefaultsControls(container);
+    wireDataControls(container, stats);
   }
 
   Sidepanel.settings = {
