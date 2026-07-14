@@ -68,19 +68,25 @@ document.addEventListener("DOMContentLoaded", async function () {
   const exportFormatSelect = document.getElementById("exportFormat");
   const csvPresetGroup = document.getElementById("csvPresetGroup");
   const csvPresetSelect = document.getElementById("csvPreset");
+  const legacyExcelToggleGroup = document.getElementById("legacyExcelToggleGroup");
 
-  // The CSV preset only applies to CSV exports — hide it otherwise.
-  function updateCsvPresetVisibility() {
+  // The CSV preset only applies to CSV exports, and the legacy-layout
+  // toggle only applies to Excel (spec §5.3) — hide each otherwise.
+  function updateFormatDependentVisibility() {
     if (csvPresetGroup) {
       csvPresetGroup.style.display =
         app.exportFormat === CONSTANTS.EXPORT_FORMATS.CSV ? "" : "none";
+    }
+    if (legacyExcelToggleGroup) {
+      legacyExcelToggleGroup.style.display =
+        app.exportFormat === CONSTANTS.EXPORT_FORMATS.XLSX ? "" : "none";
     }
   }
 
   chrome.storage.local.get(["exportFormat"], (res) => {
     app.exportFormat = res.exportFormat || CONSTANTS.EXPORT_FORMATS.XLSX;
     if (exportFormatSelect) exportFormatSelect.value = app.exportFormat;
-    updateCsvPresetVisibility();
+    updateFormatDependentVisibility();
     view.updateDownloadButtonLabels();
   });
 
@@ -88,7 +94,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     exportFormatSelect.addEventListener("change", () => {
       app.exportFormat = exportFormatSelect.value;
       chrome.storage.local.set({ exportFormat: app.exportFormat });
-      updateCsvPresetVisibility();
+      updateFormatDependentVisibility();
       view.updateDownloadButtonLabels();
     });
   }
@@ -115,6 +121,23 @@ document.addEventListener("DOMContentLoaded", async function () {
     thumbnailToggle.addEventListener("change", () => {
       app.includeThumbnails = thumbnailToggle.checked;
       chrome.storage.local.set({ includeThumbnails: app.includeThumbnails });
+    });
+  }
+
+  // Legacy Excel layout (spec §5.3): opt-in, Excel-only, default off.
+  // Only exportCombinedOrders/exportOneOrder (sidepanel.download.js) branch
+  // on this — every other format ignores it, and the default writers are
+  // completely untouched when it's off.
+  const legacyExcelToggle = document.getElementById("legacyExcel");
+  chrome.storage.local.get([CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL], (res) => {
+    app.legacyExcel = Boolean(res[CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL]);
+    if (legacyExcelToggle) legacyExcelToggle.checked = app.legacyExcel;
+  });
+
+  if (legacyExcelToggle) {
+    legacyExcelToggle.addEventListener("change", () => {
+      app.legacyExcel = legacyExcelToggle.checked;
+      chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL]: app.legacyExcel });
     });
   }
 
