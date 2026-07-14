@@ -598,12 +598,6 @@ const MessageHandlers = {
   [CONSTANTS.MESSAGES.COLLECT_ORDER_NUMBERS]: withImageBlocking(handleCollectOrderNumbers),
   [CONSTANTS.MESSAGES.CLICK_NEXT_BUTTON]: withImageBlocking(handleClickNextButton),
   [CONSTANTS.MESSAGES.BLOCK_IMAGES]: withImageBlocking(async () => ({ success: true })),
-  [CONSTANTS.MESSAGES.DOWNLOAD_XLSX]: withImageBlocking(async () => {
-    const data = scrapeOrderData();
-    // Convert the order details to an XLSX file using the shared convertToXlsx function
-    convertToXlsx(data, ExcelJS, { mode: 'single' });
-    return { data };
-  }),
   [CONSTANTS.MESSAGES.GET_ORDER_DATA]: withImageBlocking(async () => {
     // scrapeOrderData() merges the __NEXT_DATA__ payload and DOM fallback paths,
     // so validating its output covers both extraction strategies.
