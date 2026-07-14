@@ -1964,7 +1964,7 @@ function isPayloadQualitySummary(summary) {
 const CACHE_INDICATOR_STYLE = 'cursor: pointer; margin-left: 6px; color: var(--primary); display: inline-flex; align-items: center; gap: 2px; font-size: 10px;';
 const CACHE_INDICATOR_SELECTOR = '[data-cache-indicator="true"]';
 
-function setCollectionButtonsState({ running, startLabel = "Start Collection" }) {
+function setCollectionButtonsState({ running, startLabel = "Collect orders" }) {
   const startButton = document.getElementById("startCollection");
   const stopButton = document.getElementById("stopCollection");
   if (!startButton || !stopButton) return;
