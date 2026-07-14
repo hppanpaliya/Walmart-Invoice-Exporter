@@ -433,7 +433,8 @@
       let additionalFields = (response && response.additionalFields) || {};
 
       if (orderNumbers.length === 0) {
-        // The 24h collection cache is empty — fall back to the durable DB.
+        // No live/session collection data (e.g. a fresh browser session
+        // with nothing collected yet this run) — fall back to the durable DB.
         try {
           const records = await OrderDb.getAllOrders();
           const withSummaries = records.filter((record) => record.summary);

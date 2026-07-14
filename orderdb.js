@@ -1,9 +1,12 @@
 /**
- * Durable local order database (IndexedDB).
+ * Durable local order database (IndexedDB) — the single source of truth
+ * for orders and invoices (spec §4.1).
  *
- * Unlike the 24-hour chrome.storage collection cache, records here persist
- * across sessions, powering incremental collection ("only new orders"),
- * Quick Export fallback, and local analytics. Everything stays on-device.
+ * Unlike chrome.storage.session (ephemeral live-collection progress,
+ * cleared when the browser closes — see background.js's CollectionState),
+ * records here persist indefinitely across sessions, powering incremental
+ * collection ("only new orders"), the panel's order list, Quick Export
+ * fallback, and local analytics. Everything stays on-device.
  *
  * Loaded by both the side panel (script tag) and the background service
  * worker (importScripts) — both run on the extension origin, so they share
