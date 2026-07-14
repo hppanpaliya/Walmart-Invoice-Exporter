@@ -83,6 +83,11 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
   }
 
+  // Exposed so a Settings-made "Default format" change (sidepanel.settings.js)
+  // can immediately refresh the main view's own dependent controls without
+  // waiting for a reload.
+  Sidepanel.syncExportFormatVisibility = updateFormatDependentVisibility;
+
   chrome.storage.local.get(["exportFormat"], (res) => {
     app.exportFormat = res.exportFormat || CONSTANTS.EXPORT_FORMATS.XLSX;
     if (exportFormatSelect) exportFormatSelect.value = app.exportFormat;
@@ -154,6 +159,25 @@ document.addEventListener("DOMContentLoaded", async function () {
     });
   }
 
+  // Default page limit (spec §5.4 Settings "Collection" section) — same
+  // "pageLimit" storage key Settings reads/writes; this is the first phase
+  // this value is persisted at all (previously read fresh off the DOM at
+  // collection start with no default carried between sessions).
+  const pageLimitInput = document.getElementById("pageLimit");
+  chrome.storage.local.get(["pageLimit"], (res) => {
+    const stored = Number(res.pageLimit);
+    if (pageLimitInput && Number.isFinite(stored) && stored >= 0) {
+      pageLimitInput.value = stored;
+    }
+  });
+
+  if (pageLimitInput) {
+    pageLimitInput.addEventListener("change", () => {
+      const value = parseInt(pageLimitInput.value, 10) || 0;
+      chrome.storage.local.set({ pageLimit: value });
+    });
+  }
+
   const faqButton = document.getElementById("faqButton");
   const backButton = document.getElementById("backButton");
   const confirmDialog = document.getElementById("confirmDialog");
@@ -166,17 +190,28 @@ document.addEventListener("DOMContentLoaded", async function () {
   // The dialog's own markup only has one Proceed button, so remember which
   // view was actually requested and send Proceed there instead of assuming FAQ.
   let pendingNavTarget = "faq";
+  let pendingNavCallback = null;
   const NAV_TARGET_LABELS = { faq: "FAQ", settings: "Settings" };
 
-  function requestViewSwitch(viewName) {
+  /**
+   * @param {string} viewName
+   * @param {Function} [onSwitched] - Invoked right after the view actually
+   *   becomes active, whether that happens immediately or (once the
+   *   operation-in-progress confirm dialog resolves) after Proceed is
+   *   clicked. Settings uses this to render fresh content on every open
+   *   (spec §5.4), matching the Dashboard's render-on-open pattern.
+   */
+  function requestViewSwitch(viewName, onSwitched) {
     if (actions.isOperationRunning()) {
       const opType = app.collectionInProgress ? "collection" : "download";
       pendingNavTarget = viewName;
+      pendingNavCallback = onSwitched || null;
       view.showConfirmDialog(
         `A ${opType} is currently running. Navigating to ${NAV_TARGET_LABELS[viewName] || viewName} will stop the operation. Your collected data will be preserved.`
       );
     } else {
       view.switchView(viewName, actions.checkCurrentTab);
+      if (onSwitched) onSwitched();
     }
   }
 
@@ -191,7 +226,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   if (settingsButton) {
     settingsButton.addEventListener("click", function (e) {
       e.preventDefault();
-      requestViewSwitch("settings");
+      requestViewSwitch("settings", () => Sidepanel.settings && Sidepanel.settings.renderSettings());
     });
   }
 
@@ -241,6 +276,9 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
       app.downloadInProgress = false;
       view.switchView(pendingNavTarget, actions.checkCurrentTab);
+      const callback = pendingNavCallback;
+      pendingNavCallback = null;
+      if (callback) callback();
     });
   }
 
