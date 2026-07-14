@@ -54,6 +54,14 @@
             </button>
         </div>
 
+        <!-- Consolidated status strip (spec §5.1): off-tab / filter /
+             extraction warnings and the cache/db-stats/rating-hint notices
+             all render here as Banner elements (sidepanel.components.js),
+             replacing five separate ad-hoc notice styles and insertion
+             points. Individual banners also carry their own role
+             (alert|status) per variant. -->
+        <div id="statusRegion" role="status" aria-live="polite"></div>
+
         <div class="card">
             <div class="input-group" id="pageLimitGroup">
                 <label for="pageLimit">Number of pages to crawl (0 = unlimited)</label>

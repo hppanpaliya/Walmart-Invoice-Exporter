@@ -426,40 +426,13 @@ body {
   margin-bottom: var(--space-3);
 }
 
-.db-stats {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  margin-top: var(--space-3);
-}
-
-.db-stats .db-clear {
-  background: none;
-  border: none;
+/* db-stats' destructive "clear" action, now rendered as a Banner actionHtml
+   button (sidepanel.view.js updateDbStats) — .banner-action button sets
+   color: inherit at (0,1,1) specificity, so this needs .banner .db-clear
+   (0,2,0) to reliably win and keep the destructive-red color regardless of
+   which banner variant it happens to render inside. */
+.banner .db-clear {
   color: var(--danger);
-  font-size: var(--font-size-xs);
-  cursor: pointer;
-  padding: 0;
-  text-decoration: underline;
-}
-
-.filter-notice {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  background: var(--surface);
-  border-radius: var(--radius-md);
-  padding: 6px 8px;
-  margin-bottom: var(--space-3);
-}
-
-.filter-notice svg {
-  flex-shrink: 0;
-  margin-top: 1px;
 }
 
 /* Paired action buttons: Download + Quick Export side by side */
@@ -694,83 +667,10 @@ body {
   background: var(--border);
 }
 
-.cache-info {
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  margin-top: var(--space-1);
-  padding: 4px 8px;
-  background: var(--accent-weak);
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.cache-info svg {
-  flex-shrink: 0;
-}
-
 .cache-time {
   font-style: italic;
   margin-top: 2px;
   font-size: var(--font-size-xs);
-}
-
-.rating-hint {
-  position: relative;
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  margin-top: var(--space-2);
-  padding: 6px 8px;
-  background: var(--accent-weak);
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  opacity: 0;
-  max-height: 0;
-  overflow: hidden;
-  transition: opacity 0.3s, max-height 0.3s, margin 0.3s, padding 0.3s;
-}
-
-.rating-hint.show {
-  opacity: 1;
-  max-height: 40px;
-  padding: 6px 8px;
-}
-
-.rating-hint a {
-  color: var(--accent);
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.rating-hint a:hover {
-  text-decoration: underline;
-}
-
-.dismiss-hint {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0;
-  min-width: var(--space-6);
-  min-height: var(--space-6);
-  width: var(--space-6);
-  height: var(--space-6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-  flex-shrink: 0;
-}
-
-.dismiss-hint:hover {
-  color: var(--text);
-  background: var(--hover-overlay);
 }
 
 .order-label {
@@ -819,95 +719,6 @@ body {
 .order-label:hover .order-tooltip {
   visibility: visible;
   opacity: 1;
-}
-
-/* Off-tab warning banner */
-.off-tab-warning {
-  background: var(--warning-bg);
-  border: 1px solid var(--warning-border);
-  border-radius: var(--radius-md);
-  padding: 10px var(--space-3);
-  margin-bottom: var(--space-3);
-  font-size: var(--font-size-sm);
-  color: var(--warning-fg);
-}
-
-.off-tab-warning .warning-content {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.off-tab-warning svg {
-  flex-shrink: 0;
-  stroke: var(--warning-fg);
-}
-
-.off-tab-warning a {
-  color: var(--accent);
-  font-weight: 500;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.off-tab-warning a:hover {
-  color: var(--accent-hover);
-}
-
-/* Extraction warning banner (possible Walmart site change) */
-.extraction-warning {
-  background: var(--warning-bg);
-  border: 1px solid var(--warning-border);
-  border-radius: var(--radius-md);
-  padding: 10px var(--space-3);
-  margin-bottom: var(--space-3);
-  font-size: var(--font-size-sm);
-  color: var(--warning-fg);
-}
-
-.extraction-warning .warning-content {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.extraction-warning svg {
-  flex-shrink: 0;
-  stroke: var(--warning-fg);
-}
-
-.extraction-warning a {
-  color: var(--accent);
-  font-weight: 500;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.extraction-warning a:hover {
-  color: var(--accent-hover);
-}
-
-.extraction-warning .dismiss-warning {
-  background: transparent;
-  border: none;
-  color: var(--warning-fg);
-  cursor: pointer;
-  padding: 0;
-  min-width: var(--space-6);
-  min-height: var(--space-6);
-  width: var(--space-6);
-  height: var(--space-6);
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-  flex-shrink: 0;
-}
-
-.extraction-warning .dismiss-warning:hover {
-  color: var(--text);
-  background: var(--hover-overlay);
 }
 
 /* View switching */
@@ -1391,22 +1202,23 @@ summary:focus-visible,
   border-radius: var(--radius-sm);
 }
 
-/* Minimum interactive target size (>= 24px): .dismiss-hint and
-   .extraction-warning .dismiss-warning are sized via --space-6 (24px) at
-   their own rules above — the icon-only X-close buttons had no adjacent
-   larger target and previously rendered at 16x16. Checkboxes are exempt:
-   each has an adjacent <label for="..."> covering the full row (WCAG
-   2.5.8's "equivalent" exception), so the effective click target already
-   exceeds 24px without enlarging the checkbox itself. The back buttons
-   (.back-button, 32x32) already clear the minimum. */
+/* Minimum interactive target size (>= 24px): the two former icon-only
+   X-close buttons (rating hint, extraction warning — previously 16x16, no
+   adjacent larger target) are now both Banner's dismissible dismiss
+   button, styled below at .banner-dismiss (sized via --space-6, 24px).
+   Checkboxes are exempt: each has an adjacent <label for="..."> covering
+   the full row (WCAG 2.5.8's "equivalent" exception), so the effective
+   click target already exceeds 24px without enlarging the checkbox itself.
+   The back buttons (.back-button, 32x32) already clear the minimum. */
 
 /* ==========================================================================
    Reusable components (sidepanel.components.js, spec §5.5)
 
    Banner/StatusLine/ProgressBar/Dialog/Toast — small vanilla factories, no
-   framework. Banner replaces the bespoke off-tab-warning/extraction-warning/
-   filter-notice/cache-info/db-stats/rating-hint styles above (unified onto
-   this one class family as those call sites are refactored).
+   framework. Banner replaced the bespoke off-tab-warning/extraction-warning/
+   filter-notice/cache-info/db-stats/rating-hint notice styles that used to
+   live in this file — sidepanel.view.js/.actions.js/.download.js now
+   render all of those through this one class family instead.
    ========================================================================== */
 
 .banner {
