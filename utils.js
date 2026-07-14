@@ -1887,9 +1887,6 @@ const CONSTANTS = {
     CLEAR_CACHE_BTN: 'Clear Cache',
     QUICK_EXPORT: 'Quick Export',
     QUICK_EXPORT_SUCCESS: 'Quick Export completed successfully!',
-    USING_CACHE: 'Using cached data:',
-    ORDERS: 'orders from',
-    PAGES: 'pages',
   },
 
   // Chrome Messages
@@ -1912,8 +1909,14 @@ const CONSTANTS = {
 
   // Cache Keys
   CACHE_KEYS: {
+    // Legacy chrome.storage.local keys — retired (spec §4.1). Kept only so
+    // migrateLegacyStorage can find and remove any leftovers on upgrade.
     ORDER_COLLECTION: 'walmart_order_cache',
     INVOICE: 'walmart_invoice_cache',
+    // Live chrome.storage.session key backing in-progress collection
+    // progress (spec §4.1/§4.3) — cleared automatically when the browser
+    // closes; no manual TTL bookkeeping needed.
+    COLLECTION_SESSION: 'walmart_collection_session',
   },
 
   // URL Parameters
@@ -1933,7 +1936,6 @@ const CONSTANTS = {
     RETRY_DELAY: 400,
     RATING_DELAY: 500,
     HINT_DISMISS_DELAY: 5000,
-    CACHE_EXPIRATION: 24 * 60 * 60 * 1000, // 24 hours
     SUCCESS_DISPLAY_DURATION: 10000,       // How long to show success messages
     ERROR_DISPLAY_DURATION: 30000,         // How long to show error messages
     EXPORT_FAIL_DISPLAY: 5000,             // How long to show export failure messages
