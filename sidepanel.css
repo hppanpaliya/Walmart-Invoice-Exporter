@@ -1399,3 +1399,190 @@ summary:focus-visible,
    2.5.8's "equivalent" exception), so the effective click target already
    exceeds 24px without enlarging the checkbox itself. The back buttons
    (.back-button, 32x32) already clear the minimum. */
+
+/* ==========================================================================
+   Reusable components (sidepanel.components.js, spec §5.5)
+
+   Banner/StatusLine/ProgressBar/Dialog/Toast — small vanilla factories, no
+   framework. Banner replaces the bespoke off-tab-warning/extraction-warning/
+   filter-notice/cache-info/db-stats/rating-hint styles above (unified onto
+   this one class family as those call sites are refactored).
+   ========================================================================== */
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: 10px var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  margin-bottom: var(--space-3);
+}
+
+.banner:last-child {
+  margin-bottom: 0;
+}
+
+.banner-icon {
+  flex-shrink: 0;
+  display: flex;
+  margin-top: 1px;
+}
+
+.banner-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.banner-action {
+  margin-top: 4px;
+}
+
+/* Action links/buttons inherit the banner's own severity color (underlined
+   for links) rather than always being accent-blue — keeps a warning/danger
+   banner visually coherent instead of mixing in an unrelated blue link,
+   and sidesteps needing a separate accent-on-tinted-background contrast
+   pairing. */
+.banner a,
+.banner-action button {
+  color: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+.banner-dismiss {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  min-width: var(--space-6);
+  min-height: var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  opacity: 0.75;
+}
+
+.banner-dismiss:hover {
+  opacity: 1;
+  background: var(--hover-overlay);
+}
+
+.banner-info {
+  background: var(--accent-weak);
+  border-color: var(--accent-weak);
+  color: var(--text);
+}
+
+.banner-info .banner-icon {
+  color: var(--accent);
+}
+
+.banner-success {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+  color: var(--success-fg);
+}
+
+.banner-warning {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: var(--warning-fg);
+}
+
+.banner-danger {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger-fg);
+}
+
+/* StatusLine — a persistent aria-live region for progress/status text. */
+.status-line {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin: 6px 0;
+  padding: 6px;
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.status-line[hidden] {
+  display: none;
+}
+
+/* ProgressBar — determinate progress fill. */
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--border);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  transition: width 0.2s ease;
+}
+
+/* Dialog — focus-trapped modal (Esc closes, aria-modal="true"). Independent
+   of the legacy #confirmDialog markup (sidepanel.html), which a later phase
+   migrates onto this component; both are styled consistently in the
+   meantime. */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+}
+
+.dialog {
+  background: var(--surface-2);
+  border-radius: var(--radius-2xl);
+  max-width: 320px;
+  width: 100%;
+  box-shadow: var(--shadow-md);
+  padding: var(--space-5);
+}
+
+.dialog-title {
+  font-size: var(--font-size-lg);
+  color: var(--text);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.dialog-body {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: var(--space-4);
+}
+
+.dialog-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.dialog-actions .btn {
+  justify-content: center;
+}
