@@ -156,12 +156,11 @@
 
       await view.displayOrderNumbers(orderNumbers, titles);
 
-      const card = document.querySelector(".card");
-      if (card && !card.querySelector(".cache-info")) {
-        const info = document.createElement("div");
-        info.className = "cache-info";
-        info.textContent = `Loaded ${orderNumbers.length} orders from the local database`;
-        card.appendChild(info);
+      if (!document.getElementById("cacheInfo")) {
+        view.renderStatusBanner("cacheInfo", {
+          variant: "info",
+          message: `Loaded ${orderNumbers.length} orders from the local database`,
+        });
       }
       return true;
     } catch (error) {
