@@ -100,22 +100,62 @@
     }
   }
 
-  function createOffTabWarning(onReturn) {
-    const warningBanner = document.createElement("div");
-    warningBanner.id = "offTabWarning";
-    warningBanner.className = "off-tab-warning";
-    warningBanner.innerHTML = `
-      <div class="warning-content">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="8" x2="12" y2="12"></line>
-          <line x1="12" y1="16" x2="12.01" y2="16"></line>
-        </svg>
-        <span>Return to <a href="#" id="returnToWalmartLink">Walmart Orders</a> to continue</span>
-      </div>
-    `;
+  /**
+   * The consolidated status strip (spec §5.1): off-tab / filter /
+   * extraction warnings and the cache/db-stats/rating-hint notices all
+   * render into this one region (between the header and the card) instead
+   * of five different ad-hoc insertion points (body-first-child, inside
+   * .card before buttonGroup, appended to .card).
+   * @returns {HTMLElement|null}
+   */
+  function getStatusRegion() {
+    return document.getElementById("statusRegion");
+  }
 
-    const returnLink = warningBanner.querySelector("#returnToWalmartLink");
+  /**
+   * Create-or-replace a named Banner (spec §5.5) inside the status region,
+   * keyed by a stable id — mirrors how each notice already tracked its own
+   * single instance via document.getElementById before this refactor.
+   * Best-effort: a missing region must never break the panel.
+   * @param {string} id
+   * @param {Object} bannerOptions - passed through to Sidepanel.components.Banner
+   * @returns {HTMLElement|null} the rendered banner, or null if the status
+   *   region isn't present.
+   */
+  function renderStatusBanner(id, bannerOptions) {
+    const region = getStatusRegion();
+    if (!region) return null;
+    const banner = Sidepanel.components.Banner({ ...bannerOptions, id });
+    const existing = document.getElementById(id);
+    if (existing) {
+      existing.replaceWith(banner);
+    } else {
+      region.appendChild(banner);
+    }
+    return banner;
+  }
+
+  /** Remove a named status banner if present (no-op otherwise). */
+  function clearStatusBanner(id) {
+    const existing = document.getElementById(id);
+    if (existing) existing.remove();
+  }
+
+  /**
+   * A pure factory (no insertion) for the off-tab warning banner — kept
+   * separate from ensureOffTabWarning so callers can still build one
+   * without touching the DOM, matching this function's original contract.
+   * @param {Function} onReturn - Invoked when the "Walmart Orders" link is clicked.
+   * @returns {HTMLElement}
+   */
+  function createOffTabWarning(onReturn) {
+    const banner = Sidepanel.components.Banner({
+      variant: "warning",
+      message: `Return to <a href="#" id="returnToWalmartLink">Walmart Orders</a> to continue`,
+      id: "offTabWarning",
+    });
+
+    const returnLink = banner.querySelector("#returnToWalmartLink");
     if (returnLink) {
       returnLink.addEventListener("click", (e) => {
         e.preventDefault();
@@ -123,47 +163,28 @@
       });
     }
 
-    return warningBanner;
+    return banner;
   }
 
   function ensureOffTabWarning(onReturn) {
-    if (!document.getElementById("offTabWarning")) {
-      const warningBanner = createOffTabWarning(onReturn);
-      document.body.insertBefore(warningBanner, document.body.firstChild);
-    }
+    if (document.getElementById("offTabWarning")) return;
+    const region = getStatusRegion();
+    if (!region) return;
+    region.appendChild(createOffTabWarning(onReturn));
   }
 
   function clearOffTabWarning() {
-    const existingBanner = document.getElementById("offTabWarning");
-    if (existingBanner) existingBanner.remove();
+    clearStatusBanner("offTabWarning");
   }
 
   function showExtractionWarning() {
     if (document.getElementById("extractionWarning")) return;
 
-    const warningBanner = document.createElement("div");
-    warningBanner.id = "extractionWarning";
-    warningBanner.className = "extraction-warning";
-    warningBanner.innerHTML = `
-      <div class="warning-content">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="8" x2="12" y2="12"></line>
-          <line x1="12" y1="16" x2="12.01" y2="16"></line>
-        </svg>
-        <span>Walmart may have changed their website — some exported fields came back empty. Please <a href="${CONSTANTS.URLS.GITHUB_ISSUES}" target="_blank">report this</a> so we can fix it quickly.</span>
-        <button class="dismiss-warning" title="Dismiss" aria-label="Dismiss">
-          ${renderIcon("X_CLOSE")}
-        </button>
-      </div>
-    `;
-
-    const dismissButton = warningBanner.querySelector(".dismiss-warning");
-    if (dismissButton) {
-      dismissButton.addEventListener("click", () => warningBanner.remove());
-    }
-
-    document.body.insertBefore(warningBanner, document.body.firstChild);
+    renderStatusBanner("extractionWarning", {
+      variant: "warning",
+      message: `Walmart may have changed their website — some exported fields came back empty. Please <a href="${CONSTANTS.URLS.GITHUB_ISSUES}" target="_blank">report this</a> so we can fix it quickly.`,
+      dismissible: true,
+    });
   }
 
   /**
@@ -173,63 +194,40 @@
    * @param {string|null} url - Current orders-page URL, or null to clear
    */
   function updateFilterNotice(url) {
-    const existing = document.getElementById("filterNotice");
     const filters = url ? describeActiveFilters(url) : [];
 
     if (filters.length === 0) {
-      if (existing) existing.remove();
+      clearStatusBanner("filterNotice");
       return;
     }
 
-    let notice = existing;
-    if (!notice) {
-      notice = document.createElement("div");
-      notice.id = "filterNotice";
-      notice.className = "filter-notice";
-      const card = document.querySelector(".card");
-      const buttonGroup = document.getElementById("buttonGroup");
-      if (card && buttonGroup && buttonGroup.parentNode === card) {
-        card.insertBefore(notice, buttonGroup);
-      } else if (card) {
-        card.appendChild(notice);
-      }
-    }
-
-    notice.innerHTML = `
-      ${renderIcon("INFO_CIRCLE")}
-      <span>Filtered view — only matching orders will be collected (${escapeHtml(filters.join(", "))})</span>
-    `;
+    renderStatusBanner("filterNotice", {
+      variant: "info",
+      message: `Filtered view — only matching orders will be collected (${escapeHtml(filters.join(", "))})`,
+    });
   }
 
   /**
-   * Show (or refresh) the durable order-database stats line in the card.
-   * Best-effort: IndexedDB problems must never break the panel.
+   * Show (or refresh) the durable order-database stats line in the status
+   * region. Best-effort: IndexedDB problems must never break the panel.
    */
   async function updateDbStats() {
     try {
       const stats = await OrderDb.getStats();
-      let statsLine = document.getElementById("dbStats");
 
       if (stats.orders === 0) {
-        if (statsLine) statsLine.remove();
+        clearStatusBanner("dbStats");
         return;
       }
 
-      if (!statsLine) {
-        statsLine = document.createElement("div");
-        statsLine.id = "dbStats";
-        statsLine.className = "db-stats";
-        const card = document.querySelector(".card");
-        if (card) card.appendChild(statsLine);
-      }
+      const banner = renderStatusBanner("dbStats", {
+        variant: "info",
+        message: `Order database: ${stats.orders} orders stored (${stats.invoices} with full invoice)`,
+        actionHtml: `<button type="button" class="db-clear" title="Delete every stored order from the local database">clear</button>`,
+      });
+      if (!banner) return;
 
-      statsLine.innerHTML = `
-        ${renderIcon("CACHE")}
-        <span>Order database: ${stats.orders} orders stored (${stats.invoices} with full invoice)</span>
-        <button class="db-clear" title="Delete every stored order from the local database">clear</button>
-      `;
-
-      const clearButton = statsLine.querySelector(".db-clear");
+      const clearButton = banner.querySelector(".db-clear");
       if (clearButton) {
         clearButton.addEventListener("click", async () => {
           const confirmed = window.confirm(
@@ -479,39 +477,27 @@
         const dismissCount = localResult[CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT] || 0;
         if (dismissCount >= 7) return;
 
-        let ratingHint = document.getElementById("ratingHint");
-        if (!ratingHint) {
-          ratingHint = document.createElement("div");
-          ratingHint.id = "ratingHint";
-          ratingHint.className = "rating-hint";
-          ratingHint.innerHTML = `
-            <a href="${CONSTANTS.URLS.WALMART_REVIEWS}" target="_blank">
-              ${renderIcon("STAR")}
-              Find this helpful? Consider rating it
-            </a>
-            <button class="dismiss-hint" title="Don't show again" aria-label="Don't show again">
-              ${renderIcon("X_CLOSE")}
-            </button>
-          `;
+        if (document.getElementById("ratingHint")) return;
 
-          const downloadButton = document.getElementById("downloadButton");
-          if (downloadButton) {
-            downloadButton.insertAdjacentElement("afterend", ratingHint);
-          }
-
-          ratingHint.querySelector(".dismiss-hint").addEventListener("click", function () {
-            ratingHint.classList.remove("show");
-            chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISSED]: true });
-
-            chrome.storage.local.get([CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT], function (result) {
-              const newCount = (result[CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT] || 0) + 1;
-              chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT]: newCount });
-            });
-          });
-        }
-
+        // Same trigger/gating as before (20% chance, not dismissed, under
+        // the 7-dismiss cap) and the same delay before appearing — only the
+        // rendering (Banner instead of a bespoke .rating-hint fade-in) and
+        // its consolidated location (the status region, not "wherever the
+        // download button happens to be") changed.
         setTimeout(() => {
-          ratingHint.classList.add("show");
+          renderStatusBanner("ratingHint", {
+            variant: "info",
+            message: "Find this helpful? Consider rating it",
+            actionHtml: `<a href="${CONSTANTS.URLS.WALMART_REVIEWS}" target="_blank">Rate it</a>`,
+            dismissible: true,
+            onDismiss: () => {
+              chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISSED]: true });
+              chrome.storage.local.get([CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT], function (result) {
+                const newCount = (result[CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT] || 0) + 1;
+                chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT]: newCount });
+              });
+            },
+          });
         }, CONSTANTS.TIMING.RATING_DELAY);
       });
     });
@@ -562,6 +548,9 @@
     showConfirmDialog,
     hideConfirmDialog,
     applyLayout,
+    getStatusRegion,
+    renderStatusBanner,
+    clearStatusBanner,
     createOffTabWarning,
     ensureOffTabWarning,
     clearOffTabWarning,
