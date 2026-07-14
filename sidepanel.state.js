@@ -8,6 +8,7 @@
     exportFormat: CONSTANTS.EXPORT_FORMATS.XLSX,
     csvPreset: CONSTANTS.CSV_PRESETS.GENERIC,
     includeThumbnails: false,
+    legacyExcel: false,
     incrementalCollect: false,
     currentOrdersUrl: null,
   };

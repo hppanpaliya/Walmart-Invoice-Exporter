@@ -386,23 +386,6 @@ body {
   background: var(--danger-hover);
 }
 
-/* Historically a green "success" fill; the old #2ecc71-on-white button
-   failed WCAG contrast (~1.8:1). This is really the panel's primary call to
-   action (Download), so it now shares the accent treatment — class name
-   kept as btn-success for backward compatibility (markup/JS/tests still
-   reference it). */
-.btn-success {
-  background: var(--accent);
-  color: var(--on-accent);
-  width: 100%;
-  justify-content: center;
-  margin-top: var(--space-4);
-}
-
-.btn-success:hover {
-  background: var(--accent-hover);
-}
-
 .toggle-group {
   display: flex;
   align-items: center;
@@ -435,7 +418,9 @@ body {
   color: var(--danger);
 }
 
-/* Paired action buttons: Download + Quick Export side by side */
+/* Paired action buttons: Single file / Multiple files, side by side as an
+   equal, matched pair (spec §5.2 — replaces the old mutating Download
+   button + separate Quick Export button). */
 .action-row {
   display: flex;
   gap: var(--space-2);
@@ -450,6 +435,68 @@ body {
   padding: 9px 8px;
   font-size: var(--font-size-sm);
   white-space: nowrap;
+}
+
+/* Accent-tinted, not a loud solid fill — neither button "wins" over the
+   other (spec §5.2: "not two loud solid fills; accent-tinted"). */
+.btn-accent-pair {
+  background: var(--accent-weak);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.btn-accent-pair:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.btn-accent-pair:hover:not(:disabled) svg {
+  stroke: var(--on-accent);
+}
+
+/* Shared caption + disabled-reason hint directly below the button pair.
+   Static markup (sidepanel.html), outside #orderNumbersContainer, so a
+   collection-progress re-render never wipes it mid-download. */
+.action-caption {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  margin-top: var(--space-2);
+  text-align: center;
+}
+
+.action-hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  text-align: center;
+  margin-top: 2px;
+}
+
+.action-hint[hidden] {
+  display: none;
+}
+
+/* Determinate download progress: a StatusLine + ProgressBar pair plus a
+   Cancel control, shown only while a download is running (spec §5.2). */
+.download-progress-area {
+  margin-top: var(--space-3);
+}
+
+.download-progress-area[hidden] {
+  display: none;
+}
+
+.download-progress-area .status-line {
+  margin-top: 0;
+  margin-bottom: var(--space-2);
+}
+
+.download-progress-area .progress-bar {
+  margin-bottom: var(--space-2);
+}
+
+.download-cancel {
+  width: 100%;
+  justify-content: center;
 }
 
 /* Collapsible export options section */
@@ -571,15 +618,6 @@ body {
   background: var(--scrollbar-thumb-hover);
 }
 
-#downloadProgress {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  margin: var(--space-3) 0;
-  padding: var(--space-3);
-  background: var(--surface);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-}
 
 .loading-spinner {
   display: inline-block;

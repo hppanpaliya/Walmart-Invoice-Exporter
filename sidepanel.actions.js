@@ -195,13 +195,6 @@
     });
   }
 
-  function setQuickExportDisabled(disabled) {
-    const quickExportButton = document.getElementById("quickExportButton");
-    if (quickExportButton) {
-      quickExportButton.disabled = disabled;
-    }
-  }
-
   function updateProgress() {
     chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.GET_PROGRESS }, function (response) {
       if (!response) return;
@@ -210,18 +203,16 @@
         app.collectionInProgress = true;
         setCollectionButtonsState({ running: true });
         view.updateProgressUI(response.currentPage, response.pageLimit, true);
-        renderOrderList(response).then(() => {
-          // Quick Export mid-collection would export a partial snapshot.
-          setQuickExportDisabled(app.collectionInProgress);
-        });
+        // Checkboxes are disabled during collection (below), so the order
+        // list re-render always lands on 0 selected — updateDownloadButtonsState
+        // (called from within displayOrderNumbers) already reflects that.
+        renderOrderList(response);
         setTimeout(updateProgress, 1000);
         setCheckboxesDisabled(true);
       } else {
         app.collectionInProgress = false;
         view.updateProgressUI(response.currentPage, response.pageLimit, false);
-        renderOrderList(response).then(() => {
-          setQuickExportDisabled(false);
-        });
+        renderOrderList(response);
         setCollectionButtonsState({ running: false, startLabel: "Start Collection" });
         setCheckboxesDisabled(false);
       }

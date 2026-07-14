@@ -57,19 +57,13 @@ document.addEventListener("DOMContentLoaded", async function () {
   const progressElement = document.getElementById("progress");
   if (progressElement) progressElement.style.display = "none";
 
-  const exportModeSelect = document.getElementById("exportMode");
+  // No <select> anymore — the two download buttons themselves set the mode
+  // (spec §5.2). Still read the persisted value on init so a fresh
+  // "Retry failed" or any other pre-click read of app.exportMode has a
+  // sane default, and still written on every click for upgrade continuity.
   chrome.storage.local.get(["exportMode"], (res) => {
     app.exportMode = res.exportMode || CONSTANTS.EXPORT_MODES.MULTIPLE;
-    if (exportModeSelect) exportModeSelect.value = app.exportMode;
   });
-
-  if (exportModeSelect) {
-    exportModeSelect.addEventListener("change", () => {
-      app.exportMode = exportModeSelect.value;
-      chrome.storage.local.set({ exportMode: app.exportMode });
-      view.updateDownloadButtonLabel(app.exportMode);
-    });
-  }
 
   const exportFormatSelect = document.getElementById("exportFormat");
   const csvPresetGroup = document.getElementById("csvPresetGroup");
@@ -87,6 +81,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     app.exportFormat = res.exportFormat || CONSTANTS.EXPORT_FORMATS.XLSX;
     if (exportFormatSelect) exportFormatSelect.value = app.exportFormat;
     updateCsvPresetVisibility();
+    view.updateDownloadButtonLabels();
   });
 
   if (exportFormatSelect) {
@@ -94,6 +89,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       app.exportFormat = exportFormatSelect.value;
       chrome.storage.local.set({ exportFormat: app.exportFormat });
       updateCsvPresetVisibility();
+      view.updateDownloadButtonLabels();
     });
   }
 
@@ -220,6 +216,11 @@ document.addEventListener("DOMContentLoaded", async function () {
   }
 
   actions.checkCurrentTab();
+
+  // One-time tip (spec §7 risk table) telling returning users where Quick
+  // Export went — not gated on order count like the rating hint, since
+  // this is about orientation, not "you've used this enough to rate it".
+  view.maybeShowQuickExportRetiredTip();
 
   chrome.tabs.onActivated.addListener(actions.checkCurrentTab);
   chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, tab) {
