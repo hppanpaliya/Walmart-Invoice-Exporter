@@ -1,11 +1,240 @@
+/* ==========================================================================
+   Design tokens (spec §5.5 — docs/superpowers/specs/2026-07-14-panel-
+   redesign-and-storage-unification-design.md)
+
+   Semantic color roles + spacing/radius/type scale. Light values live on
+   :root; a dark set is defined twice — once under
+   `@media (prefers-color-scheme: dark)` (system preference) and once under
+   `:root[data-theme="dark"]` (manual override) — plus an explicit
+   `:root[data-theme="light"]` that forces light regardless of system
+   preference. A later Settings toggle stamps `data-theme` on <html>; today
+   sidepanel.js only reads a persisted preference and applies it (see
+   applyTheme in sidepanel.js) — system preference is respected until a user
+   makes an explicit choice.
+
+   Keep the three color blocks (:root, the @media block, and
+   :root[data-theme="dark"]) in sync — the @media block and the explicit
+   dark override must resolve to the same values.
+   ========================================================================== */
+
 :root {
-  --primary: #0071dc;
-  --danger: #e41e31;
-  --success: #2ecc71;
-  --background: #f8f9fa;
+  /* Spacing — 4px base scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-2xl: 12px;
+  --radius-pill: 999px;
+
+  /* Type scale — every size is >= 11px (WCAG readability floor) */
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-md: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+
+  /* Focus ring geometry (color is themed below) */
+  --focus-ring-width: 3px;
+
+  /* ---- Color roles — LIGHT (default) ---- */
+  --bg: #ffffff;
+  --surface: #f8f9fa;
+  --surface-2: #ffffff;
   --border: #e5e7eb;
+  --border-strong: #c7ccd1;
+
   --text: #1a1a1a;
-  --text-secondary: #666;
+  --text-secondary: #666666;
+  --text-muted: #707070;
+
+  --accent: #0071dc;
+  --accent-hover: #005bb0;
+  --accent-weak: #e6f2fd;
+  --on-accent: #ffffff; /* text/icon color placed ON TOP of an --accent fill */
+  --focus-ring: #0071dc;
+
+  --success-fg: #146c2e;
+  --success-bg: #eafbf0;
+  --success-border: #2f9457;
+
+  --danger-fg: #c4291f;
+  --danger-bg: #fdecea;
+  --danger-border: #cf5148;
+  --danger-hover: #a8231b;
+  --on-danger: #ffffff; /* text/icon color placed ON TOP of a --danger-fg fill */
+
+  --warning-fg: #856404;
+  --warning-bg: #fff3cd;
+  --warning-border: #b38104;
+
+  /* Deliberately theme-invariant "inverse" surface (toast, dark tooltip) —
+     these stay dark in both themes so they read as a fixed, always-visible
+     overlay regardless of the surrounding panel theme. */
+  --inverse-surface: #2b2f36;
+  --inverse-text: #f5f6f7;
+  --inverse-success: #34d399;
+
+  --overlay: rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.15);
+  --hover-overlay: rgba(0, 0, 0, 0.02);
+  --scrollbar-thumb: #cccccc;
+  --scrollbar-thumb-hover: #999999;
+
+  /* ---- Legacy aliases ----
+     Kept so existing `var(--x)` references already inlined in utils.js,
+     sidepanel.html, and sidepanel.view.js keep resolving correctly through
+     the theme-aware layer above, without having to touch every call site.
+     New code should prefer the semantic names above. */
+  --primary: var(--accent);
+  --danger: var(--danger-fg);
+  --success: var(--success-fg);
+  --background: var(--surface);
+}
+
+/* System dark mode — applies unless the user explicitly forced light via
+   data-theme="light" (the :not() below is what makes that override win). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14181d;
+    --surface: #1c2127;
+    --surface-2: #262c34;
+    --border: #333a44;
+    --border-strong: #4a5361;
+
+    --text: #eef1f4;
+    --text-secondary: #b6bfca;
+    --text-muted: #8b95a3;
+
+    --accent: #4da3ff;
+    --accent-hover: #7cbcff;
+    --accent-weak: #1c3352;
+    --on-accent: var(--bg);
+    --focus-ring: #6db2ff;
+
+    --success-fg: #5fd88a;
+    --success-bg: #153322;
+    --success-border: #348a5c;
+
+    --danger-fg: #ff8a80;
+    --danger-bg: #3a1917;
+    --danger-border: #b84e43;
+    --danger-hover: #ffab9f;
+    --on-danger: var(--bg);
+
+    --warning-fg: #f0c14b;
+    --warning-bg: #3a2f0f;
+    --warning-border: #b38c23;
+
+    --overlay: rgba(0, 0, 0, 0.6);
+    --hover-overlay: rgba(255, 255, 255, 0.05);
+    --scrollbar-thumb: #3a424d;
+    --scrollbar-thumb-hover: #4f5964;
+
+    --primary: var(--accent);
+    --danger: var(--danger-fg);
+    --success: var(--success-fg);
+    --background: var(--surface);
+  }
+}
+
+/* Manual override: a later Settings theme toggle stamps data-theme="dark"
+   on <html> to win over system preference in both directions. Values must
+   match the @media block above. */
+:root[data-theme="dark"] {
+  --bg: #14181d;
+  --surface: #1c2127;
+  --surface-2: #262c34;
+  --border: #333a44;
+  --border-strong: #4a5361;
+
+  --text: #eef1f4;
+  --text-secondary: #b6bfca;
+  --text-muted: #8b95a3;
+
+  --accent: #4da3ff;
+  --accent-hover: #7cbcff;
+  --accent-weak: #1c3352;
+  --on-accent: var(--bg);
+  --focus-ring: #6db2ff;
+
+  --success-fg: #5fd88a;
+  --success-bg: #153322;
+  --success-border: #348a5c;
+
+  --danger-fg: #ff8a80;
+  --danger-bg: #3a1917;
+  --danger-border: #b84e43;
+  --danger-hover: #ffab9f;
+  --on-danger: var(--bg);
+
+  --warning-fg: #f0c14b;
+  --warning-bg: #3a2f0f;
+  --warning-border: #b38c23;
+
+  --overlay: rgba(0, 0, 0, 0.6);
+  --hover-overlay: rgba(255, 255, 255, 0.05);
+  --scrollbar-thumb: #3a424d;
+  --scrollbar-thumb-hover: #4f5964;
+
+  --primary: var(--accent);
+  --danger: var(--danger-fg);
+  --success: var(--success-fg);
+  --background: var(--surface);
+}
+
+/* Manual override: force light even when the OS is in dark mode. Restates
+   the base :root light values explicitly so the intent is unambiguous and
+   this rule reliably wins over prefers-color-scheme. */
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --surface: #f8f9fa;
+  --surface-2: #ffffff;
+  --border: #e5e7eb;
+  --border-strong: #c7ccd1;
+
+  --text: #1a1a1a;
+  --text-secondary: #666666;
+  --text-muted: #707070;
+
+  --accent: #0071dc;
+  --accent-hover: #005bb0;
+  --accent-weak: #e6f2fd;
+  --on-accent: #ffffff;
+  --focus-ring: #0071dc;
+
+  --success-fg: #146c2e;
+  --success-bg: #eafbf0;
+  --success-border: #2f9457;
+
+  --danger-fg: #c4291f;
+  --danger-bg: #fdecea;
+  --danger-border: #cf5148;
+  --danger-hover: #a8231b;
+  --on-danger: #ffffff;
+
+  --warning-fg: #856404;
+  --warning-bg: #fff3cd;
+  --warning-border: #b38104;
+
+  --overlay: rgba(0, 0, 0, 0.5);
+  --hover-overlay: rgba(0, 0, 0, 0.02);
+  --scrollbar-thumb: #cccccc;
+  --scrollbar-thumb-hover: #999999;
+
+  --primary: var(--accent);
+  --danger: var(--danger-fg);
+  --success: var(--success-fg);
+  --background: var(--surface);
 }
 
 * {
@@ -18,34 +247,34 @@ body {
   width: 100%;
   min-width: 300px;
   max-width: 100%;
-  padding: 12px;
+  padding: var(--space-3);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   color: var(--text);
-  background: white;
+  background: var(--bg);
 }
 
 .header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
   flex-wrap: wrap;
 }
 
 .version-badge {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: var(--text-secondary);
-  background: var(--background);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 1px 6px;
   vertical-align: middle;
-  margin-left: 4px;
+  margin-left: var(--space-1);
 }
 
 .header h1 {
-  font-size: 16px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text);
   flex: 1;
@@ -53,12 +282,12 @@ body {
 }
 
 .card {
-  background: var(--background);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   padding: 14px;
-  margin-bottom: 12px;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  margin-bottom: var(--space-3);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Disabled card state - allows scrolling but disables interactive elements */
@@ -83,13 +312,13 @@ body {
 }
 
 .input-group {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .input-group label {
   display: block;
-  margin-bottom: 8px;
-  font-size: 12px;
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
 
@@ -97,38 +326,40 @@ body {
   width: 80px;
   padding: 6px;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 .input-group select {
   width: 100%;
   padding: 7px 8px;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 12px;
-  background: white;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  background: var(--surface-2);
+  color: var(--text);
   cursor: pointer;
 }
 
 .input-group input:focus,
 .input-group select:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(0, 113, 220, 0.1);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-weak);
 }
 
 .button-group {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .btn {
   padding: 8px 16px;
   border: none;
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -138,72 +369,77 @@ body {
 }
 
 .btn-primary {
-  background: var(--primary);
-  color: white;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .btn-primary:hover {
-  background: #005bb0;
+  background: var(--accent-hover);
 }
 
 .btn-danger {
   background: var(--danger);
-  color: white;
+  color: var(--on-danger);
 }
 
 .btn-danger:hover {
-  background: #c91829;
+  background: var(--danger-hover);
 }
 
+/* Historically a green "success" fill; the old #2ecc71-on-white button
+   failed WCAG contrast (~1.8:1). This is really the panel's primary call to
+   action (Download), so it now shares the accent treatment — class name
+   kept as btn-success for backward compatibility (markup/JS/tests still
+   reference it). */
 .btn-success {
-  background: var(--success);
-  color: white;
+  background: var(--accent);
+  color: var(--on-accent);
   width: 100%;
   justify-content: center;
-  margin-top: 16px;
+  margin-top: var(--space-4);
 }
 
 .btn-success:hover {
-  background: #27ae60;
+  background: var(--accent-hover);
 }
 
 .toggle-group {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .toggle-group label {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   cursor: pointer;
 }
 
 .dashboard-coverage {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
-  background: var(--background);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 7px 9px;
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
 }
 
 .db-stats {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
-  margin-top: 10px;
+  margin-top: var(--space-3);
 }
 
 .db-stats .db-clear {
   background: none;
   border: none;
   color: var(--danger);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   padding: 0;
   text-decoration: underline;
@@ -213,12 +449,12 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
-  background: var(--background);
-  border-radius: 6px;
+  background: var(--surface);
+  border-radius: var(--radius-md);
   padding: 6px 8px;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 
 .filter-notice svg {
@@ -229,8 +465,8 @@ body {
 /* Paired action buttons: Download + Quick Export side by side */
 .action-row {
   display: flex;
-  gap: 8px;
-  margin-top: 16px;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
 }
 
 .action-row .btn {
@@ -239,20 +475,20 @@ body {
   margin-top: 0;
   justify-content: center;
   padding: 9px 8px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   white-space: nowrap;
 }
 
 /* Collapsible export options section */
 .options-group {
   border-top: 1px solid var(--border);
-  margin: 4px 0 12px;
-  padding-top: 8px;
+  margin: var(--space-1) 0 var(--space-3);
+  padding-top: var(--space-2);
 }
 
 .options-group summary {
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-secondary);
   padding: 4px 0;
@@ -261,16 +497,16 @@ body {
 }
 
 .options-group summary:hover {
-  color: var(--primary);
+  color: var(--accent);
 }
 
 .options-group[open] summary {
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
 }
 
 .options-group .input-group:last-of-type,
 .options-group .toggle-group:last-of-type {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .btn:disabled {
@@ -279,12 +515,12 @@ body {
 }
 
 #progress {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   margin: 6px 0;
   padding: 6px;
-  background: var(--background);
-  border-radius: 6px;
+  background: var(--surface);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
 }
 
@@ -292,7 +528,7 @@ body {
   padding: 8px 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .checkbox-container input[type="checkbox"] {
@@ -302,7 +538,7 @@ body {
 }
 
 .checkbox-container label {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
 }
 
@@ -313,8 +549,8 @@ body {
 }
 
 #orderNumbersContainer h3 {
-  font-size: 14px;
-  margin-bottom: 8px;
+  font-size: var(--font-size-base);
+  margin-bottom: var(--space-2);
   color: var(--text);
 }
 
@@ -322,21 +558,21 @@ body {
 .order-list {
   max-height: 300px;
   overflow-y: auto;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
   padding: 2px 4px 2px 2px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: white;
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
 }
 
 .order-list .checkbox-container {
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   transition: background 0.12s ease;
 }
 
 .order-list .checkbox-container:hover {
-  background: var(--background);
+  background: var(--surface);
 }
 
 /* Custom scrollbar */
@@ -347,28 +583,28 @@ body {
 
 .order-list::-webkit-scrollbar-track,
 #orderNumbersContainer::-webkit-scrollbar-track {
-  background: var(--background);
-  border-radius: 4px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
 }
 
 .order-list::-webkit-scrollbar-thumb,
 #orderNumbersContainer::-webkit-scrollbar-thumb {
-  background: #ccc;
-  border-radius: 4px;
+  background: var(--scrollbar-thumb);
+  border-radius: var(--radius-sm);
 }
 
 .order-list::-webkit-scrollbar-thumb:hover,
 #orderNumbersContainer::-webkit-scrollbar-thumb:hover {
-  background: #999;
+  background: var(--scrollbar-thumb-hover);
 }
 
 #downloadProgress {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  margin: 12px 0;
-  padding: 12px;
-  background: var(--background);
-  border-radius: 6px;
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  background: var(--surface);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
 }
 
@@ -376,7 +612,12 @@ body {
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid #ffffff;
+  /* currentColor so the spinner always matches whatever text color its
+     container already uses (e.g. --on-accent inside a filled button, which
+     differs between light/dark) — callers that want a specific spinner
+     color (progress panel, message builders) set an inline border-color
+     override, which still wins over this. */
+  border: 2px solid currentColor;
   border-radius: 50%;
   border-top-color: transparent;
   animation: spin 0.8s linear infinite;
@@ -388,16 +629,38 @@ body {
   }
 }
 
+/* Motion-sensitive users: kill the spin animation and shorten/neutralize
+   every other decorative transition in the panel (spec §5.5 a11y). No JS
+   depends on transition/animation completion (no transitionend listeners
+   in this codebase), so this is purely visual. */
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner {
+    animation: none;
+    /* A static ring still communicates "busy" without motion. */
+    border-top-color: currentColor;
+    opacity: 0.6;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 .faq-button {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 12px;
-  background-color: var(--background);
+  padding: 8px var(--space-3);
+  background-color: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   text-decoration: none;
   transition: all 0.2s ease;
@@ -407,13 +670,13 @@ body {
 }
 
 .faq-button:hover {
-  background-color: var(--primary);
-  border-color: var(--primary);
-  color: white;
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 
 .faq-button:hover svg {
-  stroke: white;
+  stroke: var(--on-accent);
 }
 
 .faq-button svg {
@@ -422,22 +685,22 @@ body {
 }
 
 .btn-clear {
-  background: var(--background);
+  background: var(--surface);
   color: var(--text-secondary);
   border: 1px solid var(--border);
 }
 
 .btn-clear:hover {
-  background: #e5e7eb;
+  background: var(--border);
 }
 
 .cache-info {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
-  margin-top: 4px;
+  margin-top: var(--space-1);
   padding: 4px 8px;
-  background: #f0f9ff;
-  border-radius: 4px;
+  background: var(--accent-weak);
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -450,17 +713,17 @@ body {
 .cache-time {
   font-style: italic;
   margin-top: 2px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
 }
 
 .rating-hint {
   position: relative;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
-  margin-top: 8px;
+  margin-top: var(--space-2);
   padding: 6px 8px;
-  background: #f0f9ff;
-  border-radius: 4px;
+  background: var(--accent-weak);
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -477,7 +740,7 @@ body {
 }
 
 .rating-hint a {
-  color: var(--primary);
+  color: var(--accent);
   text-decoration: none;
   display: inline-flex;
   align-items: center;
@@ -494,15 +757,20 @@ body {
   color: var(--text-secondary);
   cursor: pointer;
   padding: 0;
-  width: 16px;
-  height: 16px;
+  min-width: var(--space-6);
+  min-height: var(--space-6);
+  width: var(--space-6);
+  height: var(--space-6);
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
 }
 
 .dismiss-hint:hover {
   color: var(--text);
+  background: var(--hover-overlay);
 }
 
 .order-label {
@@ -511,18 +779,18 @@ body {
 }
 
 .info-icon {
-  color: var(--primary);
-  font-size: 10px;
+  color: var(--accent);
+  font-size: var(--font-size-xs);
   margin-left: 4px;
 }
 
 .order-tooltip {
   visibility: hidden;
-  background-color: #333;
-  color: white;
+  background-color: var(--inverse-surface);
+  color: var(--inverse-text);
   text-align: center;
   padding: 5px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   position: absolute;
   z-index: 1;
   top: 150%;
@@ -531,7 +799,7 @@ body {
   opacity: 0;
   transition: opacity 0.3s;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   max-width: 280px;
   word-wrap: break-word;
   pointer-events: none;
@@ -545,7 +813,7 @@ body {
   margin-left: -5px;
   border-width: 5px;
   border-style: solid;
-  border-color: transparent transparent #333 transparent;
+  border-color: transparent transparent var(--inverse-surface) transparent;
 }
 
 .order-label:hover .order-tooltip {
@@ -555,87 +823,91 @@ body {
 
 /* Off-tab warning banner */
 .off-tab-warning {
-  background: #fff3cd;
-  border: 1px solid #ffc107;
-  border-radius: 6px;
-  padding: 10px 12px;
-  margin-bottom: 12px;
-  font-size: 12px;
-  color: #856404;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  padding: 10px var(--space-3);
+  margin-bottom: var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--warning-fg);
 }
 
 .off-tab-warning .warning-content {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .off-tab-warning svg {
   flex-shrink: 0;
-  stroke: #856404;
+  stroke: var(--warning-fg);
 }
 
 .off-tab-warning a {
-  color: var(--primary);
+  color: var(--accent);
   font-weight: 500;
   text-decoration: underline;
   cursor: pointer;
 }
 
 .off-tab-warning a:hover {
-  color: #005bb0;
+  color: var(--accent-hover);
 }
 
 /* Extraction warning banner (possible Walmart site change) */
 .extraction-warning {
-  background: #fff3cd;
-  border: 1px solid #ffc107;
-  border-radius: 6px;
-  padding: 10px 12px;
-  margin-bottom: 12px;
-  font-size: 12px;
-  color: #856404;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  padding: 10px var(--space-3);
+  margin-bottom: var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--warning-fg);
 }
 
 .extraction-warning .warning-content {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .extraction-warning svg {
   flex-shrink: 0;
-  stroke: #856404;
+  stroke: var(--warning-fg);
 }
 
 .extraction-warning a {
-  color: var(--primary);
+  color: var(--accent);
   font-weight: 500;
   text-decoration: underline;
   cursor: pointer;
 }
 
 .extraction-warning a:hover {
-  color: #005bb0;
+  color: var(--accent-hover);
 }
 
 .extraction-warning .dismiss-warning {
   background: transparent;
   border: none;
-  color: #856404;
+  color: var(--warning-fg);
   cursor: pointer;
   padding: 0;
-  width: 16px;
-  height: 16px;
+  min-width: var(--space-6);
+  min-height: var(--space-6);
+  width: var(--space-6);
+  height: var(--space-6);
   margin-left: auto;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
 
 .extraction-warning .dismiss-warning:hover {
   color: var(--text);
+  background: var(--hover-overlay);
 }
 
 /* View switching */
@@ -655,56 +927,56 @@ body {
   width: 32px;
   height: 32px;
   padding: 0;
-  background: var(--background);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
 .back-button:hover {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: white;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 
 .back-button:hover svg {
-  stroke: white;
+  stroke: var(--on-accent);
 }
 
 /* FAQ Section Styles */
 .faq-section {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .faq-item {
-  background: var(--background);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  margin-bottom: 12px;
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-3);
   overflow: hidden;
 }
 
 .faq-question {
-  padding: 12px;
+  padding: var(--space-3);
   font-weight: 500;
-  font-size: 13px;
+  font-size: var(--font-size-md);
   cursor: pointer;
   display: flex;
   justify-content: space-between;
   align-items: center;
   user-select: none;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .faq-question:hover {
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--hover-overlay);
 }
 
 .faq-answer {
-  padding: 0 12px;
-  font-size: 12px;
+  padding: 0 var(--space-3);
+  font-size: var(--font-size-sm);
   max-height: 0;
   overflow: hidden;
   transition: max-height 0.3s ease-out, padding 0.3s ease-out;
@@ -712,18 +984,18 @@ body {
 }
 
 .faq-answer.active {
-  padding: 12px;
+  padding: var(--space-3);
   max-height: 600px;
   border-top: 1px solid var(--border);
 }
 
 .faq-answer p {
-  margin: 0 0 8px 0;
+  margin: 0 0 var(--space-2) 0;
 }
 
 .faq-answer ol,
 .faq-answer ul {
-  margin: 8px 0;
+  margin: var(--space-2) 0;
   padding-left: 20px;
 }
 
@@ -732,7 +1004,7 @@ body {
 }
 
 .faq-answer a {
-  color: var(--primary);
+  color: var(--accent);
   text-decoration: none;
 }
 
@@ -741,27 +1013,27 @@ body {
 }
 
 .faq-answer .note {
-  background: #fff3cd;
-  border: 1px solid #ffeeba;
-  color: #856404;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  color: var(--warning-fg);
   padding: 8px 10px;
-  border-radius: 4px;
-  margin: 12px 0;
-  font-size: 11px;
+  border-radius: var(--radius-sm);
+  margin: var(--space-3) 0;
+  font-size: var(--font-size-xs);
 }
 
 .faq-answer code.copy-link {
-  background: #e9ecef;
+  background: var(--border);
   padding: 2px 6px;
   border-radius: 3px;
   font-family: monospace;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   transition: background 0.2s;
 }
 
 .faq-answer code.copy-link:hover {
-  background: #dee2e6;
+  background: var(--border-strong);
 }
 
 .arrow {
@@ -774,8 +1046,8 @@ body {
 }
 
 .rating-section {
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
 
@@ -787,11 +1059,11 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay);
   z-index: 1000;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: var(--space-5);
 }
 
 .confirm-dialog-overlay.active {
@@ -799,38 +1071,38 @@ body {
 }
 
 .confirm-dialog {
-  background: white;
-  border-radius: 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-2xl);
   max-width: 320px;
   width: 100%;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-md);
 }
 
 .confirm-dialog-content {
-  padding: 20px;
+  padding: var(--space-5);
   text-align: center;
 }
 
 .confirm-dialog-content svg {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 
 .confirm-dialog-content h3 {
-  margin: 0 0 8px 0;
-  font-size: 16px;
+  margin: 0 0 var(--space-2) 0;
+  font-size: var(--font-size-lg);
   color: var(--text);
 }
 
 .confirm-dialog-content p {
-  margin: 0 0 16px 0;
-  font-size: 12px;
+  margin: 0 0 var(--space-4) 0;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   line-height: 1.5;
 }
 
 .confirm-dialog-buttons {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: center;
 }
 
@@ -839,24 +1111,26 @@ body {
   justify-content: center;
 }
 
-/* Toast notification */
+/* Toast notification — deliberately theme-invariant (see --inverse-* tokens
+   above): a transient confirmation should stay legible regardless of the
+   panel's current theme. */
 .toast {
   position: fixed;
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: #333;
-  color: white;
-  padding: 10px 16px;
-  border-radius: 6px;
-  font-size: 12px;
+  background: var(--inverse-surface);
+  color: var(--inverse-text);
+  padding: 10px var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.3s, visibility 0.3s;
   z-index: 1001;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .toast.show {
@@ -865,14 +1139,14 @@ body {
 }
 
 .toast svg {
-  stroke: var(--success);
+  stroke: var(--inverse-success);
 }
 
 /* Footer styles */
 .footer {
   margin-top: 40px;
-  padding-top: 20px;
-  font-size: 14px;
+  padding-top: var(--space-5);
+  font-size: var(--font-size-base);
   border-top: 1px solid var(--border);
   text-align: center;
 }
@@ -883,72 +1157,72 @@ body {
 }
 
 .footer-title {
-  font-size: 16px;
-  margin-bottom: 12px;
+  font-size: var(--font-size-lg);
+  margin-bottom: var(--space-3);
   color: var(--text);
 }
 
 .footer-description {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
 }
 
 .rating-button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background-color: var(--primary);
-  color: white;
+  gap: var(--space-2);
+  padding: 10px var(--space-4);
+  background-color: var(--accent);
+  color: var(--on-accent);
   text-decoration: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-weight: 500;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
   transition: background-color 0.2s ease;
-  font-size: 13px;
+  font-size: var(--font-size-md);
 }
 
 .rating-button:hover {
-  background-color: #005bb0;
+  background-color: var(--accent-hover);
 }
 
 .rating-button svg {
-  stroke: white;
+  stroke: var(--on-accent);
 }
 
 .footer-note {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  margin-top: 16px;
+  margin-top: var(--space-4);
   line-height: 1.5;
 }
 
 .heart {
-  color: #e41e31;
+  color: var(--danger);
 }
 
 /* Collection placeholder styles */
 #collectionPlaceholder {
-  margin-top: 12px;
+  margin-top: var(--space-3);
 }
 
 #collectionPlaceholder .placeholder-status {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  background: var(--background);
-  border-radius: 6px;
+  margin-bottom: var(--space-3);
+  padding: 8px var(--space-3);
+  background: var(--surface);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
 }
 
 #collectionPlaceholder h3 {
-  font-size: 13px;
+  font-size: var(--font-size-md);
   font-weight: 500;
   color: var(--text);
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 #collectionPlaceholder .placeholder-list {
@@ -956,15 +1230,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--background);
+  background: var(--surface);
   border: 1px dashed var(--border);
-  border-radius: 6px;
-  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
 }
 
 #collectionPlaceholder .no-orders-message {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-md);
   font-style: italic;
 }
 
@@ -974,60 +1248,60 @@ body {
 
 /* Main footer in main view */
 .main-footer {
-  margin-top: 24px;
+  margin-top: var(--space-6);
 }
 
 /* Spending dashboard */
 .header .faq-button + .faq-button {
-  margin-left: 8px;
+  margin-left: var(--space-2);
 }
 
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 
 .stat-card {
-  background: var(--background);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  padding: 10px var(--space-3);
 }
 
 .stat-card .stat-value {
-  font-size: 16px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
-  color: var(--primary);
+  color: var(--accent);
 }
 
 .stat-card .stat-label {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   margin-top: 2px;
 }
 
 .stat-card .stat-note {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   margin-top: 2px;
 }
 
 .dashboard-section {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .dashboard-section-title {
-  font-size: 13px;
-  margin-bottom: 8px;
+  font-size: var(--font-size-md);
+  margin-bottom: var(--space-2);
 }
 
 .bar-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
   margin-bottom: 4px;
 }
 
@@ -1039,15 +1313,15 @@ body {
 
 .bar-row .bar-track {
   flex: 1;
-  background: var(--background);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
 .bar-row .bar-fill {
   height: 14px;
-  background: var(--primary);
+  background: var(--accent);
   border-radius: 3px;
 }
 
@@ -1059,14 +1333,14 @@ body {
 
 .dashboard-list {
   list-style: none;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .dashboard-list li {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 4px 0;
   border-bottom: 1px solid var(--border);
 }
@@ -1080,11 +1354,11 @@ body {
 .dashboard-muted {
   color: var(--text-secondary);
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .dashboard-hint {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   margin-top: 6px;
 }
@@ -1092,6 +1366,36 @@ body {
 .dashboard-empty {
   text-align: center;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-md);
   padding: 32px 0;
 }
+
+/* ==========================================================================
+   Accessibility foundation (spec §5.5)
+   ========================================================================== */
+
+/* :focus-visible ring — keyboard-only, tokenized, >= 3px, high contrast
+   (every --focus-ring value above is verified >= 3:1 against both --bg and
+   --surface in light and dark). Plain mouse :focus is left alone by design
+   (browsers already suppress :focus-visible for pointer interactions), so
+   clicking a button doesn't show a ring but Tab-ing to it does. */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Minimum interactive target size (>= 24px): .dismiss-hint and
+   .extraction-warning .dismiss-warning are sized via --space-6 (24px) at
+   their own rules above — the icon-only X-close buttons had no adjacent
+   larger target and previously rendered at 16x16. Checkboxes are exempt:
+   each has an adjacent <label for="..."> covering the full row (WCAG
+   2.5.8's "equivalent" exception), so the effective click target already
+   exceeds 24px without enlarging the checkbox itself. The back buttons
+   (.back-button, 32x32) already clear the minimum. */
