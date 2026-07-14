@@ -257,35 +257,35 @@
     return true;
   }
 
-  function showTimedProgressMessage(progressDiv, messageHtml, durationMs) {
-    if (!progressDiv) return;
-    progressDiv.innerHTML = messageHtml;
-    setTimeout(() => {
-      if (progressDiv.parentNode) {
-        progressDiv.remove();
-      }
-    }, durationMs);
-  }
-
-  async function runDownloadQueue({ selectedOrders, progressDiv, actionText, options, onOrder, errorPrefix }) {
+  /**
+   * Run the fetch/export pipeline over each selected order in order,
+   * reporting determinate progress via the given callback instead of
+   * writing into an ad hoc div (spec §5.2: "Progress via a persistent
+   * ProgressBar + StatusLine, not injected timed divs"). Cancellation
+   * (spec §5.2 "Cancel") is cooperative: something outside this loop sets
+   * app.downloadInProgress = false (the Cancel button, or the existing
+   * operation-in-progress nav guard), and the loop notices before its next
+   * iteration.
+   * @param {Object} params
+   * @param {string[]} params.selectedOrders
+   * @param {string} params.actionText
+   * @param {Object} params.options
+   * @param {Function} params.onOrder - async (orderNumber, options) => data
+   * @param {string} params.errorPrefix
+   * @param {Function} [params.onProgress] - (current, total, orderNumber, actionText) => void
+   * @returns {Promise<{failedOrders: string[], cancelled: boolean}>}
+   */
+  async function runDownloadQueue({ selectedOrders, actionText, options, onOrder, errorPrefix, onProgress }) {
     const failedOrders = [];
 
     for (let i = 0; i < selectedOrders.length; i++) {
       if (!app || !app.downloadInProgress) {
-        if (progressDiv && progressDiv.parentNode) {
-          progressDiv.remove();
-        }
         return { failedOrders, cancelled: true };
       }
 
       const orderNumber = selectedOrders[i];
-      if (progressDiv) {
-        progressDiv.innerHTML = createProgressMessage(
-          i + 1,
-          selectedOrders.length,
-          actionText,
-          orderNumber
-        );
+      if (onProgress) {
+        onProgress(i + 1, selectedOrders.length, orderNumber, actionText);
       }
 
       try {
@@ -314,6 +314,32 @@
   /** Whether the user opted in to thumbnail embedding (Excel only, default off). */
   function shouldIncludeThumbnails() {
     return Boolean(app && app.includeThumbnails);
+  }
+
+  /**
+   * Whether Excel exports should route through the legacy pre-6.18
+   * single-sheet writers (spec §5.3). Additive opt-in, default off — the
+   * current Orders+Items writer stays the untouched default. Only Excel is
+   * affected; every other format ignores this flag entirely.
+   */
+  function shouldUseLegacyExcel() {
+    return Boolean(app && app.legacyExcel);
+  }
+
+  /** Human-readable format name for result banners, e.g. "Exported 12 orders (Excel)". */
+  function formatDisplayName(format) {
+    switch (format) {
+      case CONSTANTS.EXPORT_FORMATS.CSV:
+        return "CSV";
+      case CONSTANTS.EXPORT_FORMATS.JSON:
+        return "JSON";
+      case CONSTANTS.EXPORT_FORMATS.RECEIPT:
+        return "Printable receipt";
+      case CONSTANTS.EXPORT_FORMATS.PDF:
+        return "PDF";
+      default:
+        return "Excel";
+    }
   }
 
   /** Export all collected orders combined, honoring the selected format. */
@@ -345,7 +371,8 @@
       convertOrdersToReceiptPdf(collectedOrdersData, `${baseName}_Receipts.pdf`);
       return;
     }
-    await convertMultipleOrdersToXlsx(collectedOrdersData, ExcelJS, `${baseName}.xlsx`, {
+    const xlsxWriter = shouldUseLegacyExcel() ? convertMultipleOrdersToXlsxLegacy : convertMultipleOrdersToXlsx;
+    await xlsxWriter(collectedOrdersData, ExcelJS, `${baseName}.xlsx`, {
       includeThumbnails: shouldIncludeThumbnails(),
     });
   }
@@ -379,217 +406,112 @@
       convertOrdersToReceiptPdf(data, `Order_${orderNumber}_Receipt.pdf`);
       return;
     }
-    await convertToXlsx(data, ExcelJS, { mode: "single", includeThumbnails: shouldIncludeThumbnails() });
+    const xlsxWriter = shouldUseLegacyExcel() ? convertToXlsxLegacy : convertToXlsx;
+    await xlsxWriter(data, ExcelJS, { mode: "single", includeThumbnails: shouldIncludeThumbnails() });
   }
 
   /**
-   * Fetch the background collection snapshot (order numbers, titles, summaries).
-   * @returns {Promise<Object>} GET_PROGRESS response from the service worker
+   * Render the download result as an in-panel Banner (spec §5.2): success
+   * auto-dismisses; partial/full failure gets a "Retry failed" action that
+   * re-runs the pipeline scoped to just the failed orders. Reuses the one
+   * "downloadResultBanner" id so a fresh result replaces any stale one.
+   * @param {Object} params
+   * @param {'success'|'danger'|'info'} params.variant
+   * @param {string} params.message - Pre-escaped/safe HTML.
+   * @param {string[]} [params.retryOrders] - When non-empty, adds "Retry failed".
    */
-  function getCollectionSnapshot() {
-    return chromeCallbackPromise((callback) =>
-      chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.GET_PROGRESS }, callback)
-    );
+  function showDownloadResultBanner({ variant, message, retryOrders }) {
+    const hasRetry = Array.isArray(retryOrders) && retryOrders.length > 0;
+    const banner = view.renderStatusBanner("downloadResultBanner", {
+      variant,
+      message,
+      dismissible: true,
+      actionHtml: hasRetry ? '<button type="button" class="retry-failed-btn">Retry failed</button>' : "",
+    });
+    if (!banner) return;
+
+    if (hasRetry) {
+      const retryButton = banner.querySelector(".retry-failed-btn");
+      if (retryButton) {
+        retryButton.addEventListener("click", () => {
+          view.clearStatusBanner("downloadResultBanner");
+          downloadSelectedOrders(app && app.exportMode, retryOrders);
+        });
+      }
+    }
+
+    if (variant === "success") {
+      setTimeout(() => view.clearStatusBanner("downloadResultBanner"), CONSTANTS.TIMING.SUCCESS_DISPLAY_DURATION);
+    }
   }
 
   /**
-   * Format an ISO order date for humans (e.g. "Jul 9, 2026").
-   * Falls back to the raw value when it does not parse as a date.
-   * @param {string} isoDate - ISO 8601 date string from the payload
-   * @returns {string}
+   * The two-button download pipeline (spec §5.2). Per selected order:
+   * IndexedDB invoice → else fetch (unchanged dual-extraction) → persist →
+   * export — either combined into one file ("single") or one file per
+   * order ("multiple"). Also powers "Retry failed" by accepting an
+   * explicit order list instead of reading the checkboxes.
+   * @param {string} [mode] - CONSTANTS.EXPORT_MODES.SINGLE|MULTIPLE. When
+   *   given, becomes the newly-persisted app.exportMode — clicking a
+   *   button sets the mode, then runs this same pipeline (spec §5.2).
+   * @param {string[]} [orderNumbersOverride] - Explicit orders to run
+   *   (used by "Retry failed"); defaults to the checked checkboxes.
    */
-  function formatSummaryDate(isoDate) {
-    if (!isoDate) return "";
-    // Date-only strings parse as UTC midnight and would render a day early
-    // in US timezones — construct those as local dates instead.
-    const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate).trim());
-    const parsed = dateOnlyMatch
-      ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
-      : new Date(isoDate);
-    if (isNaN(parsed.getTime())) return String(isoDate);
-    return parsed.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-  }
-
-  /**
-   * Quick Export: INSTANTLY re-exports the selected orders that have already
-   * been downloaded (trusted stored invoices) in exactly the same format and
-   * layout as Download Selected — no pages opened, nothing synthesized.
-   * Orders that were never downloaded are skipped and reported, never
-   * fabricated from partial data.
-   */
-  async function quickExportSummaries() {
-    if (app && app.downloadInProgress) {
-      showGuardBanner("Downloads are already in progress. Please wait.");
-      return;
-    }
-    if (app && app.collectionInProgress) {
-      alert("Collection is still running. Wait for it to finish so the summary is complete.");
-      return;
-    }
-
-    // Same contract as Download: operate on the SELECTED orders only.
-    const selectedOrders = getSelectedOrderNumbers();
-    if (selectedOrders.length === 0) {
-      showGuardBanner("Please select at least one order to quick export.");
-      return;
-    }
-
-    const quickExportButton = document.getElementById("quickExportButton");
-    view.setButtonLoading(quickExportButton, true);
-    const progressDiv = createDownloadProgressElement();
-    if (app) {
-      app.downloadInProgress = true;
-    }
-
-    try {
-      const response = await getCollectionSnapshot();
-      let orderNumbers = (response && response.orderNumbers) || [];
-      let orderSummaries = (response && response.orderSummaries) || {};
-      let additionalFields = (response && response.additionalFields) || {};
-
-      if (orderNumbers.length === 0) {
-        // No live/session collection data (e.g. a fresh browser session
-        // with nothing collected yet this run) — fall back to the durable DB.
-        try {
-          const records = await OrderDb.getAllOrders();
-          const withSummaries = records.filter((record) => record.summary);
-          if (withSummaries.length > 0) {
-            withSummaries.sort((a, b) => String(b.orderDate).localeCompare(String(a.orderDate)));
-            orderNumbers = withSummaries.map((record) => record.orderNumber);
-            orderSummaries = Object.fromEntries(
-              withSummaries.map((record) => [record.orderNumber, record.summary])
-            );
-            additionalFields = Object.fromEntries(
-              withSummaries.map((record) => [record.orderNumber, record.title || ""])
-            );
-          }
-        } catch (error) {
-          console.warn("Order DB unavailable for Quick Export fallback:", error);
-        }
-      }
-
-      // Strictly the selected orders — nothing else ever exports.
-      const selectedSet = new Set(selectedOrders);
-      orderNumbers = orderNumbers.filter((orderNumber) => selectedSet.has(orderNumber));
-
-      if (orderNumbers.length === 0) {
-        showTimedProgressMessage(
-          progressDiv,
-          createErrorMessage("No data found for the selected orders. Run Start Collection first."),
-          CONSTANTS.TIMING.EXPORT_FAIL_DISPLAY
-        );
-        return;
-      }
-
-      // Quick Export only exports TRUSTED stored invoices — it never
-      // synthesizes rows from partial list data (that produced garbage).
-      const ordersData = [];
-      let skippedCount = 0;
-      try {
-        for (const orderNumber of orderNumbers) {
-          const record = await OrderDb.getOrder(orderNumber);
-          // Pre-v3 stored invoices carry the doubled-items bug — treat those
-          // orders as not-yet-downloaded rather than exporting corrupt data.
-          if (record?.invoice && Number(record.invoice.schemaVersion || 0) >= CONSTANTS.ORDER_SCHEMA_VERSION) {
-            ordersData.push({ ...record.invoice, dataSource: "invoice" });
-          } else {
-            skippedCount++;
-          }
-        }
-      } catch (error) {
-        console.warn("Order DB unavailable for Quick Export:", error);
-      }
-
-      if (ordersData.length === 0) {
-        showTimedProgressMessage(
-          progressDiv,
-          createErrorMessage(
-            "None of the selected orders have been downloaded yet. Quick Export instantly re-exports downloaded orders — run \"Download Selected\" on them once first."
-          ),
-          CONSTANTS.TIMING.ERROR_DISPLAY_DURATION
-        );
-        return;
-      }
-
-      // Same layout AND same export-mode semantics as Download Selected.
-      if (app && app.exportMode === CONSTANTS.EXPORT_MODES.MULTIPLE) {
-        for (let i = 0; i < ordersData.length; i++) {
-          progressDiv.innerHTML = createProgressMessage(
-            i + 1,
-            ordersData.length,
-            "Quick exporting order",
-            ordersData[i].orderNumber
-          );
-          await exportOneOrder(ordersData[i]);
-          await delay(CONSTANTS.TIMING.RETRY_DELAY);
-        }
-      } else {
-        await exportCombinedOrders(ordersData, "Walmart_Orders_Quick");
-      }
-
-      if (skippedCount > 0) {
-        showTimedProgressMessage(
-          progressDiv,
-          createWarningMessage(
-            `Exported ${ordersData.length} downloaded orders.\nSkipped ${skippedCount} selected orders that haven't been downloaded yet — run "Download Selected" on them once, then Quick Export includes them instantly.`
-          ),
-          CONSTANTS.TIMING.ERROR_DISPLAY_DURATION
-        );
-      } else {
-        showTimedProgressMessage(
-          progressDiv,
-          createSuccessMessage(CONSTANTS.TEXT.QUICK_EXPORT_SUCCESS),
-          CONSTANTS.TIMING.SUCCESS_DISPLAY_DURATION
-        );
-      }
-      view.maybeShowRatingHint();
-    } catch (error) {
-      console.error("Quick Export failed:", error);
-      showTimedProgressMessage(
-        progressDiv,
-        createErrorMessage(`Quick Export failed: ${error.message}`),
-        CONSTANTS.TIMING.ERROR_DISPLAY_DURATION
-      );
-    } finally {
-      if (app) {
-        app.downloadInProgress = false;
-      }
-      view.setButtonLoading(quickExportButton, false);
-    }
-  }
-
-  async function downloadSelectedOrders() {
+  async function downloadSelectedOrders(mode, orderNumbersOverride) {
     try {
       if (app && app.downloadInProgress) {
         showGuardBanner("Downloads are already in progress. Please wait.");
         return;
       }
 
-      const selectedOrders = getSelectedOrderNumbers();
+      if (mode) {
+        app.exportMode = mode;
+        chrome.storage.local.set({ exportMode: mode });
+      }
+      const activeMode = (app && app.exportMode) || CONSTANTS.EXPORT_MODES.MULTIPLE;
+
+      const selectedOrders =
+        Array.isArray(orderNumbersOverride) && orderNumbersOverride.length > 0
+          ? orderNumbersOverride
+          : getSelectedOrderNumbers();
+
       if (selectedOrders.length === 0) {
-        showGuardBanner("Please select at least one order to download.");
+        showGuardBanner("Select at least one order to download.");
         return;
       }
 
-      const downloadButton = document.getElementById("downloadButton");
-      if (downloadButton) {
-        downloadButton.disabled = true;
-        view.setButtonLoading(downloadButton, true);
-      }
+      const pressedButtonId =
+        activeMode === CONSTANTS.EXPORT_MODES.SINGLE ? "singleFileDownload" : "multiFileDownload";
+      const otherButtonId =
+        activeMode === CONSTANTS.EXPORT_MODES.SINGLE ? "multiFileDownload" : "singleFileDownload";
+      const pressedButton = document.getElementById(pressedButtonId);
+      const otherButton = document.getElementById(otherButtonId);
 
       if (app) {
         app.downloadInProgress = true;
       }
+      view.setButtonLoading(pressedButton, true);
+      if (otherButton) {
+        otherButton.disabled = true;
+      }
+      view.clearStatusBanner("downloadResultBanner");
+      view.showDownloadProgress(0, selectedOrders.length, {
+        onCancel: () => {
+          if (app) app.downloadInProgress = false;
+        },
+      });
 
-      const progressDiv = createDownloadProgressElement();
       let extractionWarningsDetected = false;
+      const formatLabel = formatDisplayName(getExportFormat());
+      const onProgress = (current, total, orderNumber, actionText) => {
+        view.updateDownloadProgress(current, total, `${actionText} ${current} / ${total} (#${orderNumber})`);
+      };
 
       try {
-        if (app && app.exportMode === CONSTANTS.EXPORT_MODES.SINGLE) {
+        if (activeMode === CONSTANTS.EXPORT_MODES.SINGLE) {
           const collectedOrdersData = [];
           const { failedOrders, cancelled } = await runDownloadQueue({
             selectedOrders,
-            progressDiv,
             actionText: CONSTANTS.TEXT.COLLECTING,
             options: { timeoutMs: CONSTANTS.TIMING.COLLECTION_TIMEOUT, stabilizeDelayMs: CONSTANTS.TIMING.PAGE_LOAD_WAIT },
             errorPrefix: "Failed to collect data for order",
@@ -600,9 +522,13 @@
               }
               collectedOrdersData.push(data);
             },
+            onProgress,
           });
 
-          if (cancelled) return;
+          if (cancelled) {
+            showDownloadResultBanner({ variant: "info", message: "Download cancelled." });
+            return;
+          }
 
           // Warn once (not per order) when any order came back with blank fields.
           if (extractionWarningsDetected) {
@@ -613,34 +539,27 @@
             await exportCombinedOrders(collectedOrdersData);
           } catch (e) {
             console.error("Failed to export to XLSX:", e);
-            showTimedProgressMessage(
-              progressDiv,
-              createErrorMessage(`Export failed: ${e.message}`),
-              CONSTANTS.TIMING.EXPORT_FAIL_DISPLAY
-            );
+            showDownloadResultBanner({ variant: "danger", message: `Export failed: ${escapeHtml(e.message)}` });
             return;
           }
 
           if (failedOrders.length === 0) {
-            showTimedProgressMessage(
-              progressDiv,
-              createSuccessMessage(CONSTANTS.TEXT.EXPORT_SUCCESS),
-              CONSTANTS.TIMING.SUCCESS_DISPLAY_DURATION
-            );
+            const count = collectedOrdersData.length;
+            showDownloadResultBanner({
+              variant: "success",
+              message: `Exported ${count} order${count === 1 ? "" : "s"} (${formatLabel})`,
+            });
             view.maybeShowRatingHint();
           } else {
-            showTimedProgressMessage(
-              progressDiv,
-              createErrorMessage(
-                `Export completed with ${failedOrders.length} failures: ${formatFailedOrders(failedOrders)}`
-              ),
-              CONSTANTS.TIMING.ERROR_DISPLAY_DURATION
-            );
+            showDownloadResultBanner({
+              variant: "danger",
+              message: `${collectedOrdersData.length} of ${selectedOrders.length} exported — ${failedOrders.length} failed (${escapeHtml(formatFailedOrders(failedOrders))})`,
+              retryOrders: failedOrders,
+            });
           }
         } else {
           const { failedOrders, cancelled } = await runDownloadQueue({
             selectedOrders,
-            progressDiv,
             actionText: CONSTANTS.TEXT.DOWNLOADING,
             options: { timeoutMs: CONSTANTS.TIMING.DOWNLOAD_TIMEOUT, stabilizeDelayMs: 1000 },
             errorPrefix: "Error downloading order",
@@ -651,44 +570,48 @@
               }
               await exportOneOrder(data);
             },
+            onProgress,
           });
 
-          if (cancelled) return;
+          if (cancelled) {
+            showDownloadResultBanner({ variant: "info", message: "Download cancelled." });
+            return;
+          }
 
           // Warn once (not per order) when any order came back with blank fields.
           if (extractionWarningsDetected) {
             view.showExtractionWarning();
           }
 
+          const succeeded = selectedOrders.length - failedOrders.length;
           if (failedOrders.length === 0) {
-            showTimedProgressMessage(
-              progressDiv,
-              createSuccessMessage("All downloads completed successfully!"),
-              CONSTANTS.TIMING.SUCCESS_DISPLAY_DURATION
-            );
+            showDownloadResultBanner({
+              variant: "success",
+              message: `Exported ${succeeded} order${succeeded === 1 ? "" : "s"} (${formatLabel})`,
+            });
             view.maybeShowRatingHint();
           } else {
-            showTimedProgressMessage(
-              progressDiv,
-              createErrorMessage(
-                `Downloads completed with ${failedOrders.length} failed orders:\nFailed orders: ${formatFailedOrders(failedOrders)}`
-              ),
-              CONSTANTS.TIMING.ERROR_DISPLAY_DURATION
-            );
+            showDownloadResultBanner({
+              variant: "danger",
+              message: `${succeeded} of ${selectedOrders.length} exported — ${failedOrders.length} failed (${escapeHtml(formatFailedOrders(failedOrders))})`,
+              retryOrders: failedOrders,
+            });
           }
         }
       } catch (error) {
         console.error("Download error:", error);
-        alert("An error occurred during download process. Some orders may have failed.");
+        showDownloadResultBanner({
+          variant: "danger",
+          message: "An error occurred during the download. Some orders may have failed.",
+        });
       } finally {
         await OrderDataFetcher.cleanup();
-        if (downloadButton) {
-          downloadButton.disabled = false;
-          view.setButtonLoading(downloadButton, false);
-        }
+        view.hideDownloadProgress();
+        view.setButtonLoading(pressedButton, false);
         if (app) {
           app.downloadInProgress = false;
         }
+        view.updateDownloadButtonsState();
       }
     } catch (outerError) {
       console.error("Error in downloadSelectedOrders:", outerError);
@@ -698,6 +621,7 @@
   Sidepanel.download = {
     OrderDataFetcher,
     downloadSelectedOrders,
-    quickExportSummaries,
+    exportCombinedOrders,
+    exportOneOrder,
   };
 })();

@@ -13,19 +13,18 @@
   UI_STATE.layouts = {
     [UI_MODES.SINGLE_ORDER]: {
       display: {
-        pageLimitGroup: "none",
         buttonGroup: "none",
         progress: "none",
-        quickExportButton: "none",
       },
-      cardDisplay: "block",
+      // The collect card's only remaining content (collectionOptionsGroup +
+      // buttonGroup) is hidden either way in this mode, so hide the whole
+      // card rather than leave an empty rounded box on screen.
+      cardDisplay: "none",
       checkboxContainerDisplay: "none",
     },
     [UI_MODES.MAIN_ORDERS]: {
       display: {
-        pageLimitGroup: "block",
         buttonGroup: "flex",
-        quickExportButton: "",
       },
       cardDisplay: "block",
       checkboxContainerDisplay: "",
@@ -254,16 +253,52 @@
       card.classList.toggle("disabled-card", !enabled);
     }
 
-    ["downloadButton", "quickExportButton"].forEach((buttonId) => {
-      const button = document.getElementById(buttonId);
-      if (button) {
-        button.disabled = !enabled;
-        button.style.opacity = enabled ? "1" : "0.6";
-        button.style.cursor = enabled ? "pointer" : "not-allowed";
-      }
-    });
+    if (enabled) {
+      // Don't force these on — defer to the current selection/running
+      // state (spec §5.2: 0 selected or a run in progress must stay
+      // disabled even when the tab itself is usable again).
+      updateDownloadButtonsState();
+    } else {
+      ["singleFileDownload", "multiFileDownload"].forEach((buttonId) => {
+        const button = document.getElementById(buttonId);
+        if (button) {
+          button.disabled = true;
+          button.style.opacity = "0.6";
+          button.style.cursor = "not-allowed";
+        }
+      });
+    }
 
     setCheckboxesDisabled(!enabled);
+  }
+
+  /**
+   * Enable/disable the Single file / Multiple files buttons together, and
+   * show/hide the "select at least one order" inline reason (spec §5.2
+   * button states: 0 selected, or a download already running, both
+   * disable the pair — the hint only explains the selection case, since
+   * the progress area already explains the running case).
+   */
+  function updateDownloadButtonsState() {
+    const singleButton = document.getElementById("singleFileDownload");
+    const multiButton = document.getElementById("multiFileDownload");
+    const hint = document.getElementById("downloadDisabledReason");
+    if (!singleButton && !multiButton) return;
+
+    const running = Boolean(state.app && state.app.downloadInProgress);
+    const selectedCount = getSelectedOrderNumbers().length;
+    const disabled = running || selectedCount === 0;
+
+    [singleButton, multiButton].forEach((button) => {
+      if (!button) return;
+      button.disabled = disabled;
+      button.style.opacity = disabled ? "0.6" : "1";
+      button.style.cursor = disabled ? "not-allowed" : "pointer";
+    });
+
+    if (hint) {
+      hint.hidden = running || selectedCount > 0;
+    }
   }
 
   function updateProgressUI(currentPage, pageLimit, inProgress) {
@@ -293,16 +328,121 @@
     return progressElement;
   }
 
-  function getDownloadButtonLabel(exportMode) {
-    return exportMode === CONSTANTS.EXPORT_MODES.SINGLE
-      ? "Download as Single File"
-      : "Download Selected Orders";
+  /** File-extension suffix shown in each download button's label (spec §5.2: "the format is never hidden"). */
+  const FORMAT_LABEL_SUFFIX = {
+    [CONSTANTS.EXPORT_FORMATS.XLSX]: ".xlsx",
+    [CONSTANTS.EXPORT_FORMATS.CSV]: ".csv",
+    [CONSTANTS.EXPORT_FORMATS.JSON]: ".json",
+    [CONSTANTS.EXPORT_FORMATS.RECEIPT]: ".html",
+    [CONSTANTS.EXPORT_FORMATS.PDF]: ".pdf",
+  };
+
+  /**
+   * Refresh both download buttons' labels to echo the currently-selected
+   * export format, e.g. "Single file (.xlsx)" / "Multiple files (.xlsx)".
+   * Called on every button (re)creation and whenever the format <select>
+   * changes (sidepanel.js), so the two are never out of sync.
+   */
+  function updateDownloadButtonLabels() {
+    const format = (state.app && state.app.exportFormat) || CONSTANTS.EXPORT_FORMATS.XLSX;
+    const suffix = FORMAT_LABEL_SUFFIX[format] || "";
+    const singleLabel = document.querySelector("#singleFileDownload .btn-text");
+    const multiLabel = document.querySelector("#multiFileDownload .btn-text");
+    if (singleLabel) singleLabel.textContent = `Single file (${suffix})`;
+    if (multiLabel) multiLabel.textContent = `Multiple files (${suffix})`;
   }
 
-  function updateDownloadButtonLabel(exportMode) {
-    const btn = document.getElementById("downloadButton");
-    if (!btn) return;
-    btn.lastChild.nodeValue = ` ${getDownloadButtonLabel(exportMode)}`;
+  /**
+   * Build (once) and return the persistent download-progress area's parts —
+   * a StatusLine + ProgressBar + Cancel button (spec §5.2 "Running" state).
+   * The area lives outside #orderNumbersContainer (sidepanel.html) so it
+   * survives an order-list re-render mid-download; the handle is memoized
+   * so repeated calls reuse the same DOM nodes instead of duplicating them.
+   */
+  let downloadProgressHandle = null;
+  function ensureDownloadProgressArea() {
+    const area = document.getElementById("downloadProgressArea");
+    if (!area) return null;
+    if (downloadProgressHandle && downloadProgressHandle.area === area) return downloadProgressHandle;
+
+    area.innerHTML = "";
+    const statusLine = Sidepanel.components.StatusLine("");
+    const progressBar = Sidepanel.components.ProgressBar(0, 0);
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.id = "downloadCancelButton";
+    cancelButton.className = "btn btn-clear download-cancel";
+    cancelButton.textContent = "Cancel";
+
+    area.appendChild(statusLine);
+    area.appendChild(progressBar);
+    area.appendChild(cancelButton);
+
+    downloadProgressHandle = { area, statusLine, progressBar, cancelButton };
+    return downloadProgressHandle;
+  }
+
+  /**
+   * Show the download-progress area and (re)wire Cancel to the given
+   * callback — the existing app.downloadInProgress=false cancel path that
+   * runDownloadQueue (sidepanel.download.js) already polls for.
+   * @param {number} current
+   * @param {number} total
+   * @param {Object} [options]
+   * @param {Function} [options.onCancel]
+   * @returns {{area:HTMLElement,statusLine:HTMLElement,progressBar:HTMLElement,cancelButton:HTMLElement}|null}
+   */
+  function showDownloadProgress(current, total, { onCancel } = {}) {
+    const handle = ensureDownloadProgressArea();
+    if (!handle) return null;
+
+    handle.area.hidden = false;
+    handle.statusLine.hidden = false;
+    handle.progressBar.update(current, total);
+    handle.cancelButton.disabled = false;
+    handle.cancelButton.textContent = "Cancel";
+    handle.cancelButton.onclick = () => {
+      if (onCancel) onCancel();
+      handle.cancelButton.disabled = true;
+      handle.cancelButton.textContent = "Cancelling…";
+    };
+    return handle;
+  }
+
+  /** Update the running download's status text + progress percentage. */
+  function updateDownloadProgress(current, total, text) {
+    if (!downloadProgressHandle) return;
+    downloadProgressHandle.statusLine.textContent = text;
+    downloadProgressHandle.progressBar.update(current, total);
+  }
+
+  /** Hide the download-progress area at the end of a run (success, failure, or cancel). */
+  function hideDownloadProgress() {
+    if (!downloadProgressHandle) return;
+    downloadProgressHandle.area.hidden = true;
+  }
+
+  /**
+   * One-time dismissible tip shown where Quick Export used to be (design
+   * spec §7 risk table: "Muscle-memory loss (Quick Export gone)"). Renders
+   * once per install into the consolidated status region, same
+   * persisted-dismissal idiom as maybeShowRatingHint below.
+   */
+  function maybeShowQuickExportRetiredTip() {
+    if (document.getElementById("quickExportRetiredTip")) return;
+
+    chrome.storage.local.get([CONSTANTS.STORAGE_KEYS.QUICK_EXPORT_TIP_DISMISSED], (result) => {
+      if (result[CONSTANTS.STORAGE_KEYS.QUICK_EXPORT_TIP_DISMISSED]) return;
+
+      renderStatusBanner("quickExportRetiredTip", {
+        variant: "info",
+        message: "Quick Export is now built into Download — saved orders re-export instantly.",
+        dismissible: true,
+        onDismiss: () => {
+          chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.QUICK_EXPORT_TIP_DISMISSED]: true });
+        },
+      });
+    });
   }
 
   async function displayOrderNumbers(orderNumbers, additionalFields = {}) {
@@ -312,6 +452,7 @@
     if (orderNumbers.length === 0) {
       container.innerHTML = state.placeholders.initialOrderHtml || "";
       updateClearCacheVisibility();
+      updateDownloadButtonsState();
       return;
     }
 
@@ -360,51 +501,56 @@
     selectAll.addEventListener("change", function () {
       toggleAllCheckboxes(orderList, selectAll.checked);
       updateCheckboxCount(container);
+      updateDownloadButtonsState();
     });
 
     orderNumbers.forEach((orderNumber) => {
       const checkbox = container.querySelector(`input[value="${orderNumber}"]`);
       if (checkbox) {
-        checkbox.addEventListener("change", () => updateCheckboxCount(container));
+        checkbox.addEventListener("change", () => {
+          updateCheckboxCount(container);
+          updateDownloadButtonsState();
+        });
       }
     });
 
-    if (orderNumbers.length > 0 && !document.getElementById("downloadButton")) {
-      // Paired action row: full download next to the instant quick export.
+    if (orderNumbers.length > 0 && !document.getElementById("singleFileDownload")) {
+      // Two-button model (spec §5.2): an equal, matched pair — Single file
+      // (one workbook with every selected order) and Multiple files (one
+      // file per selected order) — replacing the old mutating Download
+      // button + separate Quick Export button.
       const actionRow = document.createElement("div");
       actionRow.className = "action-row";
 
-      const downloadButton = document.createElement("button");
-      downloadButton.id = "downloadButton";
-      downloadButton.className = CONSTANTS.CSS_CLASSES.BTN_SUCCESS;
-      const label = getDownloadButtonLabel(state.app.exportMode);
-      downloadButton.innerHTML = `
-        ${renderIcon('DOWNLOAD')}
-        ${label}
+      const singleButton = document.createElement("button");
+      singleButton.id = "singleFileDownload";
+      singleButton.className = "btn btn-accent-pair";
+      singleButton.innerHTML = `
+        ${renderIcon("DOWNLOAD")}
+        <span class="btn-text">Single file</span>
       `;
-      downloadButton.addEventListener("click", Sidepanel.download.downloadSelectedOrders);
-      actionRow.appendChild(downloadButton);
+      singleButton.addEventListener("click", () =>
+        Sidepanel.download.downloadSelectedOrders(CONSTANTS.EXPORT_MODES.SINGLE)
+      );
+      actionRow.appendChild(singleButton);
 
-      const quickExportButton = document.createElement("button");
-      quickExportButton.id = "quickExportButton";
-      quickExportButton.className = CONSTANTS.CSS_CLASSES.BTN_PRIMARY;
-      quickExportButton.title = "Instantly re-exports the SELECTED orders you have already downloaded — no pages opened, never synthesized data. Not-yet-downloaded orders are skipped.";
-      quickExportButton.innerHTML = `
-        ${renderIcon("BOLT")}
-        <span class="btn-text">${CONSTANTS.TEXT.QUICK_EXPORT}</span>
+      const multiButton = document.createElement("button");
+      multiButton.id = "multiFileDownload";
+      multiButton.className = "btn btn-accent-pair";
+      multiButton.innerHTML = `
+        ${renderIcon("PACKAGE")}
+        <span class="btn-text">Multiple files</span>
       `;
-      quickExportButton.addEventListener("click", Sidepanel.download.quickExportSummaries);
-      actionRow.appendChild(quickExportButton);
-
-      // displayOrderNumbers resolves asynchronously, so the single-order layout
-      // may already be active by the time the button is created — hide it then.
-      if (UI_STATE.mode === UI_MODES.SINGLE_ORDER) {
-        quickExportButton.style.display = "none";
-      }
+      multiButton.addEventListener("click", () =>
+        Sidepanel.download.downloadSelectedOrders(CONSTANTS.EXPORT_MODES.MULTIPLE)
+      );
+      actionRow.appendChild(multiButton);
 
       container.appendChild(actionRow);
+      updateDownloadButtonLabels();
     }
 
+    updateDownloadButtonsState();
     updateClearCacheVisibility();
   }
 
@@ -558,9 +704,14 @@
     updateFilterNotice,
     updateDbStats,
     setUIEnabled,
+    updateDownloadButtonsState,
     updateProgressUI,
     createProgressElement,
-    updateDownloadButtonLabel,
+    updateDownloadButtonLabels,
+    showDownloadProgress,
+    updateDownloadProgress,
+    hideDownloadProgress,
+    maybeShowQuickExportRetiredTip,
     displayOrderNumbers,
     updateClearCacheVisibility,
     updateOrderCacheStatus,

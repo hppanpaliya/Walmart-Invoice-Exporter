@@ -39,7 +39,7 @@ async function readSheet(filePath, sheetName) {
 }
 
 test('extension end-to-end', async (t) => {
-  const { panel, close } = await launch();
+  const { panel, context, close } = await launch();
   let progress;
 
   try {
@@ -54,40 +54,51 @@ test('extension end-to-end', async (t) => {
       assert.equal(progress.orderSummaries[INSTORE_ORDER].fulfillmentTypes, 'IN_STORE');
     });
 
-    await t.test('quick export with nothing selected is refused', async () => {
+    // Quick Export is gone (design spec §5.2): the two-button model replaces
+    // it. "0 selected" is now a disabled-button state with an inline reason
+    // instead of a blocking dialog (spec §5.2 button states).
+    await t.test('with nothing selected, both download buttons are disabled with the inline reason shown', async () => {
       await renderOrderList(panel, progress);
-      let dialogMessage = null;
-      panel.once('dialog', async (dialog) => {
-        dialogMessage = dialog.message();
-        await dialog.dismiss();
-      });
-      await panel.click('#quickExportButton');
-      await panel.waitForTimeout(300);
-      assert.match(String(dialogMessage), /select at least one order/i);
+
+      assert.notEqual(
+        await panel.getAttribute('#singleFileDownload', 'disabled'), null,
+        'Single file must start disabled with nothing selected'
+      );
+      assert.notEqual(
+        await panel.getAttribute('#multiFileDownload', 'disabled'), null,
+        'Multiple files must start disabled with nothing selected'
+      );
+      assert.equal(
+        await panel.getAttribute('#downloadDisabledReason', 'hidden'), null,
+        'the "select at least one order" reason must be visible'
+      );
+
+      // Labels always echo the current format (spec §5.2).
+      const singleLabel = await panel.textContent('#singleFileDownload .btn-text');
+      const multiLabel = await panel.textContent('#multiFileDownload .btn-text');
+      assert.match(singleLabel, /Single file \(\.xlsx\)/);
+      assert.match(multiLabel, /Multiple files \(\.xlsx\)/);
     });
 
-    await t.test('quick export refuses when no selected order has been downloaded', async () => {
+    await t.test('selecting an order enables both buttons and hides the inline reason', async () => {
       await panel.check(`input[value="${ONLINE_ORDER}"]`);
       await panel.check(`input[value="${INSTORE_ORDER}"]`);
-      // Export a single combined file (same option Download honors).
-      await panel.evaluate(() => { window.Sidepanel.state.app.exportMode = 'single'; });
 
-      let downloadFired = false;
-      panel.once('download', () => { downloadFired = true; });
-      await panel.click('#quickExportButton');
-      await panel.waitForTimeout(1200);
-
-      assert.equal(downloadFired, false, 'nothing may be exported — no fabricated data, ever');
-      const message = await panel.textContent('#downloadProgress');
-      assert.match(message, /None of the selected orders have been downloaded/i, 'the refusal must explain why');
+      assert.equal(await panel.getAttribute('#singleFileDownload', 'disabled'), null);
+      assert.equal(await panel.getAttribute('#multiFileDownload', 'disabled'), null);
+      assert.notEqual(
+        await panel.getAttribute('#downloadDisabledReason', 'hidden'), null,
+        'the reason hides once something is selected'
+      );
     });
 
-    await t.test('deep download stores the invoice and exports per-item prices', async () => {
-      await panel.evaluate(() => { window.Sidepanel.state.app.exportMode = 'single'; });
+    await t.test('Single file download stores the invoice and exports per-item prices', async () => {
       // Only the online order has a detail fixture.
       await panel.uncheck(`input[value="${INSTORE_ORDER}"]`);
 
-      const [download] = await clickAndCollectDownloads(panel, '#downloadButton', 1, 45000);
+      // Mode is implied by which button is clicked — nothing sets
+      // app.exportMode directly (spec §5.2: clicking a button sets the mode).
+      const [download] = await clickAndCollectDownloads(panel, '#singleFileDownload', 1, 45000);
       assert.equal(download.name, 'Walmart_Orders.xlsx');
 
       const items = await readSheet(download.path, 'Items');
@@ -105,39 +116,33 @@ test('extension end-to-end', async (t) => {
       assert.equal(stored.invoice.items.length, 3);
     });
 
-    await t.test('quick export instantly re-exports the downloaded order with full fidelity', async () => {
-      const [download] = await clickAndCollectDownloads(panel, '#quickExportButton', 1);
-      assert.equal(download.name, 'Walmart_Orders_Quick.xlsx');
+    // This is what used to be Quick Export's one real differentiator (spec
+    // §4.2/§C4) — now built into Download itself: re-selecting an
+    // already-saved order and clicking Single file again must skip the tab
+    // entirely and serve the stored invoice straight from IndexedDB.
+    await t.test('re-downloading an already-saved order (Single file) opens no tab — the IndexedDB fast path', async () => {
+      let tabOpened = false;
+      const onPage = () => {
+        tabOpened = true;
+      };
+      context.on('page', onPage);
 
-      const items = await readSheet(download.path, 'Items');
-      assert.ok(items.headers.includes('Product Name') && items.headers.includes('Price'),
-        'same layout as Download Selected');
-      const milk = items.rows.find((r) => r['Product Name'] === 'Great Value Milk 1 Gallon');
-      assert.ok(milk);
-      assert.equal(milk['Price'], 7.96, 'stored invoice supplies the real price');
+      try {
+        const [download] = await clickAndCollectDownloads(panel, '#singleFileDownload', 1);
+        assert.equal(download.name, 'Walmart_Orders.xlsx');
+        assert.equal(tabOpened, false, 'an already-downloaded order must open no tab');
 
-      const orders = await readSheet(download.path, 'Orders');
-      const order = orders.rows.find((r) => String(r['Order Number']) === ONLINE_ORDER);
-      assert.equal(order['Tax'], 1.14, 'full invoice fidelity');
-      assert.equal(order['Data'], 'Full invoice');
+        const items = await readSheet(download.path, 'Items');
+        const milk = items.rows.find((r) => r['Product Name'] === 'Great Value Milk 1 Gallon');
+        assert.ok(milk);
+        assert.equal(milk['Price'], 7.96, 'stored invoice supplies the real price, not a re-fetch');
 
-      const message = await panel.textContent('#downloadProgress');
-      assert.match(message, /success/i);
-    });
-
-    await t.test('quick export skips (and reports) selected orders that were never downloaded', async () => {
-      await panel.check(`input[value="${INSTORE_ORDER}"]`);
-
-      const [download] = await clickAndCollectDownloads(panel, '#quickExportButton', 1);
-      assert.equal(download.name, 'Walmart_Orders_Quick.xlsx');
-
-      const orders = await readSheet(download.path, 'Orders');
-      assert.equal(orders.rows.length, 1, 'only the downloaded order exports');
-      assert.equal(String(orders.rows[0]['Order Number']), ONLINE_ORDER);
-
-      const message = await panel.textContent('#downloadProgress');
-      assert.match(message, /Skipped 1/i, 'the skipped count must be reported');
-      await panel.uncheck(`input[value="${INSTORE_ORDER}"]`);
+        const orders = await readSheet(download.path, 'Orders');
+        const order = orders.rows.find((r) => String(r['Order Number']) === ONLINE_ORDER);
+        assert.equal(order['Data'], 'Full invoice');
+      } finally {
+        context.off('page', onPage);
+      }
     });
 
     await t.test('dashboard renders stats from the collected data', async () => {
