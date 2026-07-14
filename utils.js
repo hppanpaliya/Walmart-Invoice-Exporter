@@ -1661,7 +1661,6 @@ const CONSTANTS = {
     COLLECT_ORDER_NUMBERS: 'collectOrderNumbers',
     CLICK_NEXT_BUTTON: 'clickNextButton',
     BLOCK_IMAGES: 'blockImagesForDownload',
-    DOWNLOAD_XLSX: 'downloadXLSX',
     GET_ORDER_DATA: 'getOrderData',
   },
 
