@@ -686,6 +686,246 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
 }
 
 /**
+ * ---------------------------------------------------------------------
+ * Legacy Excel export (pre-6.18 single-sheet layout, opt-in)
+ * ---------------------------------------------------------------------
+ * Recovered verbatim from the workbook shipped before release 6.18, when
+ * a combined export was one wide 'Walmart Orders' sheet: item rows carry
+ * the parent order's fields repeated on every row (so summing a
+ * financial column double-counts), and a missing number renders as 0
+ * rather than blank. That is a real limitation next to the current
+ * Orders+Items writer above, but some users have spreadsheets/macros
+ * built against this exact old shape, so it stays available behind an
+ * explicit opt-in ("Use legacy Excel layout" — design spec §5.3).
+ *
+ * ADDITIVE ONLY: nothing above this block is modified, and the side
+ * panel does not call any of the functions below yet — that wiring
+ * lands in a later phase. The current (non-legacy) writers remain the
+ * default for every export.
+ */
+
+/**
+ * Configure columns for the legacy combined multiple-orders worksheet
+ * (pre-6.18 shape: one row per item, order fields repeated per row).
+ * @param {ExcelJS.Worksheet} worksheet - The worksheet to configure
+ */
+function configureMultipleOrdersColumnsLegacy(worksheet, options = {}) {
+  const columns = [
+    { header: 'Order Number', key: 'orderNumber', width: 20, style: { alignment: { horizontal: "center" } } },
+    { header: 'Order Date', key: 'orderDate', width: 20, style: { alignment: { horizontal: "center" } } },
+    { header: 'Address Recipient', key: 'addressRecipient', width: 24, style: { alignment: { horizontal: "center" } } },
+    { header: 'Shipping Address', key: 'address', width: 45, style: { alignment: { horizontal: "center" } } },
+    { header: 'Delivery Instructions', key: 'deliveryInstructions', width: 36, style: { alignment: { horizontal: "center" } } },
+    { header: 'Payment Method', key: 'paymentMethods', width: 42, style: { alignment: { horizontal: "center" } } },
+    { header: 'Payment Messages', key: 'paymentMessages', width: 52, style: { alignment: { horizontal: "center" } } },
+    { header: 'Subtotal (Before Savings)', key: 'subtotalBeforeSavings', width: 22, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Savings', key: 'savings', width: 14, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Subtotal', key: 'orderSubtotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Product Name', key: 'productName', width: 60, style: { alignment: { horizontal: "center" } } },
+    { header: 'Quantity', key: 'quantity', width: 10, style: { numFmt: "#,##0", alignment: { horizontal: "center" } } },
+    { header: 'Price', key: 'price', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Delivery Charges', key: 'deliveryCharges', width: 20, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Bag Fee', key: 'bagFee', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Tax', key: 'tax', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Tip', key: 'tip', width: 10, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Order Total', key: 'orderTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Delivery Status', key: 'deliveryStatus', width: 20, style: { alignment: { horizontal: "center" } } },
+    { header: 'Product Link', key: 'productLink', width: 60 , style: { font: STYLES.linkFont } },
+    { header: 'Seller(s)', key: 'sellers', width: 26, style: { alignment: { horizontal: "center" } } },
+    { header: 'Fulfillment', key: 'fulfillmentTypes', width: 16, style: { alignment: { horizontal: "center" } } },
+    { header: 'Delivered Date', key: 'deliveredDate', width: 18, style: { alignment: { horizontal: "center" } } },
+    { header: 'Tracking Numbers', key: 'trackingNumbers', width: 28, style: { alignment: { horizontal: "center" } } },
+    { header: 'Payment Split', key: 'paymentSplit', width: 40, style: { alignment: { horizontal: "center" } } },
+    { header: 'Refund', key: 'refund', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Donations', key: 'donations', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
+    { header: 'Receipt Barcode', key: 'barcodeLink', width: 16, style: { alignment: { horizontal: "center" } } },
+    { header: 'Order Type', key: 'orderType', width: 14, style: { alignment: { horizontal: "center" } } },
+  ];
+  if (options.includeThumbnails) {
+    columns.push({ header: 'Thumbnail', key: 'thumbnail', width: 9, style: { alignment: { horizontal: "center" } } });
+  }
+  worksheet.columns = columns;
+}
+
+/**
+ * Add items from multiple orders to the legacy combined worksheet (one row
+ * per item; order-level fields repeated on every row of that order).
+ * @param {ExcelJS.Worksheet} worksheet - The worksheet to add items to
+ * @param {Array} items - Flattened item+order records (see convertMultipleOrdersToXlsxLegacy)
+ */
+function addMultipleOrderItemsToWorksheetLegacy(worksheet, items) {
+  items.forEach((item) => {
+    const productName = item.productName || "";
+    const productLink = item.productLink || "";
+    worksheet.addRow({
+      orderNumber: item.orderNumber || '',
+      orderDate: item.orderDate || '',
+      addressRecipient: item.addressRecipient || '',
+      address: item.address || '',
+      deliveryInstructions: item.deliveryInstructions || '',
+      paymentMethods: item.paymentMethods || '',
+      paymentMessages: item.paymentMessages || '',
+      subtotalBeforeSavings: parseNumericValue(item.subtotalBeforeSavings),
+      savings: parseNumericValue(item.savings),
+      orderSubtotal: parseNumericValue(item.orderSubtotal),
+      productName,
+      quantity: parseNumericValue(item.quantity),
+      price: parseNumericValue(item.price),
+      deliveryStatus: item.deliveryStatus || '',
+      productLink: {
+        text: truncateText(productName),
+        hyperlink: productLink
+      },
+      deliveryCharges: parseNumericValue(item.deliveryCharges),
+      bagFee: parseNumericValue(item.bagFee),
+      tax: parseNumericValue(item.tax),
+      tip: parseNumericValue(item.tip),
+      orderTotal: parseNumericValue(item.orderTotal),
+      sellers: item.sellers || '',
+      fulfillmentTypes: item.fulfillmentTypes || '',
+      deliveredDate: item.deliveredDate || '',
+      trackingNumbers: item.trackingNumbers || '',
+      paymentSplit: item.paymentSplit || '',
+      // Blank (not $0.00) when the order had no refund or donation.
+      refund: item.refund ? parseNumericValue(item.refund) : '',
+      donations: item.donations ? parseNumericValue(item.donations) : '',
+      barcodeLink: item.barcodeImageUrl
+        ? { text: 'Barcode', hyperlink: item.barcodeImageUrl }
+        : '',
+      orderType: formatOrderType(item.orderType, item.isInStore),
+    });
+  });
+}
+
+/**
+ * Convert a single order to the legacy XLSX layout. A single order was
+ * never split into an Orders+Items pair, so this reuses the exact same
+ * "Order Invoice" sheet, columns, item rows, and summary block as the
+ * current single-order writer below — the only difference is it skips
+ * the frozen/colored header polish that release 6.18 added.
+ * @param {Object} orderDetails - The order details object
+ * @param {Object} ExcelJS - The ExcelJS library
+ * @param {string} filename - Optional custom filename
+ */
+async function convertSingleOrderToXlsxLegacy(orderDetails, ExcelJS, filename = null, options = {}) {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Order Invoice");
+
+  configureSingleOrderColumns(worksheet, options);
+
+  const items = orderDetails.items || [];
+  addItemsToWorksheet(worksheet, items);
+  addOrderSummary(worksheet, orderDetails);
+  styleSingleOrderWorksheet(worksheet);
+
+  if (options.includeThumbnails) {
+    await embedItemThumbnails(workbook, worksheet, items, worksheet.columns.length);
+  }
+
+  // Download
+  const downloadFilename = filename || `Order_${orderDetails.orderNumber}.xlsx`;
+  await downloadWorkbook(workbook, downloadFilename);
+}
+
+/**
+ * Convert multiple orders into the legacy single-sheet 'Walmart Orders'
+ * workbook (pre-6.18): one row per item, with order-level fields (address,
+ * payment, fees, totals...) repeated on every item row of that order.
+ * Restored verbatim for the opt-in "legacy Excel layout" toggle; the
+ * default combined export is convertMultipleOrdersToXlsx above, which
+ * this function does not touch.
+ * @param {Array} ordersData - Array of order data objects
+ * @param {Object} ExcelJS - The ExcelJS library
+ * @param {string} filename - Optional custom filename
+ */
+async function convertMultipleOrdersToXlsxLegacy(ordersData, ExcelJS, filename = null, options = {}) {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Walmart Orders');
+
+  // Configure columns for multiple orders
+  configureMultipleOrdersColumnsLegacy(worksheet, options);
+
+  // Flatten all items from all orders into a single list with order info
+  const allItems = [];
+  const ordersArray = Array.isArray(ordersData) ? ordersData : [ordersData];
+
+  ordersArray.forEach((orderDetails) => {
+    const paymentMethodsDetailed = formatPaymentMethodDetails(orderDetails);
+
+    (orderDetails.items || []).forEach((item) => {
+      allItems.push({
+        orderNumber: orderDetails.orderNumber || '',
+        orderDate: orderDetails.orderDate || '',
+        addressRecipient: orderDetails.addressRecipient || '',
+        address: orderDetails.address || '',
+        deliveryInstructions: orderDetails.deliveryInstructions || '',
+        paymentMethods: paymentMethodsDetailed || orderDetails.paymentMethods || '',
+        paymentMessages: orderDetails.paymentMessages || '',
+        subtotalBeforeSavings: orderDetails.subtotalBeforeSavings || '',
+        savings: orderDetails.savings || '',
+        orderSubtotal: orderDetails.orderSubtotal || '',
+        orderTotal: orderDetails.orderTotal || '',
+        productName: item.productName || '',
+        quantity: item.quantity,
+        price: item.price,
+        deliveryStatus: item.deliveryStatus || '',
+        productLink: item.productLink || '',
+        thumbnailUrl: item.thumbnailUrl || '',
+        deliveryCharges: orderDetails.deliveryCharges || '',
+        bagFee: orderDetails.bagFee || '',
+        tax: orderDetails.tax || '',
+        tip: orderDetails.tip || '',
+        refund: orderDetails.refund || '',
+        donations: orderDetails.donations || '',
+        barcodeImageUrl: orderDetails.barcodeImageUrl || '',
+        sellers: orderDetails.sellers || '',
+        fulfillmentTypes: orderDetails.fulfillmentTypes || '',
+        deliveredDate: orderDetails.deliveredDate || '',
+        trackingNumbers: orderDetails.trackingNumbers || '',
+        paymentSplit: orderDetails.paymentSplit || '',
+        orderType: orderDetails.orderType || '',
+        isInStore: Boolean(orderDetails.isInStore),
+      });
+    });
+  });
+
+  // Add all items to worksheet
+  addMultipleOrderItemsToWorksheetLegacy(worksheet, allItems);
+
+  // Apply styling
+  styleMultipleOrdersWorksheet(worksheet);
+
+  if (options.includeThumbnails) {
+    await embedItemThumbnails(workbook, worksheet, allItems, worksheet.columns.length);
+  }
+
+  // Download
+  const downloadFilename = filename || 'Walmart_Orders.xlsx';
+  await downloadWorkbook(workbook, downloadFilename);
+}
+
+/**
+ * Convert order data to the legacy XLSX layout and download — dispatcher
+ * mirroring convertToXlsx (mode 'single' | 'multiple'). Not wired into the
+ * side panel yet; the "Use legacy Excel layout" toggle that routes here
+ * lands in a later phase (design spec §5.3).
+ * @param {Object} orderDetails - The order data (for single) or array of orders (for multiple)
+ * @param {Object} ExcelJS - The ExcelJS library
+ * @param {Object} options - Configuration options
+ * @param {string} options.mode - Export mode: 'single' or 'multiple'
+ * @param {string} options.filename - Optional custom filename
+ */
+async function convertToXlsxLegacy(orderDetails, ExcelJS, options = {}) {
+  const { mode = 'single', filename = null, includeThumbnails = false } = options;
+
+  if (mode === 'single') {
+    return convertSingleOrderToXlsxLegacy(orderDetails, ExcelJS, filename, { includeThumbnails });
+  } else if (mode === 'multiple') {
+    return convertMultipleOrdersToXlsxLegacy(orderDetails, ExcelJS, filename, { includeThumbnails });
+  }
+}
+
+/**
  * CSV / JSON export
  */
 
