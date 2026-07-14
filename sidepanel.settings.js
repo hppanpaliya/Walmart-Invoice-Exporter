@@ -1,0 +1,251 @@
+/**
+ * Settings view (design spec §5.4) — Appearance, Collection, Export
+ * defaults, Data on this device, About.
+ *
+ * Deliberately reads/writes the SAME individual chrome.storage.local keys
+ * the main view already uses (exportFormat, includeThumbnails, legacyExcel,
+ * incrementalCollect, pageLimit, theme) rather than a consolidated
+ * `settings` object — that migration is a separate, riskier change and is
+ * out of scope here. Settings is the DEFAULTS editor; the main view's own
+ * Options disclosure / format controls stay the per-run overrides, reading
+ * and writing the exact same keys so a change made in either place takes
+ * effect in the other immediately (no reload needed).
+ *
+ * Rendered fresh every time the header gear is opened (sidepanel.js's
+ * settingsButton handler), matching the Dashboard's render-on-open pattern
+ * — always reflects the latest storage/DB state rather than a stale
+ * page-load snapshot.
+ */
+(() => {
+  const Sidepanel = window.Sidepanel || (window.Sidepanel = {});
+  const state = Sidepanel.state;
+
+  /**
+   * Restored by "Reset settings to defaults" (spec §5.4) — mirrors
+   * sidepanel.state.js's app defaults, plus theme/pageLimit (which live
+   * only in chrome.storage.local, not in-memory app state).
+   */
+  const SETTINGS_DEFAULTS = {
+    exportMode: CONSTANTS.EXPORT_MODES.MULTIPLE,
+    exportFormat: CONSTANTS.EXPORT_FORMATS.XLSX,
+    csvPreset: CONSTANTS.CSV_PRESETS.GENERIC,
+    includeThumbnails: false,
+    incrementalCollect: false,
+    theme: "system",
+    pageLimit: 0,
+  };
+  SETTINGS_DEFAULTS[CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL] = false;
+
+  const THEME_OPTIONS = [
+    { value: "system", label: "System" },
+    { value: "light", label: "Light" },
+    { value: "dark", label: "Dark" },
+  ];
+
+  /**
+   * Push a Settings-made change into the main view's own controls + the
+   * in-memory app state, so it takes effect immediately without a reload
+   * (spec §5.4: "changing a default reflects on the main view and
+   * vice-versa"). The main view's own change handlers (sidepanel.js) already
+   * do the reverse — this just closes the loop from the Settings side.
+   */
+  function syncMainView(key, value) {
+    const app = state.app;
+    switch (key) {
+      case "exportFormat": {
+        app.exportFormat = value;
+        const select = document.getElementById("exportFormat");
+        if (select) select.value = value;
+        if (Sidepanel.syncExportFormatVisibility) Sidepanel.syncExportFormatVisibility();
+        if (Sidepanel.view) Sidepanel.view.updateDownloadButtonLabels();
+        break;
+      }
+      case "includeThumbnails": {
+        app.includeThumbnails = value;
+        const checkbox = document.getElementById("includeThumbnails");
+        if (checkbox) checkbox.checked = value;
+        break;
+      }
+      case CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL: {
+        app.legacyExcel = value;
+        const checkbox = document.getElementById("legacyExcel");
+        if (checkbox) checkbox.checked = value;
+        break;
+      }
+      case "incrementalCollect": {
+        app.incrementalCollect = value;
+        const checkbox = document.getElementById("incrementalCollect");
+        if (checkbox) checkbox.checked = value;
+        break;
+      }
+      case "pageLimit": {
+        const input = document.getElementById("pageLimit");
+        if (input) input.value = value;
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  /** Write one setting key to storage and immediately reflect it on the main view. */
+  function persist(key, value) {
+    chrome.storage.local.set({ [key]: value });
+    syncMainView(key, value);
+  }
+
+  function themeSectionHtml(current) {
+    const options = THEME_OPTIONS.map(
+      (opt) =>
+        `<button type="button" class="segmented-option${opt.value === current ? " active" : ""}" data-theme-choice="${opt.value}">${opt.label}</button>`
+    ).join("");
+    return `
+      <div class="settings-section">
+        <h3 class="settings-section-title">Appearance</h3>
+        <div class="segmented-control" id="themeControl" role="group" aria-label="Theme">${options}</div>
+      </div>
+    `;
+  }
+
+  function collectionSectionHtml(pageLimit, incrementalCollect) {
+    return `
+      <div class="settings-section">
+        <h3 class="settings-section-title">Collection</h3>
+        <div class="input-group">
+          <label for="settingsPageLimit">Default pages to scan (0 = all)</label>
+          <input type="number" id="settingsPageLimit" min="0" value="${Number(pageLimit) || 0}">
+        </div>
+        <div class="toggle-group">
+          <input type="checkbox" id="settingsIncrementalCollect" ${incrementalCollect ? "checked" : ""}>
+          <label for="settingsIncrementalCollect">Only new orders by default</label>
+        </div>
+      </div>
+    `;
+  }
+
+  function exportDefaultsSectionHtml({ exportFormat, includeThumbnails, legacyExcel }) {
+    const formatOptions = [
+      [CONSTANTS.EXPORT_FORMATS.XLSX, "Excel (.xlsx)"],
+      [CONSTANTS.EXPORT_FORMATS.CSV, "CSV (.csv)"],
+      [CONSTANTS.EXPORT_FORMATS.JSON, "JSON (.json)"],
+      [CONSTANTS.EXPORT_FORMATS.RECEIPT, "Printable receipt (.html)"],
+      [CONSTANTS.EXPORT_FORMATS.PDF, "PDF receipt (.pdf)"],
+    ]
+      .map(([value, label]) => `<option value="${value}"${value === exportFormat ? " selected" : ""}>${label}</option>`)
+      .join("");
+
+    return `
+      <div class="settings-section">
+        <h3 class="settings-section-title">Export defaults</h3>
+        <div class="input-group">
+          <label for="settingsExportFormat">Default format</label>
+          <select id="settingsExportFormat">${formatOptions}</select>
+        </div>
+        <div class="toggle-group">
+          <input type="checkbox" id="settingsIncludeThumbnails" ${includeThumbnails ? "checked" : ""}>
+          <label for="settingsIncludeThumbnails" title="Embeds product images in Excel exports.">Include product photos</label>
+        </div>
+        <div class="toggle-group toggle-group-minor">
+          <input type="checkbox" id="settingsLegacyExcel" ${legacyExcel ? "checked" : ""}>
+          <label for="settingsLegacyExcel" title="Single-sheet workbook like older versions (before the Orders/Items split).">Legacy Excel layout</label>
+        </div>
+      </div>
+    `;
+  }
+
+  function wireThemeControl(container) {
+    const control = container.querySelector("#themeControl");
+    if (!control) return;
+    control.querySelectorAll(".segmented-option").forEach((button) => {
+      button.addEventListener("click", () => {
+        const value = button.dataset.themeChoice;
+        chrome.storage.local.set({ theme: value });
+        Sidepanel.applyTheme(value);
+        control.querySelectorAll(".segmented-option").forEach((b) => b.classList.toggle("active", b === button));
+      });
+    });
+  }
+
+  function wireCollectionControls(container) {
+    const pageLimitInput = container.querySelector("#settingsPageLimit");
+    if (pageLimitInput) {
+      pageLimitInput.addEventListener("change", () => {
+        const value = parseInt(pageLimitInput.value, 10) || 0;
+        persist("pageLimit", value);
+      });
+    }
+
+    const incrementalToggle = container.querySelector("#settingsIncrementalCollect");
+    if (incrementalToggle) {
+      incrementalToggle.addEventListener("change", () => {
+        persist("incrementalCollect", incrementalToggle.checked);
+      });
+    }
+  }
+
+  function wireExportDefaultsControls(container) {
+    const formatSelect = container.querySelector("#settingsExportFormat");
+    if (formatSelect) {
+      formatSelect.addEventListener("change", () => {
+        persist("exportFormat", formatSelect.value);
+      });
+    }
+
+    const thumbnailsToggle = container.querySelector("#settingsIncludeThumbnails");
+    if (thumbnailsToggle) {
+      thumbnailsToggle.addEventListener("change", () => {
+        persist("includeThumbnails", thumbnailsToggle.checked);
+      });
+    }
+
+    const legacyToggle = container.querySelector("#settingsLegacyExcel");
+    if (legacyToggle) {
+      legacyToggle.addEventListener("change", () => {
+        persist(CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL, legacyToggle.checked);
+      });
+    }
+  }
+
+  /**
+   * Render the Settings view content from current storage state. Called
+   * every time the header gear is opened — never cached, so every control
+   * (and, once the Data section lands, the stats line) always reflects the
+   * latest state rather than a page-load snapshot.
+   */
+  async function renderSettings() {
+    const container = document.getElementById("settingsContent");
+    if (!container) return;
+
+    const keys = [
+      "theme",
+      "pageLimit",
+      "incrementalCollect",
+      "exportFormat",
+      "includeThumbnails",
+      CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL,
+    ];
+    const stored = await new Promise((resolve) => chrome.storage.local.get(keys, resolve));
+
+    const theme = stored.theme || "system";
+    const pageLimit = Number.isFinite(stored.pageLimit) ? stored.pageLimit : 0;
+    const incrementalCollect = Boolean(stored.incrementalCollect);
+    const exportFormat = stored.exportFormat || CONSTANTS.EXPORT_FORMATS.XLSX;
+    const includeThumbnails = Boolean(stored.includeThumbnails);
+    const legacyExcel = Boolean(stored[CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL]);
+
+    container.innerHTML = [
+      themeSectionHtml(theme),
+      collectionSectionHtml(pageLimit, incrementalCollect),
+      exportDefaultsSectionHtml({ exportFormat, includeThumbnails, legacyExcel }),
+    ].join("");
+
+    wireThemeControl(container);
+    wireCollectionControls(container);
+    wireExportDefaultsControls(container);
+  }
+
+  Sidepanel.settings = {
+    renderSettings,
+    SETTINGS_DEFAULTS,
+  };
+})();
