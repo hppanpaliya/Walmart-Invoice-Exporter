@@ -2451,3 +2451,47 @@ function deleteInvoiceCache(_orderNumber) {
 function clearAllInvoiceCache() {
   return Promise.resolve();
 }
+
+/**
+ * One-time, idempotent migration off the retired chrome.storage.local
+ * caches (spec §4.5). Call on every panel/background init — it is a cheap
+ * no-op once both legacy keys are gone (a single chrome.storage.local.get
+ * for two keys). Folds any surviving walmart_invoice_cache entries into
+ * OrderDb (an upsert — safe even if that order is already stored, e.g. a
+ * previous partial migration), then removes both walmart_invoice_cache and
+ * walmart_order_cache. Never touches settings keys (exportMode/
+ * exportFormat/csvPreset/includeThumbnails/incrementalCollect) — a later
+ * phase consolidates those. Safe (a no-op) when both keys are already
+ * absent.
+ * @returns {Promise<void>}
+ */
+async function migrateLegacyStorage() {
+  try {
+    const legacyKeys = [CONSTANTS.CACHE_KEYS.INVOICE, CONSTANTS.CACHE_KEYS.ORDER_COLLECTION];
+    const result = await ChromeApi.storageGet(legacyKeys);
+
+    const legacyInvoiceCache = result[CONSTANTS.CACHE_KEYS.INVOICE];
+    if (legacyInvoiceCache && typeof legacyInvoiceCache === 'object') {
+      for (const [orderNumber, cached] of Object.entries(legacyInvoiceCache)) {
+        // The legacy shape is always { data: invoiceObject, timestamp } —
+        // reject anything else (e.g. a cleared/malformed { data: null }
+        // entry) rather than guessing and storing garbage as an invoice.
+        const invoiceData = cached && cached.data && typeof cached.data === 'object' ? cached.data : null;
+        if (!orderNumber || !invoiceData) continue;
+        try {
+          await OrderDb.putInvoice(orderNumber, invoiceData);
+        } catch (error) {
+          console.warn(`Legacy storage migration: failed to move invoice #${orderNumber} to the order DB:`, error);
+        }
+      }
+    }
+
+    const keysToRemove = legacyKeys.filter((key) => Object.prototype.hasOwnProperty.call(result, key));
+    if (keysToRemove.length > 0) {
+      await ChromeApi.storageRemove(keysToRemove);
+      console.log(`Legacy storage migration: removed ${keysToRemove.join(', ')}`);
+    }
+  } catch (error) {
+    console.warn('Legacy storage migration failed (non-fatal):', error);
+  }
+}
