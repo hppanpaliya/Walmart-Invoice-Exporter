@@ -44,7 +44,7 @@
   /**
    * Switch between the panel's top-level views.
    * Unknown names fall back to the main view (matching the old behavior).
-   * @param {string} viewName - "main", "faq", or "dashboard"
+   * @param {string} viewName - "main", "faq", "dashboard", or "settings"
    * @param {Function} [onMain] - Invoked after switching to the main view
    */
   function switchView(viewName, onMain) {
@@ -52,6 +52,7 @@
       main: document.getElementById("mainView"),
       faq: document.getElementById("faqView"),
       dashboard: document.getElementById("dashboardView"),
+      settings: document.getElementById("settingsView"),
     };
     const target = views[viewName] ? viewName : "main";
 
