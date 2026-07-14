@@ -1706,8 +1706,10 @@ const SVG_ICONS = {
   SUCCESS_CHECKMARK: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>',
   
   TRASH: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path></svg>',
-  
-  PACKAGE: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>',
+
+  // 16x16 (not 14x14) so it visually pairs with DOWNLOAD on the
+  // Single file / Multiple files button pair (spec §5.2).
+  PACKAGE: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>',
   
   INFO_CIRCLE: '<svg width="12" height="12" viewBox="0 0 50 50" fill="none" stroke="currentColor" stroke-width="2"><path d="M 25 2 C 12.309295 2 2 12.309295 2 25 C 2 37.690705 12.309295 48 25 48 C 37.690705 48 48 37.690705 48 25 C 48 12.309295 37.690705 2 25 2 z M 25 4 C 36.609824 4 46 13.390176 46 25 C 46 36.609824 36.609824 46 25 46 C 13.390176 46 4 36.609824 4 25 C 4 13.390176 13.390176 4 25 4 z M 25 11 A 3 3 0 0 0 22 14 A 3 3 0 0 0 25 17 A 3 3 0 0 0 28 14 A 3 3 0 0 0 25 11 z M 21 21 L 21 23 L 22 23 L 23 23 L 23 36 L 22 36 L 21 36 L 21 38 L 22 38 L 23 38 L 27 38 L 28 38 L 29 38 L 29 36 L 28 36 L 27 36 L 27 21 L 26 21 L 22 21 L 21 21 z"></path></svg>',
   
@@ -1721,7 +1723,8 @@ const SVG_ICONS = {
 
   CACHE: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3c4.97 0 9 3.582 9 8s-4.03 8-9 8-9-3.582-9-8 4.03-8 9-8m0-2C6.477 1 2 4.925 2 9.72c0 3.45 2.563 6.43 6 7.723V22h8v-4.558c3.437-1.294 6-4.273 6-7.723 0-4.795-4.477-8.72-10-8.72z"></path></svg>',
 
-  BOLT: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>',
+  // Settings gear (header icon button, spec §5.4).
+  SETTINGS: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>',
 };
 
 /**
@@ -1757,81 +1760,11 @@ function escapeHtml(value) {
 }
 
 /**
- * Escape text and preserve line breaks
- * @param {string} message - Message text (use \n for line breaks)
- * @returns {string} Safe HTML with <br> tags
- */
-function formatMessageWithBreaks(message) {
-  return escapeHtml(message).replace(/\n/g, '<br>');
-}
-
-/**
- * Create a progress message with spinner and text
- * @param {number} current - Current item number
- * @param {number} total - Total items
- * @param {string} action - Action being performed (e.g., "Collecting data", "Downloading order")
- * @param {string} identifier - Item identifier (e.g., order number)
- * @param {string} spinnerColor - CSS color for spinner (default: var(--success))
- * @returns {string} HTML string
- */
-function createProgressMessage(current, total, action, identifier, spinnerColor = 'var(--success)') {
-  const safeAction = escapeHtml(action);
-  const safeCurrent = escapeHtml(current);
-  const safeTotal = escapeHtml(total);
-  const safeIdentifier = escapeHtml(identifier);
-  return `
-    <span class="loading-spinner" style="border-color: ${spinnerColor}; border-top-color: transparent;"></span>
-    ${safeAction} ${safeCurrent} of ${safeTotal} (#${safeIdentifier})...
-  `;
-}
-
-/**
- * Create a success completion message
- * @param {string} message - Success message text
- * @returns {string} HTML string with success icon
- */
-function createSuccessMessage(message) {
-  const safeMessage = formatMessageWithBreaks(message);
-  return `
-    ${renderIcon('SUCCESS_CHECKMARK', 'var(--success)')}
-    ${safeMessage}
-  `.replace('stroke="currentColor"', 'stroke="var(--success)"');
-}
-
-/**
- * Create a warning completion message (amber) — the operation finished but
- * the user should know something was incomplete.
- * @param {string} message - Warning message text
- * @returns {string} HTML string with warning icon
- */
-function createWarningMessage(message) {
-  const safeMessage = formatMessageWithBreaks(message);
-  return `
-    ${renderIcon('ERROR_CIRCLE', '#b45309')}
-    ${safeMessage}
-  `;
-}
-
-/**
- * Create an error completion message
- * @param {string} message - Error message text
- * @returns {string} HTML string with error icon
- */
-function createErrorMessage(message) {
-  const safeMessage = formatMessageWithBreaks(message);
-  return `
-    ${renderIcon('ERROR_CIRCLE', 'var(--danger)')}
-    ${safeMessage}
-  `.replace('stroke="currentColor"', 'stroke="var(--danger)"');
-}
-
-/**
  * Constants for CSS classes, selectors, and text strings
  */
 const CONSTANTS = {
   // CSS Classes
   CSS_CLASSES: {
-    BTN_SUCCESS: 'btn btn-success',
     BTN_PRIMARY: 'btn btn-primary',
     BTN_DANGER: 'btn btn-danger',
     BTN_CLEAR: 'btn btn-clear',
@@ -1885,8 +1818,6 @@ const CONSTANTS = {
     CART_ICON_TITLE: 'Walmart Invoice Exporter',
     SELECT_ORDERS: 'Select orders to download',
     CLEAR_CACHE_BTN: 'Clear Cache',
-    QUICK_EXPORT: 'Quick Export',
-    QUICK_EXPORT_SUCCESS: 'Quick Export completed successfully!',
   },
 
   // Chrome Messages
@@ -1905,6 +1836,11 @@ const CONSTANTS = {
   STORAGE_KEYS: {
     RATING_HINT_DISMISSED: 'ratingHintDismissed',
     RATING_HINT_DISMISS_COUNT: 'ratingHintDismissCount',
+    // spec §5.3 — Excel-only opt-in for the pre-6.18 single-sheet layout.
+    LEGACY_EXCEL: 'legacyExcel',
+    // spec §7 risk table — one-time dismissible tip shown where Quick
+    // Export used to be, telling returning users where it went.
+    QUICK_EXPORT_TIP_DISMISSED: 'quickExportTipDismissed',
   },
 
   // Cache Keys
@@ -2067,20 +2003,6 @@ function createCacheIndicator(orderNumber, options = {}) {
   });
 
   return cacheIndicator;
-}
-
-function createDownloadProgressElement() {
-  let progressDiv = document.getElementById("downloadProgress");
-  if (!progressDiv) {
-    progressDiv = document.createElement("div");
-    progressDiv.id = "downloadProgress";
-    const progressElement = document.getElementById("progress");
-    if (progressElement) {
-      progressElement.style.display = "none";
-      progressElement.insertAdjacentElement("afterend", progressDiv);
-    }
-  }
-  return progressDiv;
 }
 
 /**
