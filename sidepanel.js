@@ -322,42 +322,4 @@ document.addEventListener("DOMContentLoaded", async function () {
       });
     }
   });
-
-  const clearCacheButton = document.createElement("button");
-  clearCacheButton.id = "clearCache";
-  clearCacheButton.className = CONSTANTS.CSS_CLASSES.BTN_CLEAR;
-  clearCacheButton.style.display = "inline-flex";
-  clearCacheButton.innerHTML = `
-    ${renderIcon("TRASH")}
-    <span class="btn-text">${CONSTANTS.TEXT.CLEAR_CACHE_BTN}</span>
-  `;
-
-  const buttonGroup = document.querySelector(".button-group");
-  if (buttonGroup) {
-    buttonGroup.appendChild(clearCacheButton);
-  }
-
-  view.updateClearCacheVisibility();
-
-  clearCacheButton.addEventListener("click", async function () {
-    view.setButtonLoading(clearCacheButton, true);
-    await clearAllInvoiceCache();
-
-    chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.CLEAR_CACHE }, function (response) {
-      if (response && response.status === "cache_cleared") {
-        view.setButtonLoading(clearCacheButton, false);
-        view.displayOrderNumbers([]);
-        view.updateClearCacheVisibility();
-
-        const progressElement = document.getElementById("progress");
-        if (progressElement) {
-          progressElement.textContent = "Cache cleared successfully";
-          progressElement.style.display = "block";
-          setTimeout(() => {
-            progressElement.style.display = "none";
-          }, 2000);
-        }
-      }
-    });
-  });
 });
