@@ -17,8 +17,8 @@ function stopCollection(sandbox, request = {}) {
   return new Promise((resolve) => sandbox.handleStopCollection(request, resolve));
 }
 
-function clearCache(sandbox, request = {}) {
-  return new Promise((resolve) => sandbox.handleClearCache(request, resolve));
+function resetSessionState(sandbox, request = {}) {
+  return new Promise((resolve) => sandbox.handleResetSessionState(request, resolve));
 }
 
 const SESSION_KEY = 'walmart_collection_session';
@@ -116,7 +116,7 @@ test('handleStopCollection: the idle branch also hydrates from session instead o
   assert.deepEqual(toPlain(response.orderNumbers), ['777']);
 });
 
-test('handleClearCache: removes the session key and resets in-memory state', async () => {
+test('handleResetSessionState: removes the session key and resets in-memory state', async () => {
   const sandbox = loadBackgroundSandbox();
   const CollectionState = evalIn(sandbox, 'CollectionState');
   CollectionState.allOrderNumbers.add('abc');
@@ -125,8 +125,9 @@ test('handleClearCache: removes the session key and resets in-memory state', asy
   await Promise.resolve();
   await Promise.resolve();
 
-  await clearCache(sandbox);
+  const response = await resetSessionState(sandbox);
 
+  assert.equal(response.status, 'session_state_reset');
   assert.equal(sandbox.chrome.storage.session._dump()[SESSION_KEY], undefined);
   assert.equal(CollectionState.allOrderNumbers.size, 0);
 });
