@@ -71,31 +71,6 @@
                 <input type="checkbox" id="incrementalCollect">
                 <label for="incrementalCollect" title="Stops paginating when a whole page of already-stored orders is reached. Uses the local order database, which persists across sessions.">Only collect new orders (stop at known)</label>
             </div>
-            <details class="options-group" id="exportOptionsGroup">
-                <summary>Export options</summary>
-                <div class="input-group" id="exportFormatGroup">
-                    <label for="exportFormat">Export format</label>
-                    <select id="exportFormat">
-                        <option value="xlsx">Excel (.xlsx)</option>
-                        <option value="csv">CSV (.csv)</option>
-                        <option value="json">JSON (.json)</option>
-                        <option value="receipt">Printable receipt (.html)</option>
-                        <option value="pdf">PDF receipt (.pdf)</option>
-                    </select>
-                </div>
-                <div class="input-group" id="csvPresetGroup" style="display:none">
-                    <label for="csvPreset">CSV preset</label>
-                    <select id="csvPreset">
-                        <option value="generic">Generic (orders + items)</option>
-                        <option value="quickbooks">QuickBooks (3-column bank)</option>
-                        <option value="xero">Xero (bank statement)</option>
-                    </select>
-                </div>
-                <div class="toggle-group" id="thumbnailToggleGroup">
-                    <input type="checkbox" id="includeThumbnails">
-                    <label for="includeThumbnails" title="Embeds product images in Excel exports. Slower, and falls back to image links when images can't be fetched.">Include product thumbnails (Excel only)</label>
-                </div>
-            </details>
             <div class="button-group" id="buttonGroup">
                 <button id="startCollection" class="btn btn-primary">
                     <span class="btn-text">Start Collection</span>
@@ -147,6 +122,38 @@
         <p class="action-caption">Single = one file with every order. Multiple = one file per order.</p>
         <p class="action-hint" id="downloadDisabledReason">Select at least one order to download.</p>
         <div id="downloadProgressArea" class="download-progress-area" hidden></div>
+
+        <!-- Format controls (spec §5.1/§5.3): always visible, directly below
+             the two download buttons — no longer a collapsed "Export
+             options" disclosure. -->
+        <div class="export-options-panel" id="exportOptionsPanel">
+            <div class="input-group" id="exportFormatGroup">
+                <label for="exportFormat">Export format</label>
+                <select id="exportFormat">
+                    <option value="xlsx">Excel (.xlsx)</option>
+                    <option value="csv">CSV (.csv)</option>
+                    <option value="json">JSON (.json)</option>
+                    <option value="receipt">Printable receipt (.html)</option>
+                    <option value="pdf">PDF receipt (.pdf)</option>
+                </select>
+            </div>
+            <div class="input-group" id="csvPresetGroup" style="display:none">
+                <label for="csvPreset">CSV preset</label>
+                <select id="csvPreset">
+                    <option value="generic">Generic (orders + items)</option>
+                    <option value="quickbooks">QuickBooks (3-column bank)</option>
+                    <option value="xero">Xero (bank statement)</option>
+                </select>
+            </div>
+            <div class="toggle-group" id="thumbnailToggleGroup">
+                <input type="checkbox" id="includeThumbnails">
+                <label for="includeThumbnails" title="Embeds product images in Excel exports. Slower, and falls back to image links when images can't be fetched.">Include product thumbnails (Excel only)</label>
+            </div>
+            <div class="toggle-group toggle-group-minor" id="legacyExcelToggleGroup" style="display:none">
+                <input type="checkbox" id="legacyExcel">
+                <label for="legacyExcel" title="Single-sheet workbook like older versions (before the Orders/Items split).">Use legacy Excel layout</label>
+            </div>
+        </div>
 
         <!-- Main View Footer -->
         <footer class="footer main-footer">
