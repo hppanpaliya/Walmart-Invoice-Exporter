@@ -6,6 +6,14 @@
 // Load shared constants, utilities, and the durable order database
 importScripts('utils.js', 'orderdb.js');
 
+// One-time, idempotent cleanup of retired chrome.storage.local caches
+// (spec §4.5) — cheap, so it just runs on every worker start rather than
+// being gated behind onInstalled/onStartup (which an MV3 worker restart,
+// unlike a true browser start, does not fire).
+migrateLegacyStorage().catch((error) =>
+  console.warn('Legacy storage migration failed:', error)
+);
+
 // Encapsulate state to reduce global namespace pollution.
 //
 // CollectionState.isCollecting reflects only THIS worker instance — Chrome
