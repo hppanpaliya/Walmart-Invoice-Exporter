@@ -399,6 +399,32 @@ body {
   cursor: pointer;
 }
 
+/* Minor/secondary styling for the legacy Excel toggle (spec §5.3: "rendered
+   minor/secondary, muted") — smaller and quieter than a regular toggle-group,
+   since it is an opt-in escape hatch rather than a normal export option. */
+.toggle-group-minor {
+  margin-bottom: var(--space-2);
+}
+
+.toggle-group-minor label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+/* Format controls, always visible directly below the download buttons
+   (spec §5.1/§5.3) — replaces the collapsed "Export options" <details>
+   that used to live inside the collect .card. */
+.export-options-panel {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.export-options-panel .input-group:last-child,
+.export-options-panel .toggle-group:last-child {
+  margin-bottom: 0;
+}
+
 .dashboard-coverage {
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
