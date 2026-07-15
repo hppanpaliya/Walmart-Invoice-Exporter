@@ -69,17 +69,21 @@ document.addEventListener("DOMContentLoaded", async function () {
   const csvPresetGroup = document.getElementById("csvPresetGroup");
   const csvPresetSelect = document.getElementById("csvPreset");
   const legacyExcelToggleGroup = document.getElementById("legacyExcelToggleGroup");
+  const thumbnailToggleGroup = document.getElementById("thumbnailToggleGroup");
 
-  // The CSV preset only applies to CSV exports, and the legacy-layout
-  // toggle only applies to Excel (spec §5.3) — hide each otherwise.
+  // The CSV preset only applies to CSV exports; the legacy-layout toggle and
+  // product thumbnails only apply to Excel (spec §5.3) — hide each otherwise.
   function updateFormatDependentVisibility() {
+    const isCsv = app.exportFormat === CONSTANTS.EXPORT_FORMATS.CSV;
+    const isXlsx = app.exportFormat === CONSTANTS.EXPORT_FORMATS.XLSX;
     if (csvPresetGroup) {
-      csvPresetGroup.style.display =
-        app.exportFormat === CONSTANTS.EXPORT_FORMATS.CSV ? "" : "none";
+      csvPresetGroup.style.display = isCsv ? "" : "none";
     }
     if (legacyExcelToggleGroup) {
-      legacyExcelToggleGroup.style.display =
-        app.exportFormat === CONSTANTS.EXPORT_FORMATS.XLSX ? "" : "none";
+      legacyExcelToggleGroup.style.display = isXlsx ? "" : "none";
+    }
+    if (thumbnailToggleGroup) {
+      thumbnailToggleGroup.style.display = isXlsx ? "" : "none";
     }
   }
 
