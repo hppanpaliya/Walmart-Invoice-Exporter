@@ -41,19 +41,18 @@
                 <p><strong>Single Order Download:</strong></p>
                 <ol>
                     <li>Navigate to a specific Walmart order page</li>
-                    <li>Click the extension icon</li>
-                    <li>Click "Download Invoice"</li>
+                    <li>Click the extension icon — the order appears automatically</li>
+                    <li>Check its box, then click "Single file"</li>
                 </ol>
 
                 <p style="margin-top: 20px;"><strong>Batch Download:</strong></p>
                 <ol>
                     <li>Go to your Walmart order history page (walmart.com/orders)</li>
                     <li>Click the extension icon</li>
-                    <li>Set the number of pages to crawl (0 = unlimited)</li>
-                    <li>Click "Start Collection"</li>
+                    <li>Click "Collect orders" (page limit and "only new orders" are under Options)</li>
                     <li>Wait for the order numbers to load</li>
                     <li>Select the orders you want to download</li>
-                    <li>Click "Download Selected Orders"</li>
+                    <li>Click "Single file" (one file with every order) or "Multiple files" (one file per order)</li>
                     <li>Wait for the download to complete</li>
                 </ol>
 
@@ -237,39 +236,40 @@
 
         <div class="faq-item">
             <div class="faq-question">
-                Order Caching System
+                Saved orders & your data
                 <svg class="arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                     stroke-width="2">
                     <polyline points="6 9 12 15 18 9"></polyline>
                 </svg>
             </div>
             <div class="faq-answer">
-                <p>This extension now includes an intelligent caching system to improve performance:</p>
+                <p>Every order you download is saved on your device — nothing expires and nothing is ever sent anywhere:</p>
 
                 <ul>
-                    <li><strong>Automatic Caching:</strong> Order numbers are stored locally in your browser after
-                        collection</li>
-                    <li><strong>Faster Access:</strong> Previously collected orders appear instantly without needing to
-                        recrawl pages</li>
-                    <li><strong>Cache Management:</strong> A "Clear Cache" button lets you refresh data when needed</li>
-                    <li><strong>Cache Expiration:</strong> Cached data automatically refreshes after 24 hours</li>
+                    <li><strong>Saved automatically:</strong> Once an order is downloaded, its full details are stored
+                        locally (in the browser's IndexedDB)</li>
+                    <li><strong>Instant re-export:</strong> Re-downloading a saved order, in any format, reuses the
+                        stored data instead of reopening the order page</li>
+                    <li><strong>Yours to delete:</strong> One "Delete all saved data" control (Settings → "Data on this
+                        device") wipes everything the extension has stored</li>
                 </ul>
 
                 <div class="note">
                     <strong>Benefits:</strong>
                     <ul style="margin: 5px 0 5px 20px;">
                         <li>Significantly faster repeat usage</li>
-                        <li>Reduced server load and network requests</li>
-                        <li>Works seamlessly with batch downloading</li>
-                        <li>Cache timestamp shows when data was collected</li>
+                        <li>Reduced network requests during batch downloading</li>
+                        <li>Never fabricates or guesses data for an order that wasn't fully downloaded</li>
+                        <li>A "saved" badge next to an order shows it's already stored</li>
                     </ul>
                 </div>
 
                 <p style="margin-top: 15px;"><strong>How to use:</strong></p>
                 <ul>
-                    <li>When you open the extension, previously collected order numbers will appear automatically</li>
-                    <li>You'll see a message indicating you're using cached data along with the cache date</li>
-                    <li>To refresh the data, simply click the "Clear Cache" button and start collection again</li>
+                    <li>When you open the extension, previously saved orders appear automatically</li>
+                    <li>Orders with a "saved" badge re-export instantly in whichever format you pick</li>
+                    <li>To clear everything and start fresh, use Settings → "Data on this device" → "Delete all saved
+                        data"</li>
                 </ul>
             </div>
         </div>
