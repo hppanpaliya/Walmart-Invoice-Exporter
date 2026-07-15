@@ -342,7 +342,7 @@
   /**
    * Render the Settings view content from current storage state. Called
    * every time the header gear is opened — never cached, so every control
-   * (and, once the Data section lands, the stats line) always reflects the
+   * (including the "Data on this device" stats line) always reflects the
    * latest state rather than a page-load snapshot.
    */
   async function renderSettings() {
