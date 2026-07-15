@@ -376,30 +376,11 @@ function computePriceHistory(records) {
       ${monthlySectionHtml(stats.monthly)}
       ${topItemsSectionHtml(stats.topItems)}
       ${priceHistorySectionHtml(computePriceHistory(records))}
-      <div class="dashboard-section">
-        <button id="dashboardResetButton" class="btn btn-clear">Reset dashboard data</button>
-        <div class="dashboard-hint">Deletes every stored order and invoice from the local database.</div>
-      </div>
     `;
-
-    const resetButton = container.querySelector('#dashboardResetButton');
-    if (resetButton) {
-      resetButton.addEventListener('click', async () => {
-        const confirmed = window.confirm(
-          'Delete ALL stored orders and invoices from the local database? The dashboard starts over from zero.'
-        );
-        if (!confirmed) return;
-        try {
-          await OrderDb.clearAll();
-        } catch (error) {
-          console.error('Dashboard reset failed:', error);
-        }
-        renderDashboard();
-        if (Sidepanel.view && Sidepanel.view.updateDbStats) {
-          Sidepanel.view.updateDbStats();
-        }
-      });
-    }
+    // Dashboard reset lived here pre-redesign; data deletion is now a single
+    // control in Settings' "Data on this device" section (spec §4.4) —
+    // "Delete all saved data" (sidepanel.settings.js), which also clears the
+    // live session collection state, not just the order database.
   }
 
   Sidepanel.dashboard = {

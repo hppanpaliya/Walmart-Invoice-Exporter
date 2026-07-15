@@ -207,46 +207,6 @@
     });
   }
 
-  /**
-   * Show (or refresh) the durable order-database stats line in the status
-   * region. Best-effort: IndexedDB problems must never break the panel.
-   */
-  async function updateDbStats() {
-    try {
-      const stats = await OrderDb.getStats();
-
-      if (stats.orders === 0) {
-        clearStatusBanner("dbStats");
-        return;
-      }
-
-      const banner = renderStatusBanner("dbStats", {
-        variant: "info",
-        message: `Order database: ${stats.orders} orders stored (${stats.invoices} with full invoice)`,
-        actionHtml: `<button type="button" class="db-clear" title="Delete every stored order from the local database">clear</button>`,
-      });
-      if (!banner) return;
-
-      const clearButton = banner.querySelector(".db-clear");
-      if (clearButton) {
-        clearButton.addEventListener("click", async () => {
-          const confirmed = window.confirm(
-            "Delete all orders stored in the local database? Exports and incremental collection will start from scratch."
-          );
-          if (!confirmed) return;
-          try {
-            await OrderDb.clearAll();
-          } catch (error) {
-            console.error("Failed to clear order database:", error);
-          }
-          updateDbStats();
-        });
-      }
-    } catch (error) {
-      console.warn("Order DB stats unavailable:", error);
-    }
-  }
-
   function setUIEnabled(enabled) {
     const card = document.querySelector(".card");
     if (card) {
@@ -452,7 +412,6 @@
 
     if (orderNumbers.length === 0) {
       container.innerHTML = state.placeholders.initialOrderHtml || "";
-      updateClearCacheVisibility();
       updateDownloadButtonsState();
       return;
     }
@@ -487,11 +446,7 @@
       });
 
       if (cachedSet.has(orderNumber)) {
-        const cacheIndicator = createCacheIndicator(orderNumber, {
-          onDelete: () => cachedSet.delete(orderNumber),
-          onAfterDelete: updateClearCacheVisibility,
-        });
-        checkboxDiv.appendChild(cacheIndicator);
+        checkboxDiv.appendChild(createCacheIndicator(orderNumber));
       }
 
       orderList.appendChild(checkboxDiv);
@@ -552,27 +507,14 @@
     }
 
     updateDownloadButtonsState();
-    updateClearCacheVisibility();
   }
 
-  async function updateClearCacheVisibility() {
-    const clearCacheBtn = document.getElementById("clearCache");
-    if (!clearCacheBtn) return;
-
-    const cachedOrders = await getCachedOrderNumbers();
-    clearCacheBtn.style.display = "inline-flex";
-
-    if (cachedOrders && cachedOrders.length > 0) {
-      clearCacheBtn.classList.remove("muted");
-      clearCacheBtn.disabled = false;
-      clearCacheBtn.setAttribute("title", "Clear cached invoices");
-    } else {
-      clearCacheBtn.classList.add("muted");
-      clearCacheBtn.disabled = false;
-      clearCacheBtn.setAttribute("title", "No invoice cache found — click to ensure caches are cleared");
-    }
-  }
-
+  /**
+   * Show (or add) the informational "✓ saved" chip next to one order after
+   * its invoice lands in IndexedDB (spec §4.4: info-only, no delete
+   * affordance — the only way to remove saved data is Settings' "Delete
+   * all saved data").
+   */
   function updateOrderCacheStatus(orderNumber) {
     const container = document.getElementById("orderNumbersContainer");
     if (!container) return;
@@ -586,15 +528,10 @@
     const existingIndicator = checkboxDiv.querySelector(CACHE_INDICATOR_SELECTOR);
     if (existingIndicator) {
       existingIndicator.style.display = "inline-flex";
-      updateClearCacheVisibility();
       return;
     }
 
-    checkboxDiv.appendChild(
-      createCacheIndicator(orderNumber, { onAfterDelete: updateClearCacheVisibility })
-    );
-
-    updateClearCacheVisibility();
+    checkboxDiv.appendChild(createCacheIndicator(orderNumber));
   }
 
   function setButtonLoading(button, isLoading) {
@@ -703,7 +640,6 @@
     clearOffTabWarning,
     showExtractionWarning,
     updateFilterNotice,
-    updateDbStats,
     setUIEnabled,
     updateDownloadButtonsState,
     updateProgressUI,
@@ -714,7 +650,6 @@
     hideDownloadProgress,
     maybeShowQuickExportRetiredTip,
     displayOrderNumbers,
-    updateClearCacheVisibility,
     updateOrderCacheStatus,
     setButtonLoading,
     maybeShowRatingHint,
