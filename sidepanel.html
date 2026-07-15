@@ -237,8 +237,8 @@
                     <p><strong>Single Order Download:</strong></p>
                     <ol>
                         <li>Navigate to a specific Walmart order page</li>
-                        <li>Click the extension icon</li>
-                        <li>Click "Download Invoice"</li>
+                        <li>Click the extension icon — the order appears automatically</li>
+                        <li>Check its box, then click "Single file"</li>
                     </ol>
 
                     <p style="margin-top: 16px;"><strong>Batch Download:</strong></p>
@@ -308,19 +308,21 @@
 
             <div class="faq-item">
                 <div class="faq-question">
-                    Order Caching System
+                    Saved orders & your data
                     <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="6 9 12 15 18 9"></polyline>
                     </svg>
                 </div>
                 <div class="faq-answer">
-                    <p>This extension includes an intelligent caching system:</p>
+                    <p>Every order you download is saved on this device (in the browser's IndexedDB) — nothing expires and nothing is ever sent anywhere:</p>
                     <ul>
-                        <li><strong>Automatic Caching:</strong> Orders are stored locally after collection</li>
-                        <li><strong>Faster Access:</strong> Previously collected orders appear instantly</li>
-                        <li><strong>Cache Management:</strong> "Clear Cache" button refreshes data</li>
-                        <li><strong>Expiration:</strong> Cache refreshes after 24 hours</li>
+                        <li><strong>Saved automatically:</strong> Once an order is downloaded, its full details are stored locally</li>
+                        <li><strong>Instant re-export:</strong> Re-downloading a saved order (in any format) reuses the stored data instead of reopening the order page — and nothing is ever fabricated</li>
+                        <li><strong>Yours to delete:</strong> Settings → "Data on this device" → "Delete all saved data" wipes everything the extension has stored, in one step</li>
                     </ul>
+                    <div class="note">
+                        <strong>Note:</strong> There's no automatic expiration and no separate "cache" to manage — one control clears everything.
+                    </div>
                 </div>
             </div>
 
