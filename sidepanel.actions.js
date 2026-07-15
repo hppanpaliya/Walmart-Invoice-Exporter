@@ -186,11 +186,7 @@
 
   function loadCacheOnMainPage() {
     chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.GET_PROGRESS }, function (response) {
-      renderOrderList(response).then(() => {
-        if (response && response.orderNumbers && response.orderNumbers.length > 4) {
-          view.maybeShowRatingHint();
-        }
-      });
+      renderOrderList(response);
     });
   }
 

@@ -1839,8 +1839,6 @@ const CONSTANTS = {
 
   // Storage Keys
   STORAGE_KEYS: {
-    RATING_HINT_DISMISSED: 'ratingHintDismissed',
-    RATING_HINT_DISMISS_COUNT: 'ratingHintDismissCount',
     // spec §5.3 — Excel-only opt-in for the pre-6.18 single-sheet layout.
     LEGACY_EXCEL: 'legacyExcel',
     // spec §7 risk table — one-time dismissible tip shown where Quick
@@ -1875,7 +1873,6 @@ const CONSTANTS = {
     COLLECTION_TIMEOUT: 10000,    // Reduced from 30s for faster failure detection
     ELEMENT_POLL_INTERVAL: 200,   // Polling interval for waitForElement
     RETRY_DELAY: 400,
-    RATING_DELAY: 500,
     HINT_DISMISS_DELAY: 5000,
     SUCCESS_DISPLAY_DURATION: 10000,       // How long to show success messages
     ERROR_DISPLAY_DURATION: 30000,         // How long to show error messages
