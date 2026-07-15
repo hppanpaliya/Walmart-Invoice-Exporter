@@ -1966,7 +1966,7 @@ function isPayloadQualitySummary(summary) {
 /**
  * Sidepanel UI helpers
  */
-const CACHE_INDICATOR_STYLE = 'cursor: pointer; margin-left: 6px; color: var(--primary); display: inline-flex; align-items: center; gap: 2px; font-size: 10px;';
+const CACHE_INDICATOR_STYLE = 'margin-left: 6px; color: var(--primary); display: inline-flex; align-items: center; gap: 2px; font-size: 10px;';
 const CACHE_INDICATOR_SELECTOR = '[data-cache-indicator="true"]';
 
 function setCollectionButtonsState({ running, startLabel = "Collect orders" }) {
@@ -1990,23 +1990,23 @@ function updateCheckboxCount(container) {
   heading.textContent = `${CONSTANTS.TEXT.SELECT_ORDERS} (${totalOrders}) - Selected: ${checked}`;
 }
 
-function createCacheIndicator(orderNumber, options = {}) {
-  const { onDelete = null, onAfterDelete = null } = options;
+/**
+ * A non-interactive "saved" chip shown next to an order whose full invoice
+ * is already stored in IndexedDB (spec §4.4: "the per-order badge becomes
+ * an informational '✓ saved' chip — no longer a delete control"). The only
+ * way to remove saved data is now Settings' "Delete all saved data"
+ * (sidepanel.settings.js), so this renders no click handler at all.
+ * @param {string} orderNumber - unused beyond the caller's own bookkeeping;
+ *   kept as a parameter for call-site symmetry with the rest of this file.
+ * @returns {HTMLElement}
+ */
+function createCacheIndicator(_orderNumber) {
   const cacheIndicator = document.createElement("span");
   cacheIndicator.dataset.cacheIndicator = "true";
   cacheIndicator.style.cssText = CACHE_INDICATOR_STYLE;
-  cacheIndicator.title = "Click to delete this order's cache";
-  cacheIndicator.innerHTML = renderIcon('CACHE', 'var(--primary)');
+  cacheIndicator.title = "Full invoice saved on this device";
+  cacheIndicator.innerHTML = `${renderIcon('CACHE', 'var(--primary)')}<span>saved</span>`;
   cacheIndicator.style.display = "inline-flex";
-
-  cacheIndicator.addEventListener("click", async (e) => {
-    e.stopPropagation();
-    await deleteInvoiceCache(orderNumber);
-    cacheIndicator.style.display = "none";
-    if (onDelete) onDelete(orderNumber);
-    if (onAfterDelete) onAfterDelete(orderNumber);
-  });
-
   return cacheIndicator;
 }
 
@@ -2332,17 +2332,20 @@ function truncateText(text, maxLength = 60, suffix = '...') {
  * OrderDataFetcher.fetchOrderData in sidepanel.download.js for the
  * IndexedDB-first fetch path that replaces getCachedInvoice/cacheInvoice.
  *
- * getCachedOrderNumbers, deleteInvoiceCache, and clearAllInvoiceCache are
- * kept (as DB-backed reads / inert no-ops) purely because existing UI still
- * calls them — the per-order cache badge and the "Clear Cache" button,
- * both removed in a later phase. A one-time migration folds any surviving
- * walmart_invoice_cache data into OrderDb (see migrateLegacyStorage).
+ * getCachedOrderNumbers is kept (as a DB-backed read) because the per-order
+ * "✓ saved" badge (createCacheIndicator, above — now informational-only,
+ * spec §4.4) still needs to know which orders have a stored invoice. Bulk
+ * deletion lives in one place now: Settings' "Delete all saved data"
+ * (sidepanel.settings.js), which calls OrderDb.clearAll() directly — the
+ * old per-order/bulk chrome.storage invoice-cache deletion helpers
+ * (deleteInvoiceCache, clearAllInvoiceCache) had nothing left to delete and
+ * are removed. A one-time migration folds any surviving walmart_invoice_cache
+ * data into OrderDb (see migrateLegacyStorage).
  */
 
 /**
  * Which orders have a full invoice stored durably in IndexedDB. Powers the
- * per-order "already downloaded" badge and the Clear Cache button's
- * enabled/muted state — replaces the old chrome.storage cache scan.
+ * per-order "✓ saved" badge — replaces the old chrome.storage cache scan.
  * @returns {Promise<string[]>} order numbers with a stored invoice
  */
 async function getCachedOrderNumbers() {
@@ -2353,30 +2356,6 @@ async function getCachedOrderNumbers() {
     console.warn('Order DB unavailable for cached-order lookup:', error);
     return [];
   }
-}
-
-/**
- * Formerly deleted one order's chrome.storage invoice-cache entry. There is
- * no more per-order cache to delete now that invoices live only in
- * IndexedDB (bulk deletion is a future "Delete all saved data" control) —
- * an inert no-op so the existing per-order cache-badge click handler
- * (createCacheIndicator, above) stays safe.
- * @returns {Promise<void>}
- */
-function deleteInvoiceCache(_orderNumber) {
-  return Promise.resolve();
-}
-
-/**
- * Formerly cleared the entire chrome.storage invoice cache. There is
- * nothing left to clear (invoices live only in IndexedDB) — an inert no-op
- * so the existing "Clear Cache" button handler (sidepanel.js) stays safe.
- * Real data deletion is a future "Delete all saved data" control
- * (OrderDb.clearAll).
- * @returns {Promise<void>}
- */
-function clearAllInvoiceCache() {
-  return Promise.resolve();
 }
 
 /**
