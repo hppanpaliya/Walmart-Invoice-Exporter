@@ -1,5 +1,22 @@
 # Changelog
 
+## [6.26] - July 14, 2026
+
+### Changed
+- **Two-button download model:** the old "Download" and "Quick Export" buttons are replaced by an equal pair — "Single file" (one file with every selected order) and "Multiple files" (one file per selected order). The chosen format (Excel/CSV/JSON/receipt/PDF) shows right in the button label, e.g. "Single file (.xlsx)".
+- **Collection demoted to one primary action:** "Collect orders" is now the single button on the main card; page limit and "only collect new orders" moved under an "Options" disclosure.
+- **Removed the 884 KB ExcelJS injection from every walmart.com/orders page** — it now loads only when an Excel export actually runs, making the panel lighter on every other page.
+
+### Added
+- **Dedicated Settings view** (gear icon in the header): Appearance (System/Light/Dark theme — dark mode is new), Collection defaults, Export defaults, "Data on this device", and About.
+- **"Use legacy Excel layout" opt-in** restores the older single-sheet workbook (pre-6.18) for anyone who prefers it over the current Orders/Items two-sheet layout. Off by default.
+- **Unified on-device storage:** everything the extension stores now lives in one place (IndexedDB), with a single "Delete all saved data" control in Settings that truly wipes everything — no servers, no telemetry.
+- **Instant re-export:** orders you've already downloaded re-export immediately, in any format, from the stored data — nothing is ever fabricated.
+- Keyboard focus rings, reduced-motion support, and ARIA labeling throughout the panel.
+
+### Fixed
+- **The long-standing "cache won't clear" problem** is gone — the old three scattered clear controls (including the confusing "Clear Cache" button) are replaced by the one "Delete all saved data" control, which now actually removes everything.
+
 ## [6.25] - July 10, 2026
 
 ### Changed
