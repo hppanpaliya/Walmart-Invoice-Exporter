@@ -142,6 +142,13 @@ See [docs/PORTS.md](./docs/PORTS.md) for the full list of differences.
 
 ## What's New
 
+### Version 6.26 (July 14, 2026)
+- **Redesigned download** — two buttons, **Single file** (one file with every selected order) and **Multiple files** (one file per order), replace the old Download + Quick Export. Already-downloaded orders re-export instantly.
+- **Legacy Excel layout** option restores the older single-sheet workbook
+- **Dark mode** plus a dedicated **Settings** view
+- **Unified on-device storage** with one "Delete all saved data" control — fixes the old "cache won't clear" issue
+- Stopped loading an 884 KB library on every Walmart orders page
+
 ### Version 6.4 (July 9, 2026)
 - **Fixed the "repeated blank entries" issue** — Walmart removed the CSS classes v6.2 relied on; extraction now reads Walmart's page payload first with DOM fallback, and warns instead of exporting blanks
 - **Quick Export** — instant one-row-per-order summary spreadsheet, no order page visits
