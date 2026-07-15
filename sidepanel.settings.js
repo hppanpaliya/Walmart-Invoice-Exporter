@@ -174,13 +174,35 @@
   }
 
   /**
-   * The single honest clear-data control (spec §4.4): wipes IndexedDB
-   * (OrderDb.clearAll — orders + invoices) AND chrome.storage.session's
-   * live collection progress (RESET_SESSION_STATE, background.js), then
-   * refreshes both Settings' own stats line and the main view/dashboard so
-   * every surface lands on a true empty state. Confirmed via the
-   * focus-trapped Dialog component, whose confirm button echoes the exact
-   * count about to be deleted.
+   * The single honest clear-data control's actual effect (spec §4.4): wipes
+   * IndexedDB (OrderDb.clearAll — orders + invoices) AND
+   * chrome.storage.session's live collection progress (RESET_SESSION_STATE,
+   * background.js), then refreshes both Settings' own stats line and the
+   * main view/dashboard so every surface lands on a true empty state.
+   * Separated from the Dialog confirmation UI (confirmDeleteAllData, below)
+   * so it can be exercised directly in tests without a real DOM.
+   * @returns {Promise<void>}
+   */
+  async function deleteAllSavedData() {
+    try {
+      await OrderDb.clearAll();
+    } catch (error) {
+      console.error("Failed to clear the order database:", error);
+    }
+    await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.RESET_SESSION_STATE }, () => resolve());
+    });
+
+    if (Sidepanel.components) Sidepanel.components.Toast("Saved data cleared");
+    renderSettings();
+    if (Sidepanel.actions && Sidepanel.actions.checkCurrentTab) {
+      Sidepanel.actions.checkCurrentTab();
+    }
+  }
+
+  /**
+   * Confirmation UI for deleteAllSavedData: a focus-trapped Dialog whose
+   * confirm button echoes the exact count about to be deleted.
    */
   function confirmDeleteAllData(stats) {
     const count = stats.orders;
@@ -191,29 +213,15 @@
       confirmLabel: `Delete ${count} order${count === 1 ? "" : "s"}`,
       confirmVariant: "danger",
       cancelLabel: "Cancel",
-      onConfirm: async () => {
-        try {
-          await OrderDb.clearAll();
-        } catch (error) {
-          console.error("Failed to clear the order database:", error);
-        }
-        await new Promise((resolve) => {
-          chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.RESET_SESSION_STATE }, () => resolve());
-        });
-
-        Sidepanel.components.Toast("Saved data cleared");
-        renderSettings();
-        if (Sidepanel.actions && Sidepanel.actions.checkCurrentTab) {
-          Sidepanel.actions.checkCurrentTab();
-        }
-      },
+      onConfirm: deleteAllSavedData,
     });
   }
 
   /**
-   * Restore every settings key (NOT stored data — see confirmDeleteAllData
+   * Restore every settings key (NOT stored data — see deleteAllSavedData
    * above for that) to its default, then refresh both Settings and the
    * main view's own controls so the reset is visible immediately.
+   * @returns {Promise<void>}
    */
   async function resetSettingsToDefaults() {
     await new Promise((resolve) => chrome.storage.local.set(SETTINGS_DEFAULTS, resolve));
@@ -226,7 +234,7 @@
     app.incrementalCollect = SETTINGS_DEFAULTS.incrementalCollect;
     app.legacyExcel = SETTINGS_DEFAULTS[CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL];
 
-    Sidepanel.applyTheme(SETTINGS_DEFAULTS.theme);
+    if (Sidepanel.applyTheme) Sidepanel.applyTheme(SETTINGS_DEFAULTS.theme);
 
     const mainCsvPresetSelect = document.getElementById("csvPreset");
     if (mainCsvPresetSelect) mainCsvPresetSelect.value = app.csvPreset;
@@ -382,5 +390,7 @@
   Sidepanel.settings = {
     renderSettings,
     SETTINGS_DEFAULTS,
+    deleteAllSavedData,
+    resetSettingsToDefaults,
   };
 })();
