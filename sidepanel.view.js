@@ -386,8 +386,7 @@
   /**
    * One-time dismissible tip shown where Quick Export used to be (design
    * spec §7 risk table: "Muscle-memory loss (Quick Export gone)"). Renders
-   * once per install into the consolidated status region, same
-   * persisted-dismissal idiom as maybeShowRatingHint below.
+   * once per install into the consolidated status region.
    */
   function maybeShowQuickExportRetiredTip() {
     if (document.getElementById("quickExportRetiredTip")) return;
@@ -551,42 +550,6 @@
     }
   }
 
-  function maybeShowRatingHint() {
-    if (Math.random() > 0.8) return;
-
-    chrome.storage.local.get([CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISSED], function (sessionResult) {
-      if (sessionResult[CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISSED]) return;
-
-      chrome.storage.local.get([CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT], function (localResult) {
-        const dismissCount = localResult[CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT] || 0;
-        if (dismissCount >= 7) return;
-
-        if (document.getElementById("ratingHint")) return;
-
-        // Same trigger/gating as before (20% chance, not dismissed, under
-        // the 7-dismiss cap) and the same delay before appearing — only the
-        // rendering (Banner instead of a bespoke .rating-hint fade-in) and
-        // its consolidated location (the status region, not "wherever the
-        // download button happens to be") changed.
-        setTimeout(() => {
-          renderStatusBanner("ratingHint", {
-            variant: "info",
-            message: "Find this helpful? Consider rating it",
-            actionHtml: `<a href="${CONSTANTS.URLS.WALMART_REVIEWS}" target="_blank">Rate it</a>`,
-            dismissible: true,
-            onDismiss: () => {
-              chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISSED]: true });
-              chrome.storage.local.get([CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT], function (result) {
-                const newCount = (result[CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT] || 0) + 1;
-                chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISS_COUNT]: newCount });
-              });
-            },
-          });
-        }, CONSTANTS.TIMING.RATING_DELAY);
-      });
-    });
-  }
-
   function initFaqAccordion() {
     document.querySelectorAll(".faq-question").forEach((question) => {
       question.addEventListener("click", () => {
@@ -652,7 +615,6 @@
     displayOrderNumbers,
     updateOrderCacheStatus,
     setButtonLoading,
-    maybeShowRatingHint,
     initFaqAccordion,
     initCopyLinks,
   };

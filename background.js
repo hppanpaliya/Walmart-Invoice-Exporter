@@ -56,15 +56,6 @@ const CollectionState = {
   }
 };
 
-// Reset rating hint per browser session (stored in local, cleared on startup)
-chrome.runtime.onStartup.addListener(() => {
-  chrome.storage.local.remove(CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISSED);
-});
-
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.remove(CONSTANTS.STORAGE_KEYS.RATING_HINT_DISMISSED);
-});
-
 // Open side panel when extension icon is clicked
 chrome.action.onClicked.addListener((tab) => {
   if (chrome.sidePanel && chrome.sidePanel.open) {
