@@ -61,7 +61,6 @@
           view.applyLayout(view.UI_MODES.MAIN_ORDERS);
           app.currentOrdersUrl = url;
           view.updateFilterNotice(url);
-          view.updateDbStats();
           loadCacheOnMainPage();
         }
       } else {
