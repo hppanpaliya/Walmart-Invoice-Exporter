@@ -253,6 +253,31 @@
     }
   }
 
+  /**
+   * About section (spec §5.4): version, an on-device/no-telemetry note, and
+   * the "Rate this extension" link — relocated here from the random
+   * Math.random()>0.8-gated banner that used to appear near the download
+   * actions (view.maybeShowRatingHint, removed). Same rating URL, but now a
+   * single, always-available, non-nagging link.
+   */
+  function aboutSectionHtml() {
+    const version =
+      typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getManifest
+        ? chrome.runtime.getManifest().version
+        : "";
+    return `
+      <div class="settings-section">
+        <h3 class="settings-section-title">About</h3>
+        <p class="settings-about-line">Version ${escapeHtml(version)}</p>
+        <p class="settings-about-note">All data stays on this device — no telemetry, no accounts, nothing sent anywhere.</p>
+        <a href="${CONSTANTS.URLS.WALMART_REVIEWS}" target="_blank" class="rating-button">
+          ${renderIcon("STAR")}
+          Rate on Chrome Web Store
+        </a>
+      </div>
+    `;
+  }
+
   function wireThemeControl(container) {
     const control = container.querySelector("#themeControl");
     if (!control) return;
@@ -345,6 +370,7 @@
       collectionSectionHtml(pageLimit, incrementalCollect),
       exportDefaultsSectionHtml({ exportFormat, includeThumbnails, legacyExcel }),
       dataSectionHtml(stats),
+      aboutSectionHtml(),
     ].join("");
 
     wireThemeControl(container);

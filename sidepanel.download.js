@@ -549,7 +549,6 @@
               variant: "success",
               message: `Exported ${count} order${count === 1 ? "" : "s"} (${formatLabel})`,
             });
-            view.maybeShowRatingHint();
           } else {
             showDownloadResultBanner({
               variant: "danger",
@@ -589,7 +588,6 @@
               variant: "success",
               message: `Exported ${succeeded} order${succeeded === 1 ? "" : "s"} (${formatLabel})`,
             });
-            view.maybeShowRatingHint();
           } else {
             showDownloadResultBanner({
               variant: "danger",
