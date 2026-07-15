@@ -6,8 +6,8 @@
  * design.md §5.5). Loaded via a plain <script> tag after utils.js (for
  * renderIcon/escapeHtml) and sidepanel.state.js, before sidepanel.view.js —
  * view.js's notice functions (createOffTabWarning, showExtractionWarning,
- * updateFilterNotice, updateDbStats, maybeShowRatingHint) render through
- * Banner() here instead of five separate hand-rolled notice styles.
+ * updateFilterNotice) render through Banner() here instead of several
+ * separate hand-rolled notice styles.
  *
  * Every factory returns a plain DOM element (or, where there's genuine
  * ongoing state to manage, a small object wrapping one) — callers wire up
