@@ -383,28 +383,6 @@
     downloadProgressHandle.area.hidden = true;
   }
 
-  /**
-   * One-time dismissible tip shown where Quick Export used to be (design
-   * spec §7 risk table: "Muscle-memory loss (Quick Export gone)"). Renders
-   * once per install into the consolidated status region.
-   */
-  function maybeShowQuickExportRetiredTip() {
-    if (document.getElementById("quickExportRetiredTip")) return;
-
-    chrome.storage.local.get([CONSTANTS.STORAGE_KEYS.QUICK_EXPORT_TIP_DISMISSED], (result) => {
-      if (result[CONSTANTS.STORAGE_KEYS.QUICK_EXPORT_TIP_DISMISSED]) return;
-
-      renderStatusBanner("quickExportRetiredTip", {
-        variant: "info",
-        message: "Quick Export is now built into Download — saved orders re-export instantly.",
-        dismissible: true,
-        onDismiss: () => {
-          chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.QUICK_EXPORT_TIP_DISMISSED]: true });
-        },
-      });
-    });
-  }
-
   async function displayOrderNumbers(orderNumbers, additionalFields = {}) {
     const container = document.getElementById("orderNumbersContainer");
     if (!container) return;
@@ -611,7 +589,6 @@
     showDownloadProgress,
     updateDownloadProgress,
     hideDownloadProgress,
-    maybeShowQuickExportRetiredTip,
     displayOrderNumbers,
     updateOrderCacheStatus,
     setButtonLoading,

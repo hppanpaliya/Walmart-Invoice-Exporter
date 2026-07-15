@@ -307,11 +307,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   actions.checkCurrentTab();
 
-  // One-time tip (spec §7 risk table) telling returning users where Quick
-  // Export went — not gated on order count like the rating hint, since
-  // this is about orientation, not "you've used this enough to rate it".
-  view.maybeShowQuickExportRetiredTip();
-
   chrome.tabs.onActivated.addListener(actions.checkCurrentTab);
   chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, tab) {
     if (changeInfo.status === "complete") {
