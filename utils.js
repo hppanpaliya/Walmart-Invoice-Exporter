@@ -1843,7 +1843,6 @@ const CONSTANTS = {
     LEGACY_EXCEL: 'legacyExcel',
     // spec §7 risk table — one-time dismissible tip shown where Quick
     // Export used to be, telling returning users where it went.
-    QUICK_EXPORT_TIP_DISMISSED: 'quickExportTipDismissed',
   },
 
   // Cache Keys
