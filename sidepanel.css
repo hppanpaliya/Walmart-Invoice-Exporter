@@ -422,15 +422,6 @@ body {
   margin-bottom: var(--space-3);
 }
 
-/* db-stats' destructive "clear" action, now rendered as a Banner actionHtml
-   button (sidepanel.view.js updateDbStats) — .banner-action button sets
-   color: inherit at (0,1,1) specificity, so this needs .banner .db-clear
-   (0,2,0) to reliably win and keep the destructive-red color regardless of
-   which banner variant it happens to render inside. */
-.banner .db-clear {
-  color: var(--danger);
-}
-
 /* Paired action buttons: Single file / Multiple files, side by side as an
    equal, matched pair (spec §5.2 — replaces the old mutating Download
    button + separate Quick Export button). */
