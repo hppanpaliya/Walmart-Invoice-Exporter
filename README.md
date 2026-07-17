@@ -2,7 +2,7 @@
 
 A Chrome extension that allows users to download their Walmart order history as Excel, CSV, JSON, or printable receipts. Now with a redesigned panel, dark mode, unified on-device storage, and instant re-export of orders you've already downloaded!
 
-<img src="./screenshot.webp" alt="Screenshot of extension" height="200">
+<img src="./screenshot.png" alt="Screenshot of extension" height="200">
 
 ## Features
 
