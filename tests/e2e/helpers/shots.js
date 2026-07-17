@@ -1,7 +1,7 @@
 /**
  * UI screenshot driver (dev tool, not a test): boots the packed extension in
- * the e2e harness, walks the panel through its main states, and saves PNGs
- * at side-panel width. Usage: node tests/e2e/helpers/shots.js <outDir>
+ * the e2e harness, walks the panel through its states, and saves PNGs.
+ * Usage: node tests/e2e/helpers/shots.js <outDir>
  */
 'use strict';
 
@@ -9,8 +9,7 @@ const path = require('node:path');
 const { launch, collectOrders, renderOrderList } = require('./harness');
 
 const OUT = process.argv[2] || '.';
-const WIDTH = 380;
-const HEIGHT = 820;
+const HEIGHT = 860;
 
 async function shot(panel, name) {
   // The harness never sits on a real Walmart tab, so the off-tab banner is
@@ -18,62 +17,82 @@ async function shot(panel, name) {
   await panel.evaluate(() => {
     const banner = document.getElementById('offTabWarning');
     if (banner) banner.remove();
+    const cacheInfo = document.getElementById('cacheInfo');
+    if (cacheInfo) cacheInfo.remove();
   });
-  await panel.waitForTimeout(250);
+  await panel.waitForTimeout(200);
   await panel.screenshot({ path: path.join(OUT, `${name}.png`) });
   console.log(`saved ${name}.png`);
+}
+
+async function setTheme(panel, theme) {
+  await panel.evaluate((t) => {
+    if (t) document.documentElement.setAttribute('data-theme', t);
+    else document.documentElement.removeAttribute('data-theme');
+  }, theme);
 }
 
 (async () => {
   const { panel, close } = await launch();
   try {
-    await panel.setViewportSize({ width: WIDTH, height: HEIGHT });
+    await panel.setViewportSize({ width: 380, height: HEIGHT });
 
-    // Main view, empty state (before any collection)
-    await shot(panel, '01-main-empty-light');
+    // First-run hero (empty DB => first-run macro state)
+    await shot(panel, '01-first-run-light');
+    await setTheme(panel, 'dark');
+    await shot(panel, '02-first-run-dark');
+    await setTheme(panel, null);
 
-    // Collect via the real worker, render the list, select one order
+    // Collect via the real worker, render the receipt list
     const progress = await collectOrders(panel);
     await renderOrderList(panel, progress);
     const firstBox = panel.locator('.order-list input[type="checkbox"]').first();
     await firstBox.check();
-    await shot(panel, '02-main-orders-light');
+    await shot(panel, '03-list-light');
+    await setTheme(panel, 'dark');
+    await shot(panel, '04-list-dark');
 
-    // Dark mode (manual override, same as the Settings toggle)
-    await panel.evaluate(() => {
-      document.documentElement.setAttribute('data-theme', 'dark');
-    });
-    await shot(panel, '03-main-orders-dark');
-    await panel.evaluate(() => {
-      document.documentElement.removeAttribute('data-theme');
-    });
+    // Expand the first row (click the row body, not the checkbox)
+    await panel.locator('.order-list .order-row').first().click();
+    await shot(panel, '05-row-expanded-dark');
+    await setTheme(panel, null);
 
-    // Settings view (light + dark)
-    await panel.evaluate(() => {
-      window.Sidepanel.view.switchView('settings');
-      window.Sidepanel.settings.renderSettings();
+    // Range filter engaged (This year)
+    const hasFilter = await panel.evaluate(() => {
+      const select = document.getElementById('listRangeFilter');
+      if (!select) return false;
+      const option = Array.from(select.options).find((o) => o.value === 'thisYear');
+      if (!option) return false;
+      select.value = 'thisYear';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
     });
-    await shot(panel, '04-settings-light');
-    await panel.evaluate(() => {
-      document.documentElement.setAttribute('data-theme', 'dark');
-    });
-    await shot(panel, '05-settings-dark');
-    await panel.evaluate(() => {
-      document.documentElement.removeAttribute('data-theme');
-    });
+    if (hasFilter) {
+      await panel.waitForTimeout(300);
+      await shot(panel, '06-filter-thisyear-light');
+      await panel.evaluate(() => {
+        const select = document.getElementById('listRangeFilter');
+        select.value = 'all';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    } else {
+      console.warn('listRangeFilter not found — skipping filter shot');
+    }
 
-    // Delete-all confirmation dialog
-    await panel.click('#deleteAllDataButton');
-    await shot(panel, '06-delete-dialog-light');
+    // Width sweep on the loaded list
+    await panel.setViewportSize({ width: 300, height: HEIGHT });
+    await shot(panel, '07-list-narrow-300');
+    await panel.setViewportSize({ width: 460, height: HEIGHT });
+    await shot(panel, '08-list-wide-460');
+    await panel.setViewportSize({ width: 380, height: HEIGHT });
 
-    // Dashboard
-    await panel.evaluate(() => {
-      const dialog = document.querySelector('.dialog-overlay .dialog-cancel');
-      if (dialog) dialog.click();
-      window.Sidepanel.view.switchView('dashboard');
-      window.Sidepanel.dashboard.renderDashboard();
-    });
-    await shot(panel, '07-dashboard-light');
+    // Horizontal-overflow check at the extreme narrow width
+    await panel.setViewportSize({ width: 280, height: HEIGHT });
+    const overflow = await panel.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    );
+    console.log(`overflow @280px: ${overflow}px ${overflow > 0 ? '*** HORIZONTAL SCROLL ***' : '(none, good)'}`);
+    await shot(panel, '09-list-narrow-280');
   } finally {
     await close();
   }

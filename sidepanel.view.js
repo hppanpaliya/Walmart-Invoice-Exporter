@@ -223,6 +223,12 @@
     const has = Boolean(hasOrders);
     document.body.classList.toggle("first-run", !has);
     if (state.app) state.app.hasOrders = has;
+    // Keep the collect button's label in sync with the macro state — the
+    // label logic lives in setCollectionButtonsState, but not every path
+    // that flips hasOrders goes through it (e.g. panel init from the DB).
+    if (!state.app || !state.app.collectionInProgress) {
+      setCollectionButtonsState({ running: false });
+    }
   }
 
   function setUIEnabled(enabled) {
@@ -607,6 +613,9 @@
       rowEl.classList.add("expanded");
       listState.openRowEl = rowEl;
       listState.openDetailEl = detail;
+      // The list box is its own scroll area — an expansion near its fold
+      // opens mostly out of view (the action buttons were the casualty).
+      detail.scrollIntoView({ block: "nearest", behavior: "auto" });
     }
   }
 
