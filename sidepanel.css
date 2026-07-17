@@ -276,15 +276,27 @@ body {
 }
 
 .header h1 {
-  font-size: var(--font-size-lg);
+  font-size: 15px;
   font-weight: 600;
   color: var(--text);
   flex: 1;
   min-width: 0;
-  /* Title ellipsizes rather than wrapping/overflowing (spec v7.1 §F). */
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+/* Only the title TEXT ellipsizes (spec v7.1 §F) — the version badge sits
+   outside the truncation so it never silently disappears first. */
+.header-title-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.version-badge:empty {
+  display: none;
 }
 
 .card {
@@ -615,7 +627,7 @@ body {
 
 /* Order list - scrollable area for orders */
 .order-list {
-  max-height: 300px;
+  max-height: 400px;
   overflow-y: auto;
   margin-bottom: var(--space-1);
   padding: 2px 4px 2px 2px;
