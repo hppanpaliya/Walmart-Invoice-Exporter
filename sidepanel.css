@@ -458,6 +458,19 @@ body {
   stroke: var(--on-accent);
 }
 
+/* Unmistakably inert when nothing is selected: drained of the accent tint
+   entirely (not just paled), with the not-allowed cursor. */
+.btn-accent-pair:disabled {
+  background: transparent;
+  color: var(--text-muted);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+
+.btn-accent-pair:disabled svg {
+  stroke: var(--text-muted);
+}
+
 /* Shared caption + disabled-reason hint directly below the button pair.
    Static markup (sidepanel.html), outside #orderNumbersContainer, so a
    collection-progress re-render never wipes it mid-download. */
@@ -1226,7 +1239,25 @@ body {
   text-align: center;
   color: var(--text-secondary);
   font-size: var(--font-size-md);
-  padding: 32px 0;
+  padding: 40px 16px;
+}
+
+.dashboard-empty svg {
+  stroke: var(--text-muted);
+  margin-bottom: var(--space-3);
+}
+
+.dashboard-empty h3 {
+  color: var(--text);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  margin: 0 0 var(--space-2);
+}
+
+.dashboard-empty p {
+  margin: 0 auto;
+  max-width: 300px;
+  line-height: 1.5;
 }
 
 /* ==========================================================================
