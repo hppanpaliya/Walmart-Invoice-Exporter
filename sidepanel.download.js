@@ -342,11 +342,28 @@
     }
   }
 
+  /**
+   * Snapshot every export-affecting option at run start. A multi-file run
+   * exports order-by-order over many seconds — reading app.* live per order
+   * let a mid-run format/preset/toggle change (main view OR Settings) split
+   * one batch across formats (review finding). Runs thread this snapshot
+   * through instead.
+   */
+  function snapshotExportOptions() {
+    return {
+      format: getExportFormat(),
+      csvPreset: getCsvPreset(),
+      includeThumbnails: shouldIncludeThumbnails(),
+      legacyExcel: shouldUseLegacyExcel(),
+    };
+  }
+
   /** Export all collected orders combined, honoring the selected format. */
-  async function exportCombinedOrders(collectedOrdersData, baseName = "Walmart_Orders") {
-    const format = getExportFormat();
+  async function exportCombinedOrders(collectedOrdersData, baseName = "Walmart_Orders", exportOptions = null) {
+    const opts = exportOptions || snapshotExportOptions();
+    const format = opts.format;
     if (format === CONSTANTS.EXPORT_FORMATS.CSV) {
-      const preset = getCsvPreset();
+      const preset = opts.csvPreset;
       if (preset !== CONSTANTS.CSV_PRESETS.GENERIC) {
         const presetLabel = preset === CONSTANTS.CSV_PRESETS.XERO ? "Xero" : "QuickBooks";
         // Accounting presets emit one bank-statement style file.
@@ -371,18 +388,19 @@
       convertOrdersToReceiptPdf(collectedOrdersData, `${baseName}_Receipts.pdf`);
       return;
     }
-    const xlsxWriter = shouldUseLegacyExcel() ? convertMultipleOrdersToXlsxLegacy : convertMultipleOrdersToXlsx;
+    const xlsxWriter = opts.legacyExcel ? convertMultipleOrdersToXlsxLegacy : convertMultipleOrdersToXlsx;
     await xlsxWriter(collectedOrdersData, ExcelJS, `${baseName}.xlsx`, {
-      includeThumbnails: shouldIncludeThumbnails(),
+      includeThumbnails: opts.includeThumbnails,
     });
   }
 
   /** Export one order as its own file, honoring the selected format. */
-  async function exportOneOrder(data) {
-    const format = getExportFormat();
+  async function exportOneOrder(data, exportOptions = null) {
+    const opts = exportOptions || snapshotExportOptions();
+    const format = opts.format;
     const orderNumber = data.orderNumber || "order";
     if (format === CONSTANTS.EXPORT_FORMATS.CSV) {
-      const preset = getCsvPreset();
+      const preset = opts.csvPreset;
       if (preset !== CONSTANTS.CSV_PRESETS.GENERIC) {
         const presetLabel = preset === CONSTANTS.CSV_PRESETS.XERO ? "Xero" : "QuickBooks";
         convertOrdersToAccountingCsv([data], preset, `Order_${orderNumber}_${presetLabel}.csv`);
@@ -406,8 +424,8 @@
       convertOrdersToReceiptPdf(data, `Order_${orderNumber}_Receipt.pdf`);
       return;
     }
-    const xlsxWriter = shouldUseLegacyExcel() ? convertToXlsxLegacy : convertToXlsx;
-    await xlsxWriter(data, ExcelJS, { mode: "single", includeThumbnails: shouldIncludeThumbnails() });
+    const xlsxWriter = opts.legacyExcel ? convertToXlsxLegacy : convertToXlsx;
+    await xlsxWriter(data, ExcelJS, { mode: "single", includeThumbnails: opts.includeThumbnails });
   }
 
   /**
@@ -502,7 +520,10 @@
       });
 
       let extractionWarningsDetected = false;
-      const formatLabel = formatDisplayName(getExportFormat());
+      // One snapshot governs the whole run — mid-run option changes apply
+      // to the NEXT run, never to files already queued in this one.
+      const exportOptions = snapshotExportOptions();
+      const formatLabel = formatDisplayName(exportOptions.format);
       const onProgress = (current, total, orderNumber, actionText) => {
         view.updateDownloadProgress(current, total, `${actionText} ${current} / ${total} (#${orderNumber})`);
       };
@@ -536,7 +557,7 @@
           }
 
           try {
-            await exportCombinedOrders(collectedOrdersData);
+            await exportCombinedOrders(collectedOrdersData, "Walmart_Orders", exportOptions);
           } catch (e) {
             console.error("Failed to export to XLSX:", e);
             showDownloadResultBanner({ variant: "danger", message: `Export failed: ${escapeHtml(e.message)}` });
@@ -567,7 +588,7 @@
               if (checkExtractionWarnings(orderNumber, data)) {
                 extractionWarningsDetected = true;
               }
-              await exportOneOrder(data);
+              await exportOneOrder(data, exportOptions);
             },
             onProgress,
           });
