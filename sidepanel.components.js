@@ -190,7 +190,7 @@
 
     const confirmBtnClass = confirmVariant === "danger" ? "btn-danger" : "btn-primary";
     dialog.innerHTML = `
-      ${title ? `<h3 class="dialog-title">${title}</h3>` : ""}
+      ${title ? `<h3 class="dialog-title">${escapeHtml(title)}</h3>` : ""}
       <div class="dialog-body">${bodyHtml}</div>
       <div class="dialog-actions">
         <button type="button" class="btn btn-clear dialog-cancel">${escapeHtml(cancelLabel)}</button>
