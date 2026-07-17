@@ -145,14 +145,57 @@ test('extension end-to-end', async (t) => {
       }
     });
 
-    await t.test('dashboard renders stats from the collected data', async () => {
+    await t.test('dashboard renders the scoped model from the collected data', async () => {
       await panel.evaluate(() => {
         window.Sidepanel.view.switchView('dashboard');
         return window.Sidepanel.dashboard.renderDashboard();
       });
-      const content = await panel.textContent('#dashboardContent');
-      assert.match(content, /order/i);
-      assert.ok(!content.includes('Collect orders to see analytics'), 'must not show the empty state');
+
+      // Scope picker + headline card render for the measured invoice.
+      assert.ok(await panel.$('#dashScopeSelect'), 'scope picker must render');
+      const total = await panel.textContent('.dash-headline-total');
+      assert.match(total, /\$\d/, 'headline must show a measured total');
+
+      // Switching the scope re-renders the headline label.
+      await panel.selectOption('#dashScopeSelect', 'all');
+      await panel.waitForFunction(() =>
+        document.querySelector('.dash-headline-label')?.textContent.includes('All time')
+      );
+
+      // Tappable month bars exist for the measured months.
+      assert.ok((await panel.$$('.dash-bars .dash-bar')).length > 0, 'month bars must render');
+      assert.ok(await panel.$('#dashViewExportMonth'), 'selected month must offer View & export');
+
+      // The ledger and its scoped export button.
+      const ledger = await panel.textContent('.dash-ledger');
+      assert.match(ledger, /Tax/, 'ledger must break down where the money went');
+      assert.ok(await panel.$('#dashExportScope'));
+    });
+
+    await t.test('dashboard coverage banner selects exactly the unmeasured orders in the main list', async () => {
+      // Only the online order was downloaded — the in-store order is
+      // stored but unmeasured, so the coverage banner must be actionable.
+      const warn = await panel.textContent('.dash-coverage-warn');
+      assert.match(warn, /1 of 2 orders/, 'coverage must count the unmeasured order');
+
+      await panel.click('#dashSelectMissing');
+
+      // Lands on the main view with EXACTLY the missing order selected.
+      await panel.waitForSelector('#mainView.active');
+      assert.equal(
+        await panel.isChecked(`input[value="${INSTORE_ORDER}"]`), true,
+        'the unmeasured order must be selected'
+      );
+      assert.equal(
+        await panel.isChecked(`input[value="${ONLINE_ORDER}"]`), false,
+        'the already-measured order must NOT be selected'
+      );
+      // The selection count reflects exactly one selected order. (Button
+      // enablement is tab-dependent — checkCurrentTab disables the UI when
+      // the active tab isn't a Walmart orders page, which in this harness
+      // is always the case — so the count line is the honest signal here.)
+      const countLine = await panel.textContent('#listCountLine');
+      assert.match(countLine, /1 selected/);
     });
   } finally {
     await close();

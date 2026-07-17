@@ -108,7 +108,7 @@ test('computeDashboardStats groups monthly spend by ISO month, sorted ascending'
 
   // Only invoice-backed orders appear in the monthly bars.
   assert.deepEqual(toPlain(stats.monthly), [
-    { month: '2026-05', total: 24.11 },
+    { month: '2026-05', total: 24.11, orders: 1 },
   ]);
 });
 
@@ -151,7 +151,7 @@ test('computeDashboardStats counts an item once per order even when duplicated i
   ];
 
   const stats = sandbox.computeDashboardStats(records);
-  assert.deepEqual(toPlain(stats.topItems), [{ name: 'Test Soda', orders: 2, quantity: 3 }]);
+  assert.deepEqual(toPlain(stats.topItems), [{ name: 'Test Soda', orders: 2, quantity: 3, spend: 6 }]);
 });
 
 test('computeDashboardStats buckets monthly spend for human-format and invoice-only dates', () => {
@@ -166,7 +166,7 @@ test('computeDashboardStats buckets monthly spend for human-format and invoice-o
 
   assert.equal(stats.totalSpend, 27.49);
   // Every dollar of measured spend must land in a month bucket.
-  assert.deepEqual(toPlain(stats.monthly), [{ month: '2026-06', total: 27.49 }]);
+  assert.deepEqual(toPlain(stats.monthly), [{ month: '2026-06', total: 27.49, orders: 3 }]);
 });
 
 test('computeDashboardStats rounds money to cents', () => {
@@ -319,4 +319,221 @@ test('computePriceHistory excludes single-purchase items, invoiceless records, a
 test('sidepanel.dashboard exposes renderDashboard on window.Sidepanel', () => {
   const sandbox = loadDashboardSandbox();
   assert.equal(typeof sandbox.window.Sidepanel.dashboard.renderDashboard, 'function');
+});
+
+/*
+ * Scoped dashboard model (v7.2 dashboard redesign): every number is scoped
+ * by a range picker that reuses the list filter's range engine
+ * (getRangeBounds), compares against the previous period, and reports
+ * actionable coverage (which stored orders in range are not measured yet).
+ */
+
+/** Fixed "today" for deterministic range math: July 17, 2026 (local time). */
+function fakeNow() {
+  return new Date(2026, 6, 17);
+}
+
+test('computeDashboardStats reports items subtotal and fees for the ledger', () => {
+  const sandbox = loadDashboardSandbox();
+  const stats = sandbox.computeDashboardStats([
+    {
+      orderNumber: '1',
+      orderDate: '2026-03-01T00:00:00.000Z',
+      summary: null,
+      invoice: {
+        schemaVersion: 3,
+        orderTotal: '$50.00',
+        orderSubtotal: '$40.50',
+        deliveryCharges: '$5.99',
+        bagFee: '$0.25',
+        items: [],
+      },
+    },
+    {
+      orderNumber: '2',
+      orderDate: '2026-04-01T00:00:00.000Z',
+      summary: null,
+      invoice: { schemaVersion: 3, orderTotal: '$10.00', orderSubtotal: '$9.50', items: [] },
+    },
+  ]);
+
+  assert.equal(stats.totalSubtotal, 50);
+  assert.equal(stats.totalFees, 6.24);
+});
+
+test('computeDashboardStats topItems includes per-item spend (count AND weight)', () => {
+  const sandbox = loadDashboardSandbox();
+  const stats = sandbox.computeDashboardStats([
+    invoiceRecord('1', '2026-05-01T00:00:00.000Z', [
+      { productName: 'Test Tide Pods', quantity: '1', price: '$11.20' },
+    ]),
+    invoiceRecord('2', '2026-06-01T00:00:00.000Z', [
+      { productName: 'Test Tide Pods', quantity: '1', price: '$12.97' },
+    ]),
+  ]);
+
+  assert.deepEqual(toPlain(stats.topItems), [
+    { name: 'Test Tide Pods', orders: 2, quantity: 2, spend: 24.17 },
+  ]);
+});
+
+/** Records spanning this year, last year, and an undated one — for scoping tests. */
+function scopedRecords() {
+  return [
+    invoiceRecord('202603', '2026-03-10T00:00:00.000Z', []),
+    invoiceRecord('202607', '2026-07-01T00:00:00.000Z', []),
+    invoiceRecord('202506', '2025-06-15T00:00:00.000Z', []),
+    {
+      orderNumber: '202605-summary',
+      orderDate: '2026-05-05T00:00:00.000Z',
+      summary: { orderDate: '2026-05-05T00:00:00.000Z', orderTotal: '$20.00' },
+      invoice: null,
+    },
+    { orderNumber: 'undated', orderDate: '', summary: null, invoice: null },
+  ];
+}
+
+test('filterDashboardRecords scopes records by range; undated excluded from bounded ranges', () => {
+  const sandbox = loadDashboardSandbox();
+  const records = scopedRecords();
+
+  const thisYear = sandbox.filterDashboardRecords(records, 'thisYear', fakeNow());
+  assert.deepEqual(
+    thisYear.map((r) => r.orderNumber),
+    ['202603', '202607', '202605-summary']
+  );
+
+  const lastYear = sandbox.filterDashboardRecords(records, 'lastYear', fakeNow());
+  assert.deepEqual(lastYear.map((r) => r.orderNumber), ['202506']);
+
+  // 'all' passes everything through, undated included.
+  assert.equal(sandbox.filterDashboardRecords(records, 'all', fakeNow()).length, 5);
+});
+
+test('getPreviousRangeBounds returns the immediately preceding period, null for all-time', () => {
+  const sandbox = loadDashboardSandbox();
+
+  assert.deepEqual(toPlain(sandbox.getPreviousRangeBounds('thisYear', fakeNow())), {
+    from: '2025-01-01',
+    to: '2025-12-31',
+  });
+  assert.deepEqual(toPlain(sandbox.getPreviousRangeBounds('lastYear', fakeNow())), {
+    from: '2024-01-01',
+    to: '2024-12-31',
+  });
+  // last3 covers 2026-04-17..2026-07-17 → previous is 2026-01-17..2026-04-16.
+  assert.deepEqual(toPlain(sandbox.getPreviousRangeBounds('last3', fakeNow())), {
+    from: '2026-01-17',
+    to: '2026-04-16',
+  });
+  assert.equal(sandbox.getPreviousRangeBounds('all', fakeNow()), null);
+});
+
+/** Model-test records: measured spend this year and last year plus an unmeasured order. */
+function modelRecords() {
+  const invoiceOf = (total) => ({ schemaVersion: 3, orderTotal: total, items: [] });
+  return [
+    { orderNumber: 'A', orderDate: '2026-03-10T00:00:00.000Z', summary: null, invoice: invoiceOf('$100.00') },
+    { orderNumber: 'B', orderDate: '2026-07-01T00:00:00.000Z', summary: null, invoice: invoiceOf('$50.00') },
+    { orderNumber: 'C', orderDate: '2025-06-15T00:00:00.000Z', summary: null, invoice: invoiceOf('$100.00') },
+    {
+      orderNumber: 'D',
+      orderDate: '2026-05-05T00:00:00.000Z',
+      summary: { orderDate: '2026-05-05T00:00:00.000Z', orderTotal: '$20.00' },
+      invoice: null,
+    },
+  ];
+}
+
+test('computeDashboardModel compares against the previous period', () => {
+  const sandbox = loadDashboardSandbox();
+  const model = sandbox.computeDashboardModel(modelRecords(), 'thisYear', fakeNow());
+
+  assert.equal(model.range, 'thisYear');
+  assert.equal(model.stats.totalSpend, 150);
+  assert.equal(model.prevTotalSpend, 100);
+  // (150 - 100) / 100 → +50%.
+  assert.equal(model.deltaPercent, 50);
+});
+
+test('computeDashboardModel hides the delta instead of lying when the previous period is empty', () => {
+  const sandbox = loadDashboardSandbox();
+
+  // lastYear's previous period (2024) has no data → delta must be null.
+  const lastYear = sandbox.computeDashboardModel(modelRecords(), 'lastYear', fakeNow());
+  assert.equal(lastYear.prevTotalSpend, 0);
+  assert.equal(lastYear.deltaPercent, null);
+
+  // All-time has no previous period at all.
+  const allTime = sandbox.computeDashboardModel(modelRecords(), 'all', fakeNow());
+  assert.equal(allTime.prevTotalSpend, null);
+  assert.equal(allTime.deltaPercent, null);
+});
+
+test('computeDashboardModel zero-fills chart months from range start through the current month', () => {
+  const sandbox = loadDashboardSandbox();
+  const model = sandbox.computeDashboardModel(modelRecords(), 'thisYear', fakeNow());
+
+  // Jan..Jul 2026 — never past "today" even though the range runs to Dec 31.
+  assert.deepEqual(
+    toPlain(model.chartMonths).map((entry) => entry.month),
+    ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07']
+  );
+  const march = model.chartMonths.find((entry) => entry.month === '2026-03');
+  assert.deepEqual(toPlain(march), { month: '2026-03', total: 100, orders: 1 });
+  const empty = model.chartMonths.find((entry) => entry.month === '2026-01');
+  assert.deepEqual(toPlain(empty), { month: '2026-01', total: 0, orders: 0 });
+});
+
+test('computeDashboardModel chart months span min..max for all-time', () => {
+  const sandbox = loadDashboardSandbox();
+  const model = sandbox.computeDashboardModel(modelRecords(), 'all', fakeNow());
+  assert.equal(model.chartMonths[0].month, '2025-06');
+  assert.equal(model.chartMonths[model.chartMonths.length - 1].month, '2026-07');
+  // Contiguous months, gaps zero-filled.
+  assert.equal(model.chartMonths.length, 14);
+});
+
+test('computeDashboardModel reports actionable coverage: exactly which orders are unmeasured', () => {
+  const sandbox = loadDashboardSandbox();
+  const model = sandbox.computeDashboardModel(modelRecords(), 'thisYear', fakeNow());
+
+  assert.deepEqual(toPlain(model.coverage), {
+    stored: 3,
+    measured: 2,
+    missingOrderNumbers: ['D'],
+  });
+});
+
+test('computeDashboardModel price watch: first vs latest unit price within the scope', () => {
+  const sandbox = loadDashboardSandbox();
+  const records = [
+    invoiceRecord('1', '2026-02-01T00:00:00.000Z', [
+      { productName: 'Test Tide Pods', usItemId: '42', quantity: '1', price: '$11.20' },
+      { productName: 'Test Eggs', usItemId: '7', quantity: '1', price: '$3.35' },
+      { productName: 'Test Bread', usItemId: '9', quantity: '1', price: '$2.48' },
+    ]),
+    invoiceRecord('2', '2026-06-01T00:00:00.000Z', [
+      { productName: 'Test Tide Pods', usItemId: '42', quantity: '1', price: '$12.97' },
+      { productName: 'Test Eggs', usItemId: '7', quantity: '1', price: '$2.98' },
+      { productName: 'Test Bread', usItemId: '9', quantity: '1', price: '$2.48' },
+    ]),
+  ];
+
+  const model = sandbox.computeDashboardModel(records, 'thisYear', fakeNow());
+  // Stable-priced bread is excluded; movers sorted by |percent| descending.
+  assert.deepEqual(toPlain(model.priceWatch), [
+    { name: 'Test Tide Pods', firstPrice: 11.2, latestPrice: 12.97, percentChange: 16 },
+    { name: 'Test Eggs', firstPrice: 3.35, latestPrice: 2.98, percentChange: -11 },
+  ]);
+});
+
+test('computeDashboardModel avgPerMonth divides spend across months with data', () => {
+  const sandbox = loadDashboardSandbox();
+  const model = sandbox.computeDashboardModel(modelRecords(), 'thisYear', fakeNow());
+  // $150 across 2 months with measured spend (Mar, Jul).
+  assert.equal(model.avgPerMonth, 75);
+
+  const empty = sandbox.computeDashboardModel([], 'thisYear', fakeNow());
+  assert.equal(empty.avgPerMonth, 0);
 });
