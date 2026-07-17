@@ -55,6 +55,11 @@
         if (orderPath && /^\d{10,}$/.test(orderPath.split("?")[0])) {
           const orderNumber = orderPath.split("?")[0];
           view.updateFilterNotice(null);
+          // A single Walmart order page is always something to act on, even
+          // for a brand-new user with an empty DB — force out of the
+          // first-run macro state (spec v7.1 §A) so the row + download
+          // buttons render regardless of collection history.
+          view.updateMacroState(true);
           // displayOrderNumbers wipes the container synchronously but
           // rebuilds it after an await — applying the single-order layout
           // before the rebuild always missed the Select-All row it hides
@@ -97,6 +102,11 @@
     const pageLimit = parseInt(pageLimitInput ? pageLimitInput.value : "0", 10);
     setCollectionButtonsState({ running: true });
     view.setButtonLoading(startButton, true);
+    // Reveal the list/download sections the moment collection starts (spec
+    // v7.1 §A "Loading state") rather than waiting for the first order to
+    // land — a running collection already counts as "has orders" even
+    // before any results exist yet.
+    view.updateMacroState(true);
 
     chrome.runtime.sendMessage(
       {
@@ -194,9 +204,16 @@
    */
   async function renderOrderList(response) {
     const shown = await displayOrdersFromDb(response);
+    let hasOrders = shown;
     if (!shown && response && response.orderNumbers && response.orderNumbers.length > 0) {
       await view.displayOrderNumbers(response.orderNumbers, response.additionalFields);
+      hasOrders = true;
     }
+    // The macro state (spec v7.1 §A) reflects "any orders anywhere" — DB
+    // history OR a still-running collection, even one that hasn't found
+    // anything yet (handleStartCollection already reveals it optimistically;
+    // this keeps it correct on every subsequent poll/reload too).
+    view.updateMacroState(hasOrders || Boolean(response && response.isCollecting));
   }
 
   function loadCacheOnMainPage() {
@@ -212,7 +229,7 @@
       if (response.isCollecting) {
         app.collectionInProgress = true;
         setCollectionButtonsState({ running: true });
-        view.updateProgressUI(response.currentPage, response.pageLimit, true);
+        view.updateProgressUI(response.currentPage, response.pageLimit, true, (response.orderNumbers || []).length);
         // Checkboxes are disabled during collection (below), so the order
         // list re-render always lands on 0 selected — updateDownloadButtonsState
         // (called from within displayOrderNumbers) already reflects that.
@@ -222,8 +239,14 @@
       } else {
         app.collectionInProgress = false;
         view.updateProgressUI(response.currentPage, response.pageLimit, false);
-        renderOrderList(response);
-        setCollectionButtonsState({ running: false, startLabel: "Collect orders" });
+        // Chained (not fire-and-forget): setCollectionButtonsState's
+        // default label reads state.app.hasOrders, which renderOrderList
+        // only refreshes once its async DB read resolves — must run first.
+        renderOrderList(response).then(() => {
+          // No explicit startLabel — setCollectionButtonsState (utils.js)
+          // now picks "Load my orders" / "Check for new orders" itself.
+          setCollectionButtonsState({ running: false });
+        });
         setCheckboxesDisabled(false);
       }
     });
