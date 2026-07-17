@@ -338,21 +338,35 @@ function computePriceHistory(records) {
       console.warn('Dashboard: order database unavailable:', error);
     }
 
+    const emptyStateHtml = (heading, body) => `
+      <div class="dashboard-empty">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <line x1="18" y1="20" x2="18" y2="10" />
+          <line x1="12" y1="20" x2="12" y2="4" />
+          <line x1="6" y1="20" x2="6" y2="14" />
+        </svg>
+        <h3>${heading}</h3>
+        <p>${body}</p>
+      </div>
+    `;
+
     if (!records || records.length === 0) {
-      container.innerHTML = '<div class="dashboard-empty">Collect orders to see analytics</div>';
+      container.innerHTML = emptyStateHtml(
+        'No spending data yet',
+        'Collect your orders, then download them once — the dashboard builds itself from your full invoices.'
+      );
       return;
     }
 
     const stats = computeDashboardStats(records);
 
     if (stats.invoiceCount === 0) {
-      container.innerHTML = `
-        <div class="dashboard-empty">
-          The dashboard measures fully downloaded invoices only — no half measurements
-          from summary data. You have ${stats.orderCount} orders stored; select them and
-          run "Download Selected" to add them to the dashboard.
-        </div>
-      `;
+      container.innerHTML = emptyStateHtml(
+        'Almost there',
+        `You have ${stats.orderCount} orders stored. Select them and download once
+         ("Single file" or "Multiple files") — the dashboard measures fully downloaded
+         invoices only, so its numbers are never half-right.`
+      );
       return;
     }
 

@@ -13,6 +13,12 @@ const WIDTH = 380;
 const HEIGHT = 820;
 
 async function shot(panel, name) {
+  // The harness never sits on a real Walmart tab, so the off-tab banner is
+  // a test artifact — hide it in captures.
+  await panel.evaluate(() => {
+    const banner = document.getElementById('offTabWarning');
+    if (banner) banner.remove();
+  });
   await panel.waitForTimeout(250);
   await panel.screenshot({ path: path.join(OUT, `${name}.png`) });
   console.log(`saved ${name}.png`);
