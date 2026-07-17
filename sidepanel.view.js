@@ -387,6 +387,13 @@
     const container = document.getElementById("orderNumbersContainer");
     if (!container) return;
 
+    // The download buttons and the user's selection live INSIDE this
+    // container — rebuilding it mid-download orphans the button the run
+    // holds a reference to and wipes the selection (review finding; the
+    // tab-switch → checkCurrentTab chain reaches here with no guard).
+    // A download run owns this container; skip the rebuild until it ends.
+    if (state.app && state.app.downloadInProgress) return;
+
     if (orderNumbers.length === 0) {
       container.innerHTML = state.placeholders.initialOrderHtml || "";
       updateDownloadButtonsState();
