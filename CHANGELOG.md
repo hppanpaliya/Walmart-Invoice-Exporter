@@ -1,6 +1,6 @@
 # Changelog
 
-## [6.26] - July 14, 2026
+## [7.0] - July 17, 2026
 
 ### Changed
 - **Two-button download model:** the old "Download" and "Quick Export" buttons are replaced by an equal pair — "Single file" (one file with every selected order) and "Multiple files" (one file per selected order). The chosen format (Excel/CSV/JSON/receipt/PDF) shows right in the button label, e.g. "Single file (.xlsx)".

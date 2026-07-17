@@ -1,6 +1,6 @@
 /**
  * Upgrade-path e2e: simulates a real user updating from v6.25 (chrome.storage
- * invoice/collection caches) to v6.26 (IndexedDB single source of truth).
+ * invoice/collection caches) to v7.0 (IndexedDB single source of truth).
  *
  * Seeds the exact legacy storage shapes the old version wrote, reloads the
  * panel (which runs migrateLegacyStorage on init), and asserts:
