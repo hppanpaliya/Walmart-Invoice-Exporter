@@ -1816,7 +1816,7 @@ const CONSTANTS = {
     RETRY_PREFIX: 'Retrying order',
     DELIVERY_LABEL: 'Delivered',
     CART_ICON_TITLE: 'Walmart Invoice Exporter',
-    SELECT_ORDERS: 'Select orders to download',
+    SELECT_ORDERS: 'Orders',
   },
 
   // Chrome Messages
@@ -1983,7 +1983,7 @@ function updateCheckboxCount(container) {
   const heading = container.querySelector("h3");
   const checked = container.querySelectorAll('input[type="checkbox"]:not(#selectAll):checked').length;
   const totalOrders = container.querySelectorAll('input[type="checkbox"]:not(#selectAll)').length;
-  heading.textContent = `${CONSTANTS.TEXT.SELECT_ORDERS} (${totalOrders}) - Selected: ${checked}`;
+  heading.textContent = `${CONSTANTS.TEXT.SELECT_ORDERS} (${totalOrders}) · ${checked} selected`;
 }
 
 /**
