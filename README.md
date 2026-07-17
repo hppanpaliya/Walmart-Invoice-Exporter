@@ -142,7 +142,7 @@ See [docs/PORTS.md](./docs/PORTS.md) for the full list of differences.
 
 ## What's New
 
-### Version 6.26 (July 14, 2026)
+### Version 7.0 (July 17, 2026)
 - **Redesigned download** — two buttons, **Single file** (one file with every selected order) and **Multiple files** (one file per order), replace the old Download + Quick Export. Already-downloaded orders re-export instantly.
 - **Legacy Excel layout** option restores the older single-sheet workbook
 - **Dark mode** plus a dedicated **Settings** view
@@ -356,7 +356,7 @@ The extension is built with a modular design for maintainability:
 
 For a complete list of changes, see [CHANGELOG.md](./CHANGELOG.md)
 
-**Latest (v6.26):** Redesigned download flow (Single file / Multiple files), dedicated Settings view, dark mode, unified on-device storage with a single "Delete all saved data" control, and a lighter-weight panel (ExcelJS no longer loads on every orders page).
+**Latest (v7.0):** Redesigned download flow (Single file / Multiple files), dedicated Settings view, dark mode, unified on-device storage with a single "Delete all saved data" control, and a lighter-weight panel (ExcelJS no longer loads on every orders page).
 
 ## Support
 
