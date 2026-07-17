@@ -55,8 +55,13 @@
         if (orderPath && /^\d{10,}$/.test(orderPath.split("?")[0])) {
           const orderNumber = orderPath.split("?")[0];
           view.updateFilterNotice(null);
-          view.displayOrderNumbers([orderNumber]);
-          view.applyLayout(view.UI_MODES.SINGLE_ORDER);
+          // displayOrderNumbers wipes the container synchronously but
+          // rebuilds it after an await — applying the single-order layout
+          // before the rebuild always missed the Select-All row it hides
+          // (review finding). Sequence the layout after the render.
+          view
+            .displayOrderNumbers([orderNumber])
+            .then(() => view.applyLayout(view.UI_MODES.SINGLE_ORDER));
         } else {
           view.applyLayout(view.UI_MODES.MAIN_ORDERS);
           app.currentOrdersUrl = url;
@@ -72,6 +77,16 @@
   }
 
   function handleStartCollection() {
+    if (app.downloadInProgress) {
+      // Collection re-renders the order list every poll tick, which would
+      // fight the running download for the container (review finding).
+      view.renderStatusBanner("collectionBlockedBanner", {
+        variant: "warning",
+        message: "A download is running — wait for it to finish before collecting.",
+        dismissible: true,
+      });
+      return;
+    }
     if (!app.currentOrdersUrl) {
       showOffTabWarning();
       return;
