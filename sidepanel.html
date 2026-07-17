@@ -76,6 +76,15 @@
                  a single [Collect orders] button; page-limit + "only new"
                  move behind a small disclosure. Same behavior/storage keys
                  as before, just visually secondary now. -->
+            <div class="button-group" id="buttonGroup">
+                <button id="startCollection" class="btn btn-primary">
+                    <span class="btn-text">Collect orders</span>
+                </button>
+                <button id="stopCollection" class="btn btn-danger" style="display: none;">
+                    Stop Collection
+                </button>
+            </div>
+            <p class="collect-caption">Scans your Walmart order history so you can pick what to export.</p>
             <details class="options-group" id="collectionOptionsGroup">
                 <summary>Options</summary>
                 <div class="input-group" id="pageLimitGroup">
@@ -87,21 +96,13 @@
                     <label for="incrementalCollect" title="Stops paginating when a whole page of already-stored orders is reached. Uses the local order database, which persists across sessions.">Only collect new orders (stop at known)</label>
                 </div>
             </details>
-            <div class="button-group" id="buttonGroup">
-                <button id="startCollection" class="btn btn-primary">
-                    <span class="btn-text">Collect orders</span>
-                </button>
-                <button id="stopCollection" class="btn btn-danger" style="display: none;">
-                    Stop Collection
-                </button>
-            </div>
         </div>
 
         <div id="progress"></div>
         <div id="orderNumbersContainer">
             <!-- Placeholder shown before collection starts -->
             <div id="collectionPlaceholder">
-                <h3>Select orders to download (0) - Selected: 0</h3>
+                <h3>Orders (0) · 0 selected</h3>
                 <div class="checkbox-container">
                     <input type="checkbox" id="selectAllPlaceholder" disabled>
                     <label for="selectAllPlaceholder">Select All</label>

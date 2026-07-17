@@ -307,6 +307,10 @@ document.addEventListener("DOMContentLoaded", async function () {
   const versionBadge = document.getElementById("versionBadge");
   if (versionBadge && chrome.runtime.getManifest) {
     versionBadge.textContent = `v${chrome.runtime.getManifest().version}`;
+  } else if (versionBadge) {
+    // No manifest (e.g. the page opened outside the extension) — an empty
+    // pill just looks broken, so hide it.
+    versionBadge.style.display = "none";
   }
 
   actions.checkCurrentTab();
