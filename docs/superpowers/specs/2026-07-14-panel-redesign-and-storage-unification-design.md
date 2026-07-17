@@ -205,3 +205,57 @@ Each phase maps to one release commit (6.26, 6.27, …); exact numbers are the o
 2. **Version numbering** — phases as sequential releases 6.26+, or a single larger bump. Owner's call.
 3. **Optional per-order "re-download"** affordance — deferred by default (§4.4).
 4. **`hasInvoice` IndexedDB index** (DB v2) — add now for dashboard speed, or defer.
+
+---
+
+## 10. 2026-07-17 addendum: list & flow redesign (v7.1)
+
+Approved follow-on to §5.1/§5.2 above, implemented on `redesign/panel-and-storage` after v7.0 shipped. Tightens the main view around a single explicit macro state and a denser, receipt-style order list, without touching the storage model (§4), the export engine, or the two-button download pipeline's contract.
+
+### A. State-driven top card
+
+The panel has exactly two macro states, driven by `hasOrders` = (`OrderDb` has ≥1 order) OR a collection is in progress/has results this session:
+
+- **First-run** (`hasOrders` false — the safe default baked into `sidepanel.html` before any JS runs, via `body.first-run`): the collect card becomes a hero — centered icon, "Export your Walmart orders" heading, a one-line subtext, and a full-width primary button labeled **"Load my orders"**. The Options disclosure stays visible. The entire list section and download section (buttons, caption, format panel) are hidden outright (`display:none`), not just visually collapsed — their DOM/ids don't exist until real orders render.
+- **Returning** (`hasOrders` true): the hero disappears, the collect button returns to its normal inline size with the label **"Check for new orders"**, and the list + download sections render normally.
+
+`view.updateMacroState(hasOrders)` toggles `body.first-run` and stamps `state.app.hasOrders`, which `setCollectionButtonsState` (utils.js) reads for its default start-button label. Called from `sidepanel.actions.js`: optimistically at collection start, after every DB/list render (`renderOrderList`), and forced `true` for the single-Walmart-order-page view (always something to act on, even for a brand-new user).
+
+Loading state text: `"Loading page {N}… · {count} orders found"`, `count` = the live `orderNumbers.length` from `GET_PROGRESS`.
+
+### B. Receipt-style order list
+
+`displayOrderNumbers(orderNumbers, additionalFields)` keeps its exact signature (the e2e harness and every caller are unchanged) but now, internally: reads `OrderDb.getAllOrders()`, builds one row model per order number via `buildOrderRowModel` (utils.js — date/status/item-count/total with documented fallbacks, sorted newest-first with undated rows last), and renders them grouped under uppercase month labels ("JULY 2026"; undated rows under "NO DATE", shown only in the All-time filter).
+
+Row layout: checkbox · primary line ("Jul 9 · Delivered") + fine print ("12 items · #…0042") · right-aligned monospace total + a "✓ saved" chip when a current-schema invoice is stored · chevron. A row with neither summary nor invoice data renders a dimmed fallback ("#…last4" / "Details arrive on next sync") and is not expandable. Per-row checkbox `id`/`value` stay exactly `orderNumber`, unchanged from pre-redesign — selection, `getSelectedOrderNumbers`, and the e2e checkbox selectors all keep working.
+
+The heading row above the list is two pieces of live text, both driven by `updateCheckboxCount` (utils.js, the one source of truth): "Select all N shown" (left) and "Orders (T) · M selected" / "M selected · of T total" when a filter is hiding rows (right).
+
+### C. Tap-to-expand rows
+
+Clicking anywhere on a row except the checkbox or a button/link toggles its accordion detail (chevron rotates via CSS, honors `prefers-reduced-motion`); only one row is open at a time. Keyboard: `role="button"`, `tabindex="0"`, `aria-expanded`, Enter/Space toggle.
+
+Expanded detail:
+- **Has invoice:** first 3 invoice items ("Name ×qty" + mono price) + "+N more"; a mini-ledger from `invoice.orderSubtotal` / `invoice.tax` / `invoice.tip` / `invoice.orderTotal` — **only rows whose value exists**, never a fabricated "$0.00"; the full order number (mono) + Copy (clipboard + Toast); **Re-export** / **View on Walmart**.
+- **Summary-only:** item names ×qty (no prices) from `summary.items`; ledger from `summary.subTotal` / `summary.driverTip` / `summary.orderTotal`; an amber hint ("Download this order to get per-item prices, tax, and the full receipt."); order number + Copy; **Download this order** / **View on Walmart**.
+
+Both "Re-export" and "Download this order" call `Sidepanel.download.downloadSelectedOrders(null, [orderNumber])` — a `null` mode keeps the user's current persisted `exportMode` rather than changing it. "View on Walmart" duplicates `OrderDataFetcher.buildOrderUrls`' primary-URL logic as a small `buildOrderViewUrl` helper in `sidepanel.view.js` (documented as an intentional duplicate rather than a cross-module export for one URL string).
+
+### D. Date "Showing" filter
+
+A `<select id="listRangeFilter">` above the list — All time / Last 3 months / Last 6 months / This year / Last year / Custom range… — each option's label includes its live count (e.g. "Last year (37)"). Custom range reveals two `<input type="date">`s. The filter is in-memory view state only (`sidepanel.view.js`'s `listState`, not persisted; defaults to All time on every panel open). Changing it re-renders from the already-built row array (no re-read of `OrderDb`) via `renderFilteredList`, which also restores the checked set for rows that remain visible by reading it off the live DOM before the rebuild. Undated orders only ever show under All time; any bounded range hides them and reports the count ("N orders without a date are hidden").
+
+Pure, unit-tested bucketing logic lives in utils.js: `getRangeBounds`, `isDateInRange`, `filterOrderRowsByRange`, `getRangeLabelSuffix`. The single-file download path (`sidepanel.download.js`) appends `view.getActiveRangeLabelSuffix()` to the `"Walmart_Orders"` base filename — empty string for All time, so the golden export tests (which never touch the filter) stay byte-identical.
+
+### E. Footer + copy
+
+The main view's footer collapsed to one small, muted line: a lock icon, "Stays on your device", "Rate" (existing Chrome Web Store review link), "by Harshal Panpaliya". The previous "Like the extension?" block was already living a second life in Settings' About section (§5.4) by this point, so nothing was lost. The in-panel FAQ's "How to Use" copy was updated for the new button labels ("Load my orders" first-run / "Check for new orders" returning).
+
+### F. Responsive
+
+At ≤340px the two download buttons stack vertically, full-width. The header never wraps — the icon-button group is `flex-shrink:0`; the title ellipsizes instead. All list/detail text that could overflow (fine print, item names, the full order number) truncates with `min-width:0` + `text-overflow:ellipsis` on its flex child rather than causing horizontal scroll, verified from 280px up.
+
+### Deviations / judgment calls
+
+- The pre-redesign `#collectionPlaceholder` (baked-in disabled `#singleFileDownload`/`#multiFileDownload` buttons) was simplified to just its "No orders collected yet" message — first-run now owns the true empty state, so the placeholder only ever needs to cover "a render pass found zero orders while otherwise returning" (e.g. a filtered Walmart page with no matches), where no buttons should render at all rather than disabled ones.
+- `getCachedOrderNumbers` (utils.js) is no longer called from the list renderer — each row's `hasInvoice` now comes directly from the same `OrderDb` record already fetched for the row model, which is both simpler and one DB round-trip cheaper. The function itself was left in place (unused) rather than deleted, since it's a reasonable general-purpose helper and deleting it was out of scope for this pass.
