@@ -107,9 +107,18 @@ async function collectOrders(panel) {
   }
 }
 
-/** Render the order list in the panel DOM so buttons/checkboxes exist. */
+/**
+ * Render the order list in the panel DOM so buttons/checkboxes exist.
+ * The v7.1 redesign (spec addendum 2026-07-17) hides the entire list +
+ * download section behind body.first-run until view.updateMacroState(true)
+ * runs — the panel's own flow (sidepanel.actions.js) does this itself from
+ * displayOrdersFromDb/renderOrderList, but this harness calls
+ * displayOrderNumbers directly (bypassing that layer) to render deterministically
+ * for tests, so it must flip the macro state itself too.
+ */
 async function renderOrderList(panel, progress) {
   await panel.evaluate(async ({ orderNumbers, additionalFields }) => {
+    window.Sidepanel.view.updateMacroState(true);
     await window.Sidepanel.view.displayOrderNumbers(orderNumbers, additionalFields);
   }, { orderNumbers: progress.orderNumbers, additionalFields: progress.additionalFields });
   await panel.waitForSelector('#singleFileDownload');
