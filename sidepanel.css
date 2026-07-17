@@ -245,7 +245,7 @@
 
 body {
   width: 100%;
-  min-width: 300px;
+  min-width: 280px;
   max-width: 100%;
   padding: var(--space-3);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -258,7 +258,9 @@ body {
   align-items: center;
   gap: var(--space-2);
   margin-bottom: var(--space-3);
-  flex-wrap: wrap;
+  /* Never wraps (spec v7.1 §F): the icon-button group must never drop to a
+     second line at narrow widths — the title ellipsizes instead (below). */
+  flex-wrap: nowrap;
 }
 
 .version-badge {
@@ -279,6 +281,10 @@ body {
   color: var(--text);
   flex: 1;
   min-width: 0;
+  /* Title ellipsizes rather than wrapping/overflowing (spec v7.1 §F). */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .card {
@@ -1095,29 +1101,12 @@ body {
   color: var(--danger);
 }
 
-/* Collection placeholder styles */
+/* Collection placeholder (spec v7.1 §A): shown only when a render pass
+   finds zero orders while the panel is in the "returning" macro state
+   (e.g. a filtered Walmart page with no matches) — the true empty state is
+   now the first-run hero instead, so this no longer needs its own
+   heading/select-all/action-row. */
 #collectionPlaceholder {
-  margin-top: var(--space-3);
-}
-
-#collectionPlaceholder .placeholder-status {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  margin-bottom: var(--space-3);
-  padding: 8px var(--space-3);
-  background: var(--surface);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-}
-
-#collectionPlaceholder h3 {
-  font-size: var(--font-size-md);
-  font-weight: 500;
-  color: var(--text);
-  margin-bottom: var(--space-2);
-}
-
-#collectionPlaceholder .placeholder-list {
   min-height: 80px;
   display: flex;
   align-items: center;
@@ -1125,17 +1114,13 @@ body {
   background: var(--surface);
   border: 1px dashed var(--border);
   border-radius: var(--radius-md);
-  margin-bottom: var(--space-3);
+  margin-top: var(--space-3);
 }
 
 #collectionPlaceholder .no-orders-message {
   color: var(--text-secondary);
   font-size: var(--font-size-md);
   font-style: italic;
-}
-
-#collectionPlaceholder .checkbox-container {
-  opacity: 0.5;
 }
 
 /* Main footer in main view */
@@ -1586,4 +1571,425 @@ summary:focus-visible,
 
 .settings-section .rating-button {
   margin-bottom: 0;
+}
+
+/* ==========================================================================
+   v7.1: state-driven top card, receipt-style order list, date filter,
+   compact footer (spec addendum 2026-07-17 — see docs/superpowers/specs/
+   2026-07-14-panel-redesign-and-storage-unification-design.md).
+   ========================================================================== */
+
+/* --- A. First-run vs. returning macro state -----------------------------
+   Toggled by view.updateMacroState via the body.first-run class. First-run
+   is the SAFE DEFAULT baked into sidepanel.html (before any JS has run) so
+   a brand-new install never flashes an empty list/download section. */
+.hero-content {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-4);
+}
+
+body.first-run .hero-content {
+  display: flex;
+}
+
+.hero-icon {
+  color: var(--accent);
+  opacity: 0.9;
+  margin-bottom: var(--space-1);
+}
+
+.hero-heading {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.hero-subtext {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin: 0;
+  max-width: 32ch;
+}
+
+/* The button itself grows into a hero call-to-action only in first-run;
+   returning state keeps its normal inline size/position (spec §A). */
+body.first-run .button-group {
+  flex-direction: column;
+}
+
+body.first-run .button-group .btn-primary {
+  width: 100%;
+  justify-content: center;
+}
+
+/* One invitation only: the entire list + download apparatus is hidden in
+   first-run, not just visually collapsed — its ids/checkbox-value contract
+   simply doesn't exist yet either, since displayOrderNumbers hasn't been
+   asked to render anything real. */
+body.first-run #orderNumbersContainer,
+body.first-run .action-caption,
+body.first-run #downloadDisabledReason,
+body.first-run #downloadProgressArea,
+body.first-run .export-options-panel {
+  display: none !important;
+}
+
+/* --- B/C/D. Receipt-style order list, month groups, accordion, filter --- */
+
+.list-filter-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.list-filter-row label {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.list-filter-row select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.list-filter-custom {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.list-filter-custom input[type="date"] {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.list-filter-hidden-note {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-2);
+}
+
+.list-select-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.list-select-row .checkbox-container {
+  padding: 0;
+  min-width: 0;
+}
+
+.list-select-row .checkbox-container label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-count-line {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.order-month-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: var(--space-2) 8px 4px;
+}
+
+.order-month-label:first-child {
+  padding-top: 6px;
+}
+
+.order-row-wrapper {
+  border-bottom: 1px solid var(--border);
+}
+
+.order-row-wrapper:last-child {
+  border-bottom: none;
+}
+
+.order-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px;
+  border-radius: var(--radius-md);
+  cursor: default;
+  transition: background 0.12s ease;
+}
+
+.order-row[role="button"] {
+  cursor: pointer;
+}
+
+.order-row:hover {
+  background: var(--surface);
+}
+
+.order-row.dimmed {
+  opacity: 0.7;
+}
+
+.order-row-checkbox {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.order-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.order-row-primary {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.order-row-fine {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+.order-row-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.order-row-total {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.order-row-right [data-cache-indicator="true"] {
+  margin-left: 0 !important;
+  font-size: 9px;
+}
+
+.order-row-chevron {
+  flex-shrink: 0;
+  display: flex;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.order-row.expanded .order-row-chevron {
+  transform: rotate(180deg);
+}
+
+.order-row-detail {
+  padding: var(--space-2) var(--space-3) var(--space-3) 34px;
+  border-top: 1px dashed var(--border);
+  margin: 0 8px;
+  font-size: var(--font-size-sm);
+}
+
+.order-detail-items {
+  margin-bottom: var(--space-2);
+}
+
+.order-detail-item {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 2px 0;
+  color: var(--text-secondary);
+}
+
+.order-detail-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.order-detail-item .mono {
+  flex-shrink: 0;
+}
+
+.order-detail-more {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: 2px 0;
+}
+
+.order-detail-ledger {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.order-ledger-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 1px 0;
+  color: var(--text-secondary);
+}
+
+.order-ledger-row:last-child {
+  color: var(--text);
+  font-weight: 600;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+  padding-top: 4px;
+}
+
+.order-detail-hint {
+  font-size: var(--font-size-xs);
+  color: var(--warning-fg);
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  padding: 6px 8px;
+  margin: 0 0 var(--space-2);
+}
+
+.order-detail-number {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-2);
+  margin-bottom: var(--space-2);
+  color: var(--text-secondary);
+}
+
+.order-detail-number .mono {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.order-detail-number .order-action-copy {
+  flex-shrink: 0;
+}
+
+.order-action-copy {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.order-action-copy:hover {
+  text-decoration: underline;
+}
+
+.order-detail-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.order-detail-actions .btn {
+  flex: 1;
+  justify-content: center;
+  font-size: var(--font-size-xs);
+  padding: 6px 8px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- E. Compact main-view footer ----------------------------------------- */
+.main-footer-compact {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.footer-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 6px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.footer-line a {
+  color: var(--text-muted);
+  text-decoration: underline;
+}
+
+.footer-line a:hover {
+  color: var(--accent);
+}
+
+.footer-lock-icon {
+  flex-shrink: 0;
+}
+
+/* --- F. Responsive: never scroll horizontally from 280px up -------------- */
+@media (max-width: 340px) {
+  .action-row {
+    flex-direction: column;
+  }
+
+  .action-row .btn {
+    width: 100%;
+  }
+
+  .list-select-row {
+    flex-wrap: wrap;
+  }
+}
+
+/* --- Reduced motion: kill the chevron rotation + row-detail transitions - */
+@media (prefers-reduced-motion: reduce) {
+  .order-row-chevron {
+    transition: none;
+  }
+
+  .order-row {
+    transition: none;
+  }
 }
