@@ -557,7 +557,12 @@
           }
 
           try {
-            await exportCombinedOrders(collectedOrdersData, "Walmart_Orders", exportOptions);
+            // Filename carries the active "Showing" filter (spec v7.1 §D)
+            // — '' (no suffix) when the filter is All time, matching the
+            // pre-redesign filename exactly and keeping the golden export
+            // tests (which never touch the filter) byte-stable.
+            const baseName = "Walmart_Orders" + (view.getActiveRangeLabelSuffix ? view.getActiveRangeLabelSuffix() : "");
+            await exportCombinedOrders(collectedOrdersData, baseName, exportOptions);
           } catch (e) {
             console.error("Failed to export to XLSX:", e);
             showDownloadResultBanner({ variant: "danger", message: `Export failed: ${escapeHtml(e.message)}` });
