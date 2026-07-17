@@ -7,18 +7,13 @@
  * dashboard never talks to walmart.com.
  */
 
-/**
- * Normalize any stored order date (ISO '2026-06-14T…', human 'Jun 14, 2026',
- * or empty) to a sortable 'YYYY-MM-DD' string, else ''.
- */
-function normalizeDashboardDate(rawDate) {
-  const text = String(rawDate || '');
-  if (/^\d{4}-\d{2}/.test(text)) return text.slice(0, 10);
-  if (!text) return '';
-  const parsed = new Date(text);
-  if (isNaN(parsed.getTime())) return '';
-  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
-}
+// normalizeDashboardDate moved to utils.js (spec 2026-07-17 addendum) — the
+// receipt-style order list (sidepanel.view.js) needs the same ISO/human/
+// empty date normalization for its month grouping and date-range filter,
+// so it now lives as a shared global alongside the other date/text
+// utilities instead of being dashboard-only. utils.js loads before this
+// file in every context (sidepanel.html, tests/helpers/sandbox.js), so the
+// global is always defined by the time the functions below run.
 
 /** Round a money value to cents (floating-point sums drift otherwise). */
 function roundMoneyToCents(value) {
