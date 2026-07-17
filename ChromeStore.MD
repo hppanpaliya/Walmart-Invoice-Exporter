@@ -89,7 +89,7 @@ Transform your Walmart order management experience with the Walmart Invoice Expo
 
 ★ What's New:
 
- ✦ Version 6.26 - July 14, 2026
+ ✦ Version 7.0 - July 17, 2026
    • Two equal download buttons — "Single file" and "Multiple files" — replace the old Download + Quick Export buttons
    • New "Use legacy Excel layout" opt-in restores the older single-sheet workbook
    • New dedicated Settings view (gear icon): Appearance with dark mode, Collection defaults, Export defaults, and your saved data
