@@ -400,7 +400,7 @@
       return;
     }
 
-    container.innerHTML = `<h3>${CONSTANTS.TEXT.SELECT_ORDERS} (${orderNumbers.length}) - Selected: 0</h3>`;
+    container.innerHTML = `<h3>${CONSTANTS.TEXT.SELECT_ORDERS} (${orderNumbers.length}) · 0 selected</h3>`;
 
     const cachedOrders = await getCachedOrderNumbers();
     const cachedSet = new Set(cachedOrders);

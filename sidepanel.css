@@ -519,8 +519,24 @@ body {
 /* Collapsible export options section */
 .options-group {
   border-top: 1px solid var(--border);
-  margin: var(--space-1) 0 var(--space-3);
+  margin: var(--space-2) 0 0;
   padding-top: var(--space-2);
+}
+
+/* The collect card leads with its primary action (spec §5.1) — the
+   button spans the card, a one-line purpose caption sits under it, and
+   the Options disclosure closes the card as a quiet footer. */
+#buttonGroup .btn {
+  flex: 1;
+  justify-content: center;
+  padding: 10px 16px;
+}
+
+.collect-caption {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  text-align: center;
+  margin: var(--space-2) 0 0;
 }
 
 .options-group summary {
