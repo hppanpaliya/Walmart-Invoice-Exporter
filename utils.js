@@ -1725,6 +1725,10 @@ const SVG_ICONS = {
 
   // Settings gear (header icon button, spec §5.4).
   SETTINGS: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>',
+
+  // Order row expand/collapse chevron (spec v7.1 §C) — rotated via CSS on
+  // .order-row.expanded, not swapped for a different icon.
+  CHEVRON_DOWN: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>',
 };
 
 /**
@@ -1960,12 +1964,200 @@ function isPayloadQualitySummary(summary) {
 }
 
 /**
+ * Normalize any stored order date (ISO '2026-06-14T…', human 'Jun 14, 2026',
+ * or empty) to a sortable 'YYYY-MM-DD' string, else ''. Originally
+ * dashboard-only; moved here (spec 2026-07-17 addendum) so the receipt-style
+ * order list's month grouping and date-range filter (sidepanel.view.js) can
+ * share it with sidepanel.dashboard.js.
+ */
+function normalizeDashboardDate(rawDate) {
+  const text = String(rawDate || '');
+  if (/^\d{4}-\d{2}/.test(text)) return text.slice(0, 10);
+  if (!text) return '';
+  const parsed = new Date(text);
+  if (isNaN(parsed.getTime())) return '';
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Order list row model & date-range filtering (spec 2026-07-17 addendum,
+ * "list & flow redesign v7.1"). Pure/testable — the DOM assembly that
+ * consumes these lives in sidepanel.view.js's displayOrderNumbers.
+ */
+
+/**
+ * Build one order row's display model from its OrderDb record (if any) and
+ * the title a live collection session may have attached. Every field has a
+ * defensive fallback so a bare/undated/summary-less order number still
+ * renders a usable (if minimal) row.
+ * @param {string} orderNumber - digits-only order number
+ * @param {Object|null} record - an OrderDb record ({orderDate, title, summary, invoice}), or null/undefined
+ * @param {string} [sessionTitle] - title from a live GET_PROGRESS overlay, when present
+ * @returns {Object} row model consumed by sidepanel.view.js's row renderer
+ */
+function buildOrderRowModel(orderNumber, record, sessionTitle) {
+  const summary = (record && record.summary) || null;
+  const invoice = (record && record.invoice) || null;
+
+  const rawDate = (summary && summary.orderDate) || (record && record.orderDate) || (invoice && invoice.orderDate) || '';
+  const normalizedDate = normalizeDashboardDate(rawDate);
+
+  const status = summary && summary.status ? String(summary.status).split(';')[0].trim() : '';
+
+  const itemCount =
+    (summary && summary.itemCount !== '' && summary.itemCount !== undefined && summary.itemCount !== null
+      ? summary.itemCount
+      : null) ??
+    (invoice && Array.isArray(invoice.items) ? invoice.items.length : '') ??
+    '';
+
+  const total = (summary && summary.orderTotal) || (invoice && invoice.orderTotal) || '';
+
+  const hasInvoice = Boolean(invoice) && Number(invoice.schemaVersion || 0) >= CONSTANTS.ORDER_SCHEMA_VERSION;
+
+  const summaryItems =
+    summary && Array.isArray(summary.items)
+      ? summary.items.map((item) => ({ name: item?.name || '', quantity: item?.quantity ?? '' }))
+      : [];
+
+  return {
+    orderNumber,
+    rawDate,
+    normalizedDate,
+    status,
+    itemCount,
+    total,
+    hasInvoice,
+    summaryItems,
+    summary,
+    invoice,
+    title: sessionTitle || (record && record.title) || '',
+  };
+}
+
+/** Month-group label for a row, e.g. "JULY 2026"; undated rows get "NO DATE". */
+function monthGroupLabel(normalizedDate) {
+  if (!normalizedDate) return 'NO DATE';
+  const MONTHS = [
+    'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
+    'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER',
+  ];
+  const monthIndex = Number(normalizedDate.slice(5, 7)) - 1;
+  const label = MONTHS[monthIndex];
+  return label ? `${label} ${normalizedDate.slice(0, 4)}` : 'NO DATE';
+}
+
+/** Short human date for a row's primary line, e.g. "Jul 9". Empty when unknown. */
+function formatRowDateShort(normalizedDate) {
+  if (!normalizedDate) return '';
+  const parsed = new Date(`${normalizedDate}T00:00:00`);
+  if (isNaN(parsed.getTime())) return '';
+  const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${MONTHS_SHORT[parsed.getMonth()]} ${parsed.getDate()}`;
+}
+
+/** The "Showing" filter's selectable ranges (excludes "custom", added separately by the UI). */
+const LIST_RANGE_OPTIONS = [
+  { value: 'all', label: 'All time' },
+  { value: 'last3', label: 'Last 3 months' },
+  { value: 'last6', label: 'Last 6 months' },
+  { value: 'thisYear', label: 'This year' },
+  { value: 'lastYear', label: 'Last year' },
+];
+
+/**
+ * Inclusive 'YYYY-MM-DD' bounds for a range value. `from`/`to` are `null`
+ * when unbounded on that side (all-time, or an empty custom field).
+ * @param {string} rangeValue - one of LIST_RANGE_OPTIONS' values, or 'custom'
+ * @param {Date} [now] - injectable for deterministic tests
+ * @param {string} [customFrom] - 'YYYY-MM-DD', only used when rangeValue === 'custom'
+ * @param {string} [customTo] - 'YYYY-MM-DD', only used when rangeValue === 'custom'
+ * @returns {{from: string|null, to: string|null}}
+ */
+function getRangeBounds(rangeValue, now = new Date(), customFrom = '', customTo = '') {
+  const pad = (n) => String(n).padStart(2, '0');
+  const isoOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const today = isoOf(now);
+  const year = now.getFullYear();
+
+  switch (rangeValue) {
+    case 'last3': {
+      const from = new Date(now);
+      from.setMonth(from.getMonth() - 3);
+      return { from: isoOf(from), to: today };
+    }
+    case 'last6': {
+      const from = new Date(now);
+      from.setMonth(from.getMonth() - 6);
+      return { from: isoOf(from), to: today };
+    }
+    case 'thisYear':
+      return { from: `${year}-01-01`, to: `${year}-12-31` };
+    case 'lastYear':
+      return { from: `${year - 1}-01-01`, to: `${year - 1}-12-31` };
+    case 'custom':
+      return { from: customFrom || null, to: customTo || null };
+    default:
+      return { from: null, to: null };
+  }
+}
+
+/** Whether a normalized 'YYYY-MM-DD' date falls within inclusive bounds. Undated never matches a bounded range. */
+function isDateInRange(normalizedDate, bounds) {
+  if (!normalizedDate) return false;
+  if (bounds.from && normalizedDate < bounds.from) return false;
+  if (bounds.to && normalizedDate > bounds.to) return false;
+  return true;
+}
+
+/**
+ * Filter row models (spec §D) down to the ones a "Showing" range should
+ * display. 'all' (or falsy) is a pass-through that also surfaces undated
+ * rows; any bounded range hides undated rows and reports how many were hidden.
+ * @param {Object[]} rows - buildOrderRowModel() results
+ * @param {string} rangeValue - LIST_RANGE_OPTIONS value, or 'custom'/'all'
+ * @param {Object} [options]
+ * @param {Date} [options.now]
+ * @param {string} [options.customFrom]
+ * @param {string} [options.customTo]
+ * @returns {{visible: Object[], hiddenUndatedCount: number}}
+ */
+function filterOrderRowsByRange(rows, rangeValue, { now, customFrom, customTo } = {}) {
+  if (!rangeValue || rangeValue === 'all') {
+    return { visible: rows, hiddenUndatedCount: 0 };
+  }
+  const bounds = getRangeBounds(rangeValue, now, customFrom, customTo);
+  const visible = rows.filter((row) => isDateInRange(row.normalizedDate, bounds));
+  const hiddenUndatedCount = rows.filter((row) => !row.normalizedDate).length;
+  return { visible, hiddenUndatedCount };
+}
+
+/** Filename suffix for the active "Showing" range (spec §D), e.g. '_Last_3_Months', '_2026', '_Custom'; '' for all-time. */
+function getRangeLabelSuffix(rangeValue, now = new Date()) {
+  switch (rangeValue) {
+    case 'last3': return '_Last_3_Months';
+    case 'last6': return '_Last_6_Months';
+    case 'thisYear': return `_${now.getFullYear()}`;
+    case 'lastYear': return `_${now.getFullYear() - 1}`;
+    case 'custom': return '_Custom';
+    default: return '';
+  }
+}
+
+/**
  * Sidepanel UI helpers
  */
 const CACHE_INDICATOR_STYLE = 'margin-left: 6px; color: var(--primary); display: inline-flex; align-items: center; gap: 2px; font-size: 10px;';
 const CACHE_INDICATOR_SELECTOR = '[data-cache-indicator="true"]';
 
-function setCollectionButtonsState({ running, startLabel = "Collect orders" }) {
+/**
+ * Show/hide the Collect-orders / Stop-collection button pair. When idle and
+ * no explicit label is given, the start button's label reflects whether the
+ * panel has ever shown any orders (spec v7.1 §A: "Load my orders" first-run
+ * vs. "Check for new orders" returning) — set by view.updateMacroState via
+ * state.app.hasOrders.
+ */
+function setCollectionButtonsState({ running, startLabel } = {}) {
   const startButton = document.getElementById("startCollection");
   const stopButton = document.getElementById("stopCollection");
   if (!startButton || !stopButton) return;
@@ -1975,15 +2167,38 @@ function setCollectionButtonsState({ running, startLabel = "Collect orders" }) {
 
   if (!running) {
     const label = startButton.querySelector(".btn-text");
-    if (label) label.textContent = startLabel;
+    if (label) {
+      const hasOrders = Boolean(
+        window.Sidepanel && window.Sidepanel.state && window.Sidepanel.state.app && window.Sidepanel.state.app.hasOrders
+      );
+      label.textContent = startLabel || (hasOrders ? "Check for new orders" : "Load my orders");
+    }
   }
 }
 
+/**
+ * Refresh the list heading row's two pieces of live-updating text (spec
+ * v7.1 §B): "Select all N shown" (left) and "Orders (T) · M selected" /
+ * "M selected · of T total" when a date-range filter is hiding rows
+ * (right). `container` is #orderNumbersContainer; its `data-total-orders`
+ * attribute (set by sidepanel.view.js on render) carries the unfiltered
+ * total so this stays the one source of truth for both counts.
+ */
 function updateCheckboxCount(container) {
-  const heading = container.querySelector("h3");
   const checked = container.querySelectorAll('input[type="checkbox"]:not(#selectAll):checked').length;
-  const totalOrders = container.querySelectorAll('input[type="checkbox"]:not(#selectAll)').length;
-  heading.textContent = `${CONSTANTS.TEXT.SELECT_ORDERS} (${totalOrders}) · ${checked} selected`;
+  const shown = container.querySelectorAll('input[type="checkbox"]:not(#selectAll)').length;
+  const total = Number(container.dataset.totalOrders || shown);
+
+  const selectAllLabel = container.querySelector('label[for="selectAll"]');
+  if (selectAllLabel) {
+    selectAllLabel.textContent = `Select all ${shown} shown`;
+  }
+
+  const countLine = container.querySelector('#listCountLine');
+  if (countLine) {
+    countLine.textContent =
+      shown === total ? `${CONSTANTS.TEXT.SELECT_ORDERS} (${total}) · ${checked} selected` : `${checked} selected · of ${total} total`;
+  }
 }
 
 /**
