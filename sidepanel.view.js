@@ -432,6 +432,10 @@
     customTo: "",
     openRowEl: null,
     openDetailEl: null,
+    // Order numbers the NEXT list render should select exactly (replacing
+    // any existing selection), then clear. Set by applyListFilter — the
+    // dashboard's "Select & download the missing N" path (v7.2).
+    pendingSelection: null,
   };
 
   /** Filename suffix for the active "Showing" range (spec §D) — read by sidepanel.download.js's single-file export path. */
@@ -891,10 +895,21 @@
       updateDownloadButtonLabels();
     }
 
-    previouslyChecked.forEach((orderNumber) => {
-      const checkbox = container.querySelector(`input[value="${orderNumber}"]`);
-      if (checkbox) checkbox.checked = true;
-    });
+    if (listState.pendingSelection) {
+      // An exact selection (dashboard → "Select & download the missing N")
+      // replaces whatever was checked before; rows filtered out of view
+      // simply don't get selected.
+      const wanted = new Set(listState.pendingSelection);
+      container.querySelectorAll('input[type="checkbox"]:not(#selectAll)').forEach((checkbox) => {
+        checkbox.checked = wanted.has(checkbox.value);
+      });
+      listState.pendingSelection = null;
+    } else {
+      previouslyChecked.forEach((orderNumber) => {
+        const checkbox = container.querySelector(`input[value="${orderNumber}"]`);
+        if (checkbox) checkbox.checked = true;
+      });
+    }
 
     const selectAll = selectRow.querySelector("#selectAll");
     if (selectAll) {
@@ -913,6 +928,30 @@
 
     updateCheckboxCount(container);
     updateDownloadButtonsState();
+  }
+
+  /**
+   * Point the order list at a given range (and optionally an exact
+   * selection), re-rendering immediately when the list has already been
+   * built this session. The dashboard's tap-through paths (v7.2: tap a
+   * month bar, "Export these orders", "Select & download the missing N")
+   * call this right before switching to the main view — if the list hasn't
+   * rendered yet, the filter/selection stick in listState and apply on the
+   * next displayOrderNumbers() render instead.
+   * @param {Object} options
+   * @param {string} options.filter - LIST_RANGE_OPTIONS value, or 'custom'/'all'
+   * @param {string} [options.customFrom] - 'YYYY-MM-DD' when filter === 'custom'
+   * @param {string} [options.customTo] - 'YYYY-MM-DD' when filter === 'custom'
+   * @param {string[]} [options.selectOrders] - order numbers to select EXACTLY (replaces the current selection)
+   */
+  function applyListFilter({ filter, customFrom = "", customTo = "", selectOrders = null } = {}) {
+    listState.filter = filter || "all";
+    listState.customFrom = customFrom;
+    listState.customTo = customTo;
+    listState.pendingSelection = Array.isArray(selectOrders) ? selectOrders.slice() : null;
+    if (listState.container && listState.rows.length > 0) {
+      renderFilteredList();
+    }
   }
 
   /**
@@ -1053,6 +1092,7 @@
     applyLayout,
     updateMacroState,
     getActiveRangeLabelSuffix,
+    applyListFilter,
     getStatusRegion,
     renderStatusBanner,
     clearStatusBanner,
