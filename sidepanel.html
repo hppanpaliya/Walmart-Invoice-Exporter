@@ -18,7 +18,7 @@
     <script src="sidepanel.actions.js"></script>
 </head>
 
-<body>
+<body class="first-run">
     <!-- Main View -->
     <div id="mainView" class="view active">
         <div class="header">
@@ -72,13 +72,29 @@
         <div id="statusRegion" role="status" aria-live="polite"></div>
 
         <div class="card">
+            <!-- First-run hero (spec v7.1 §A): shown only while body has the
+                 "first-run" class (default in markup below, cleared by
+                 view.updateMacroState once any order exists anywhere). One
+                 invitation only — the list/download sections stay hidden
+                 the whole time this is visible. -->
+            <div class="hero-content" id="heroContent">
+                <div class="hero-icon">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                        <path d="M9 8h10M10 5h7" stroke-dasharray="1 2.4" />
+                    </svg>
+                </div>
+                <h2 class="hero-heading">Export your Walmart orders</h2>
+                <p class="hero-subtext">Loads your order history from the page beside, ready to save as Excel, CSV, or PDF.</p>
+            </div>
             <!-- Collect-step demotion (spec §5.1/P6): the primary action is
-                 a single [Collect orders] button; page-limit + "only new"
-                 move behind a small disclosure. Same behavior/storage keys
-                 as before, just visually secondary now. -->
+                 a single button (label depends on macro state — "Load my
+                 orders" first-run, "Check for new orders" returning);
+                 page-limit + "only new" move behind a small disclosure.
+                 Same behavior/storage keys as before. -->
             <div class="button-group" id="buttonGroup">
                 <button id="startCollection" class="btn btn-primary">
-                    <span class="btn-text">Collect orders</span>
+                    <span class="btn-text">Load my orders</span>
                 </button>
                 <button id="stopCollection" class="btn btn-danger" style="display: none;">
                     Stop Collection
@@ -99,35 +115,16 @@
         </div>
 
         <div id="progress"></div>
+        <!-- List + download sections (spec v7.1 §A): entirely hidden while
+             body.first-run — the two-button download pipeline and its
+             ids/checkbox-value contract only exist once real orders have
+             rendered here (sidepanel.view.js's displayOrderNumbers). -->
         <div id="orderNumbersContainer">
-            <!-- Placeholder shown before collection starts -->
+            <!-- Placeholder shown when a render pass finds zero orders
+                 (e.g. a filtered Walmart page with no matches) while the
+                 panel is otherwise in the "returning" macro state. -->
             <div id="collectionPlaceholder">
-                <h3>Orders (0) · 0 selected</h3>
-                <div class="checkbox-container">
-                    <input type="checkbox" id="selectAllPlaceholder" disabled>
-                    <label for="selectAllPlaceholder">Select All</label>
-                </div>
-                <div class="order-list placeholder-list">
-                    <p class="no-orders-message">No orders collected yet.</p>
-                </div>
-                <div class="action-row">
-                    <button id="singleFileDownload" class="btn btn-accent-pair" disabled>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                            <polyline points="7 10 12 15 17 10"/>
-                            <line x1="12" y1="15" x2="12" y2="3"/>
-                        </svg>
-                        <span class="btn-text">Single file</span>
-                    </button>
-                    <button id="multiFileDownload" class="btn btn-accent-pair" disabled>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-                            <line x1="12" y1="22.08" x2="12" y2="12"/>
-                        </svg>
-                        <span class="btn-text">Multiple files</span>
-                    </button>
-                </div>
+                <p class="no-orders-message">No orders collected yet.</p>
             </div>
         </div>
 
@@ -171,33 +168,23 @@
             </div>
         </div>
 
-        <!-- Main View Footer -->
-        <footer class="footer main-footer">
-            <div class="footer-container">
-                <h3 class="footer-title">Like the extension?</h3>
-
-                <p class="footer-description">
-                    Leave a review to help others find it.
-                </p>
-
-                <a href="https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe/reviews"
-                    target="_blank" class="rating-button">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polygon
-                            points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
-                        </polygon>
-                    </svg>
-                    Rate on Chrome Web Store
-                </a>
-
-                <p class="footer-note">
-                    Your reviews help me build new features.
-                    <br>
-                    <br>
-                    Made with <span class="heart">❤️</span> by <a href="https://github.com/hppanpaliya"
-                        target="_blank" style="color: var(--primary); text-decoration: none;">Harshal Panpaliya</a>
-                </p>
-            </div>
+        <!-- Main View Footer (spec v7.1 §E): one small, muted line — the
+             old "Like the extension?" block moved to Settings' About
+             section (sidepanel.settings.js), matching how rating/version
+             info was consolidated there. The FAQ view keeps its own
+             full footer below, unchanged. -->
+        <footer class="footer main-footer main-footer-compact">
+            <p class="footer-line">
+                <svg class="footer-lock-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                <span>Stays on your device</span>
+                <span aria-hidden="true">·</span>
+                <a href="https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe/reviews" target="_blank">Rate</a>
+                <span aria-hidden="true">·</span>
+                <span>by <a href="https://github.com/hppanpaliya" target="_blank">Harshal Panpaliya</a></span>
+            </p>
         </footer>
     </div>
 
@@ -245,7 +232,7 @@
                     <ol>
                         <li>Go to your Walmart order history page (walmart.com/orders)</li>
                         <li>Click the extension icon</li>
-                        <li>Click "Collect orders" (page limit and "only new" are under Options)</li>
+                        <li>Click "Load my orders" (first time) or "Check for new orders" (after that) — page limit and "only new" are under Options</li>
                         <li>Wait for the order numbers to load</li>
                         <li>Select the orders you want to download</li>
                         <li>Click "Single file" (one workbook) or "Multiple files" (one per order)</li>
@@ -318,7 +305,7 @@
                     <ul>
                         <li><strong>Saved automatically:</strong> Once an order is downloaded, its full details are stored locally</li>
                         <li><strong>Instant re-export:</strong> Re-downloading a saved order (in any format) reuses the stored data instead of reopening the order page — and nothing is ever fabricated</li>
-                        <li><strong>Faster re-syncs:</strong> Because your orders are remembered, "Collect orders" can skip ones it already knows — turn on "only new orders" under Options</li>
+                        <li><strong>Faster re-syncs:</strong> Because your orders are remembered, "Check for new orders" can skip ones it already knows — turn on "only new orders" under Options</li>
                         <li><strong>Yours to delete:</strong> Settings → "Data on this device" → "Delete all saved data" wipes everything the extension has stored, in one step</li>
                     </ul>
                     <div class="note">

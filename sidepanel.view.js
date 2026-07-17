@@ -207,6 +207,24 @@
     });
   }
 
+  /**
+   * Drive the panel's two macro states (spec v7.1 §A): first-run (no
+   * orders anywhere — hero card, everything else hidden) vs. returning
+   * (normal collect button, list + download sections visible). Toggling a
+   * single body class lets sidepanel.css hide/show every affected section
+   * in one place instead of touching each element from JS. Also stamps
+   * state.app.hasOrders so setCollectionButtonsState (utils.js) can pick
+   * the right default "Collect orders" button label without its own DOM
+   * traversal.
+   * @param {boolean} hasOrders - OrderDb has ≥1 order, or a collection is
+   *   in progress/has results this session.
+   */
+  function updateMacroState(hasOrders) {
+    const has = Boolean(hasOrders);
+    document.body.classList.toggle("first-run", !has);
+    if (state.app) state.app.hasOrders = has;
+  }
+
   function setUIEnabled(enabled) {
     const card = document.querySelector(".card");
     if (card) {
@@ -262,9 +280,16 @@
     }
   }
 
-  function updateProgressUI(currentPage, pageLimit, inProgress) {
+  /**
+   * @param {number} currentPage
+   * @param {number} pageLimit
+   * @param {boolean} inProgress
+   * @param {number} [orderCount=0] - orderNumbers.length from the GET_PROGRESS
+   *   response — surfaced live in the loading text (spec v7.1 §A "Loading
+   *   state").
+   */
+  function updateProgressUI(currentPage, pageLimit, inProgress, orderCount = 0) {
     const progressElement = document.getElementById("progress") || createProgressElement();
-    const pageLimitText = pageLimit > 0 ? ` of ${pageLimit}` : "";
     progressElement.style.display = "block";
 
     const placeholder = document.getElementById("collectionPlaceholder");
@@ -273,9 +298,10 @@
     }
 
     if (inProgress) {
+      const count = Number(orderCount) || 0;
       progressElement.innerHTML = `
         <span class="loading-spinner" style="border-color: var(--primary); border-top-color: transparent;"></span>
-        Fetching order numbers... Fetching Page ${currentPage}${pageLimitText} 
+        Loading page ${currentPage}… · ${count} order${count === 1 ? "" : "s"} found
       `;
     } else {
       progressElement.textContent = `Collection ${pageLimit > 0 && currentPage >= pageLimit ? "reached limit" : "completed"}. Total pages: ${currentPage}`;
@@ -383,6 +409,513 @@
     downloadProgressHandle.area.hidden = true;
   }
 
+  /**
+   * In-memory view state for the receipt-style order list (spec v7.1 §B/§D)
+   * — NOT persisted (default all-time on every fresh panel open). `rows`
+   * holds every row model built by the last displayOrderNumbers() call;
+   * changing the "Showing" filter or custom-range dates re-renders from
+   * this cached array without hitting OrderDb again. `openRowEl`/
+   * `openDetailEl` track the single expanded accordion row (spec §C: one
+   * row open at a time) across re-renders.
+   */
+  const listState = {
+    rows: [],
+    container: null,
+    filter: "all",
+    customFrom: "",
+    customTo: "",
+    openRowEl: null,
+    openDetailEl: null,
+  };
+
+  /** Filename suffix for the active "Showing" range (spec §D) — read by sidepanel.download.js's single-file export path. */
+  function getActiveRangeLabelSuffix() {
+    return getRangeLabelSuffix(listState.filter, new Date());
+  }
+
+  /** Mirrors OrderDataFetcher.buildOrderUrls' primary URL (sidepanel.download.js) for the row detail's "View on Walmart" action — duplicated per spec v7.1 §C rather than exporting a whole module for one URL string. */
+  function buildOrderViewUrl(orderNumber) {
+    const baseUrl = `${CONSTANTS.URLS.WALMART_ORDERS}/${orderNumber}`;
+    return orderNumber.length >= 20 ? `${baseUrl}?storePurchase=true` : baseUrl;
+  }
+
+  /** Build the "Name ×qty [price]" lines + "+ N more" for an expanded row's item list (spec §C). Values are page-derived — always escaped. */
+  function itemLinesHtml(items, withPrice) {
+    const list = Array.isArray(items) ? items : [];
+    const shown = list.slice(0, 3);
+    const more = list.length - shown.length;
+    let html = shown
+      .map((item) => {
+        const name = escapeHtml(item.name || "");
+        const qty = item.quantity !== "" && item.quantity !== undefined && item.quantity !== null ? ` ×${escapeHtml(String(item.quantity))}` : "";
+        const price = withPrice && item.price ? `<span class="mono">${escapeHtml(String(item.price))}</span>` : "";
+        return `<div class="order-detail-item"><span class="order-detail-item-name">${name}${qty}</span>${price}</div>`;
+      })
+      .join("");
+    if (more > 0) {
+      html += `<div class="order-detail-more">+ ${more} more item${more === 1 ? "" : "s"}</div>`;
+    }
+    return html;
+  }
+
+  /** Build ledger rows, skipping any pair whose value is empty — never fabricates a "$0.00" for an unknown amount (spec §C). */
+  function ledgerRowsHtml(pairs) {
+    return pairs
+      .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "")
+      .map(([label, value]) => `<div class="order-ledger-row"><span>${escapeHtml(label)}</span><span class="mono">${escapeHtml(String(value))}</span></div>`)
+      .join("");
+  }
+
+  function buildOrderNumberRow(orderNumber) {
+    const row = document.createElement("div");
+    row.className = "order-detail-number";
+    const numberSpan = document.createElement("span");
+    numberSpan.className = "mono";
+    numberSpan.textContent = `#${orderNumber}`;
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "btn-link order-action-copy";
+    copyButton.textContent = "Copy";
+    copyButton.dataset.order = orderNumber;
+    row.appendChild(numberSpan);
+    row.appendChild(copyButton);
+    return row;
+  }
+
+  /** Wire the copy/re-export/download/view-on-Walmart actions inside one expanded row's detail. */
+  function wireDetailActions(detail) {
+    const copyButton = detail.querySelector(".order-action-copy");
+    if (copyButton) {
+      copyButton.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        try {
+          await navigator.clipboard.writeText(copyButton.dataset.order);
+          Sidepanel.components.Toast("Copied");
+        } catch (error) {
+          console.error("Failed to copy order number:", error);
+        }
+      });
+    }
+
+    const exportButton = detail.querySelector(".order-action-reexport, .order-action-download");
+    if (exportButton) {
+      exportButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        // null mode = keep the user's current mode; never changes the
+        // persisted exportMode (spec §C).
+        Sidepanel.download.downloadSelectedOrders(null, [exportButton.dataset.order]);
+      });
+    }
+
+    const viewButton = detail.querySelector(".order-action-view");
+    if (viewButton) {
+      viewButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        chrome.tabs.create({ url: buildOrderViewUrl(viewButton.dataset.order) });
+      });
+    }
+  }
+
+  /** Build one row's expanded accordion detail (spec §C): hasInvoice vs. summary-only content. */
+  function buildOrderDetailElement(row) {
+    const detail = document.createElement("div");
+    detail.className = "order-row-detail";
+    const orderNumber = escapeHtml(row.orderNumber);
+
+    if (row.hasInvoice) {
+      const items = Array.isArray(row.invoice.items) ? row.invoice.items : [];
+      const itemsBox = document.createElement("div");
+      itemsBox.className = "order-detail-items";
+      itemsBox.innerHTML = itemLinesHtml(
+        items.map((item) => ({ name: item?.productName, quantity: item?.quantity, price: item?.price })),
+        true
+      );
+      detail.appendChild(itemsBox);
+
+      const ledgerBox = document.createElement("div");
+      ledgerBox.className = "order-detail-ledger";
+      ledgerBox.innerHTML = ledgerRowsHtml([
+        ["Subtotal", row.invoice.orderSubtotal],
+        ["Tax", row.invoice.tax],
+        ["Tip", row.invoice.tip],
+        ["Total", row.invoice.orderTotal],
+      ]);
+      detail.appendChild(ledgerBox);
+      detail.appendChild(buildOrderNumberRow(row.orderNumber));
+
+      const actions = document.createElement("div");
+      actions.className = "order-detail-actions";
+      actions.innerHTML = `
+        <button type="button" class="btn btn-clear order-action-reexport" data-order="${orderNumber}">Re-export</button>
+        <button type="button" class="btn btn-clear order-action-view" data-order="${orderNumber}">View on Walmart</button>
+      `;
+      detail.appendChild(actions);
+    } else {
+      const itemsBox = document.createElement("div");
+      itemsBox.className = "order-detail-items";
+      itemsBox.innerHTML = itemLinesHtml(row.summaryItems, false);
+      detail.appendChild(itemsBox);
+
+      const summary = row.summary || {};
+      const ledgerBox = document.createElement("div");
+      ledgerBox.className = "order-detail-ledger";
+      ledgerBox.innerHTML = ledgerRowsHtml([
+        ["Subtotal", summary.subTotal],
+        ["Tip", summary.driverTip],
+        ["Total", summary.orderTotal],
+      ]);
+      detail.appendChild(ledgerBox);
+
+      const hint = document.createElement("p");
+      hint.className = "order-detail-hint";
+      hint.textContent = "Download this order to get per-item prices, tax, and the full receipt.";
+      detail.appendChild(hint);
+      detail.appendChild(buildOrderNumberRow(row.orderNumber));
+
+      const actions = document.createElement("div");
+      actions.className = "order-detail-actions";
+      actions.innerHTML = `
+        <button type="button" class="btn btn-clear order-action-download" data-order="${orderNumber}">Download this order</button>
+        <button type="button" class="btn btn-clear order-action-view" data-order="${orderNumber}">View on Walmart</button>
+      `;
+      detail.appendChild(actions);
+    }
+
+    wireDetailActions(detail);
+    return detail;
+  }
+
+  /** Open `rowEl`/`detail`'s accordion, closing whichever other row was open (spec §C: one row open at a time). Honors prefers-reduced-motion via CSS alone (no JS timing here). */
+  function toggleRowExpansion(rowEl, detail) {
+    const isOpen = !detail.hidden;
+
+    if (listState.openRowEl && listState.openRowEl !== rowEl) {
+      listState.openRowEl.setAttribute("aria-expanded", "false");
+      listState.openRowEl.classList.remove("expanded");
+      if (listState.openDetailEl) listState.openDetailEl.hidden = true;
+    }
+
+    if (isOpen) {
+      detail.hidden = true;
+      rowEl.setAttribute("aria-expanded", "false");
+      rowEl.classList.remove("expanded");
+      listState.openRowEl = null;
+      listState.openDetailEl = null;
+    } else {
+      detail.hidden = false;
+      rowEl.setAttribute("aria-expanded", "true");
+      rowEl.classList.add("expanded");
+      listState.openRowEl = rowEl;
+      listState.openDetailEl = detail;
+    }
+  }
+
+  /** Build one order row (checkbox + main/right/chevron) plus its (initially collapsed) detail, wired for tap-to-expand (spec §B/§C). */
+  function buildOrderRowElement(row) {
+    const hasData = Boolean(row.summary || row.invoice);
+    const last4 = row.orderNumber.slice(-4);
+
+    const rowEl = document.createElement("div");
+    rowEl.className = "order-row" + (hasData ? "" : " order-row-fallback");
+    rowEl.dataset.orderNumber = row.orderNumber;
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.id = row.orderNumber;
+    checkbox.value = row.orderNumber;
+    checkbox.className = "order-row-checkbox";
+    checkbox.setAttribute("aria-label", `Select order ending ${last4}`);
+    // A checkbox click must never toggle the row's expansion (spec §C).
+    checkbox.addEventListener("click", (event) => event.stopPropagation());
+    rowEl.appendChild(checkbox);
+
+    const main = document.createElement("div");
+    main.className = "order-row-main";
+    const primary = document.createElement("div");
+    primary.className = "order-row-primary";
+    const fine = document.createElement("div");
+    fine.className = "order-row-fine";
+
+    if (hasData) {
+      const dateShort = formatRowDateShort(row.normalizedDate);
+      const primaryText = [dateShort, row.status].filter(Boolean).join(" · ");
+      primary.textContent = primaryText || `Order #…${last4}`;
+      const itemLabel =
+        row.itemCount !== "" && row.itemCount !== null && row.itemCount !== undefined
+          ? `${row.itemCount} item${Number(row.itemCount) === 1 ? "" : "s"}`
+          : "";
+      fine.textContent = [itemLabel, `#…${last4}`].filter(Boolean).join(" · ");
+    } else {
+      primary.textContent = `#…${last4}`;
+      fine.textContent = "Details arrive on next sync";
+      rowEl.classList.add("dimmed");
+    }
+    main.appendChild(primary);
+    main.appendChild(fine);
+    rowEl.appendChild(main);
+
+    const right = document.createElement("div");
+    right.className = "order-row-right";
+    const totalEl = document.createElement("div");
+    totalEl.className = "order-row-total mono";
+    totalEl.textContent = row.total || "";
+    right.appendChild(totalEl);
+    if (row.hasInvoice) {
+      right.appendChild(createCacheIndicator(row.orderNumber));
+    }
+    rowEl.appendChild(right);
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "order-row-wrapper";
+    wrapper.appendChild(rowEl);
+
+    if (hasData) {
+      const chevron = document.createElement("span");
+      chevron.className = "order-row-chevron";
+      chevron.innerHTML = renderIcon("CHEVRON_DOWN");
+      rowEl.appendChild(chevron);
+
+      rowEl.setAttribute("role", "button");
+      rowEl.setAttribute("tabindex", "0");
+      rowEl.setAttribute("aria-expanded", "false");
+
+      const detail = buildOrderDetailElement(row);
+      detail.hidden = true;
+      wrapper.appendChild(detail);
+
+      const isInteractive = (target) => target === checkbox || Boolean(target.closest && target.closest("button, a"));
+
+      rowEl.addEventListener("click", (event) => {
+        if (isInteractive(event.target)) return;
+        toggleRowExpansion(rowEl, detail);
+      });
+      rowEl.addEventListener("keydown", (event) => {
+        if (isInteractive(event.target)) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggleRowExpansion(rowEl, detail);
+        }
+      });
+    }
+
+    return wrapper;
+  }
+
+  /** Group already date-sorted rows under uppercase month labels (spec §B), e.g. "JULY 2026" / "NO DATE". */
+  function buildOrderListBox(rows) {
+    const box = document.createElement("div");
+    box.className = "order-list";
+    let lastGroup = null;
+    rows.forEach((row) => {
+      const group = monthGroupLabel(row.normalizedDate);
+      if (group !== lastGroup) {
+        const groupLabel = document.createElement("div");
+        groupLabel.className = "order-month-label";
+        groupLabel.textContent = group;
+        box.appendChild(groupLabel);
+        lastGroup = group;
+      }
+      box.appendChild(buildOrderRowElement(row));
+    });
+    return box;
+  }
+
+  function buildFilterRow(rows) {
+    const row = document.createElement("div");
+    row.className = "list-filter-row";
+    const label = document.createElement("label");
+    label.setAttribute("for", "listRangeFilter");
+    label.textContent = "Showing";
+
+    const select = document.createElement("select");
+    select.id = "listRangeFilter";
+    const now = new Date();
+    LIST_RANGE_OPTIONS.forEach((option) => {
+      const count = option.value === "all" ? rows.length : filterOrderRowsByRange(rows, option.value, { now }).visible.length;
+      const optionEl = document.createElement("option");
+      optionEl.value = option.value;
+      optionEl.textContent = `${option.label} (${count})`;
+      if (option.value === listState.filter) optionEl.selected = true;
+      select.appendChild(optionEl);
+    });
+    const customOption = document.createElement("option");
+    customOption.value = "custom";
+    customOption.textContent = "Custom range…";
+    if (listState.filter === "custom") customOption.selected = true;
+    select.appendChild(customOption);
+
+    select.addEventListener("change", () => {
+      listState.filter = select.value;
+      renderFilteredList();
+    });
+
+    row.appendChild(label);
+    row.appendChild(select);
+    return row;
+  }
+
+  function buildCustomRangeRow() {
+    const row = document.createElement("div");
+    row.className = "list-filter-custom";
+
+    const fromInput = document.createElement("input");
+    fromInput.type = "date";
+    fromInput.id = "listFilterFrom";
+    fromInput.setAttribute("aria-label", "From date");
+    fromInput.value = listState.customFrom || "";
+    fromInput.addEventListener("change", () => {
+      listState.customFrom = fromInput.value;
+      renderFilteredList();
+    });
+
+    const toInput = document.createElement("input");
+    toInput.type = "date";
+    toInput.id = "listFilterTo";
+    toInput.setAttribute("aria-label", "To date");
+    toInput.value = listState.customTo || "";
+    toInput.addEventListener("change", () => {
+      listState.customTo = toInput.value;
+      renderFilteredList();
+    });
+
+    row.appendChild(fromInput);
+    row.appendChild(toInput);
+    return row;
+  }
+
+  function buildHiddenUndatedNote(count) {
+    const note = document.createElement("p");
+    note.className = "list-filter-hidden-note";
+    note.id = "listFilterHiddenNote";
+    note.textContent = `${count} order${count === 1 ? "" : "s"} without a date ${count === 1 ? "is" : "are"} hidden`;
+    return note;
+  }
+
+  function buildSelectRow() {
+    const row = document.createElement("div");
+    row.className = "list-select-row";
+
+    const checkboxContainer = document.createElement("div");
+    checkboxContainer.className = CONSTANTS.CSS_CLASSES.CHECKBOX_CONTAINER;
+    const selectAll = document.createElement("input");
+    selectAll.type = "checkbox";
+    selectAll.id = "selectAll";
+    const label = document.createElement("label");
+    label.htmlFor = "selectAll";
+    // Text content is filled in by updateCheckboxCount (utils.js) right
+    // after this row is attached — it's the one source of truth for both
+    // this label and #listCountLine.
+    checkboxContainer.appendChild(selectAll);
+    checkboxContainer.appendChild(label);
+
+    const countLine = document.createElement("div");
+    countLine.className = "list-count-line";
+    countLine.id = "listCountLine";
+
+    row.appendChild(checkboxContainer);
+    row.appendChild(countLine);
+    return row;
+  }
+
+  function buildActionRow() {
+    // Two-button model (spec §5.2): an equal, matched pair — Single file
+    // (one workbook with every selected order) and Multiple files (one
+    // file per selected order).
+    const actionRow = document.createElement("div");
+    actionRow.className = "action-row";
+
+    const singleButton = document.createElement("button");
+    singleButton.id = "singleFileDownload";
+    singleButton.className = "btn btn-accent-pair";
+    singleButton.innerHTML = `${renderIcon("DOWNLOAD")}<span class="btn-text">Single file</span>`;
+    singleButton.addEventListener("click", () => Sidepanel.download.downloadSelectedOrders(CONSTANTS.EXPORT_MODES.SINGLE));
+    actionRow.appendChild(singleButton);
+
+    const multiButton = document.createElement("button");
+    multiButton.id = "multiFileDownload";
+    multiButton.className = "btn btn-accent-pair";
+    multiButton.innerHTML = `${renderIcon("PACKAGE")}<span class="btn-text">Multiple files</span>`;
+    multiButton.addEventListener("click", () => Sidepanel.download.downloadSelectedOrders(CONSTANTS.EXPORT_MODES.MULTIPLE));
+    actionRow.appendChild(multiButton);
+
+    return actionRow;
+  }
+
+  /**
+   * Re-render #orderNumbersContainer from listState.rows for the current
+   * filter, without re-reading OrderDb (spec §D). Preserves the checked
+   * set for rows that stay visible by capturing it from the live DOM
+   * before wiping the container — the simplest correct source of truth,
+   * since real checkbox elements are the only place selection state lives.
+   */
+  function renderFilteredList() {
+    const { rows, container } = listState;
+    if (!container) return;
+
+    const previouslyChecked = new Set(
+      Array.from(container.querySelectorAll('input[type="checkbox"]:not(#selectAll):checked')).map((cb) => cb.value)
+    );
+
+    const { visible, hiddenUndatedCount } = filterOrderRowsByRange(rows, listState.filter, {
+      customFrom: listState.customFrom,
+      customTo: listState.customTo,
+    });
+
+    container.innerHTML = "";
+    container.dataset.totalOrders = String(rows.length);
+
+    container.appendChild(buildFilterRow(rows));
+    if (listState.filter === "custom") {
+      container.appendChild(buildCustomRangeRow());
+    }
+    if (hiddenUndatedCount > 0 && listState.filter !== "all") {
+      container.appendChild(buildHiddenUndatedNote(hiddenUndatedCount));
+    }
+
+    const selectRow = buildSelectRow();
+    container.appendChild(selectRow);
+    const orderListBox = buildOrderListBox(visible);
+    container.appendChild(orderListBox);
+
+    if (visible.length > 0) {
+      container.appendChild(buildActionRow());
+      updateDownloadButtonLabels();
+    }
+
+    previouslyChecked.forEach((orderNumber) => {
+      const checkbox = container.querySelector(`input[value="${orderNumber}"]`);
+      if (checkbox) checkbox.checked = true;
+    });
+
+    const selectAll = selectRow.querySelector("#selectAll");
+    if (selectAll) {
+      selectAll.addEventListener("change", () => {
+        toggleAllCheckboxes(orderListBox, selectAll.checked);
+        updateCheckboxCount(container);
+        updateDownloadButtonsState();
+      });
+    }
+    orderListBox.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+      checkbox.addEventListener("change", () => {
+        updateCheckboxCount(container);
+        updateDownloadButtonsState();
+      });
+    });
+
+    updateCheckboxCount(container);
+    updateDownloadButtonsState();
+  }
+
+  /**
+   * Render the panel's order list (spec v7.1 §B): each orderNumber is
+   * enriched from OrderDb into a receipt-style row (date · status, item
+   * count, total, an expandable detail) grouped under month labels, newest
+   * first. Signature unchanged from the pre-redesign version — the e2e
+   * harness and every existing caller (sidepanel.actions.js) keep working
+   * unmodified; all the new behavior lives inside.
+   * @param {string[]} orderNumbers
+   * @param {Object} [additionalFields] - orderNumber → title (from a live GET_PROGRESS overlay)
+   */
   async function displayOrderNumbers(orderNumbers, additionalFields = {}) {
     const container = document.getElementById("orderNumbersContainer");
     if (!container) return;
@@ -400,122 +933,51 @@
       return;
     }
 
-    container.innerHTML = `<h3>${CONSTANTS.TEXT.SELECT_ORDERS} (${orderNumbers.length}) · 0 selected</h3>`;
+    const records = await OrderDb.getAllOrders();
+    const byOrderNumber = new Map(records.map((record) => [record.orderNumber, record]));
 
-    const cachedOrders = await getCachedOrderNumbers();
-    const cachedSet = new Set(cachedOrders);
-
-    const selectAllDiv = document.createElement("div");
-    selectAllDiv.className = CONSTANTS.CSS_CLASSES.CHECKBOX_CONTAINER;
-    const selectAll = document.createElement("input");
-    selectAll.type = "checkbox";
-    selectAll.id = "selectAll";
-    const selectAllLabel = document.createElement("label");
-    selectAllLabel.htmlFor = "selectAll";
-    selectAllLabel.appendChild(document.createTextNode(CONSTANTS.TEXT.SELECT_ALL));
-    selectAllDiv.appendChild(selectAll);
-    selectAllDiv.appendChild(selectAllLabel);
-    container.appendChild(selectAllDiv);
-
-    const orderList = document.createElement("div");
-    orderList.className = "order-list";
-
-    orderNumbers.forEach((orderNumber) => {
-      const tooltip = additionalFields && additionalFields[orderNumber] ? additionalFields[orderNumber] : null;
-      const checkboxDiv = createCheckboxElement({
-        id: orderNumber,
-        value: orderNumber,
-        label: `${CONSTANTS.TEXT.ORDER_PREFIX}${orderNumber}`,
-        tooltip: tooltip,
-      });
-
-      if (cachedSet.has(orderNumber)) {
-        checkboxDiv.appendChild(createCacheIndicator(orderNumber));
-      }
-
-      orderList.appendChild(checkboxDiv);
+    const rows = orderNumbers.map((orderNumber) =>
+      buildOrderRowModel(orderNumber, byOrderNumber.get(orderNumber), additionalFields && additionalFields[orderNumber])
+    );
+    // Newest first; undated rows sink to the end (spec §B).
+    rows.sort((a, b) => {
+      if (a.normalizedDate && b.normalizedDate) return b.normalizedDate.localeCompare(a.normalizedDate);
+      if (a.normalizedDate) return -1;
+      if (b.normalizedDate) return 1;
+      return 0;
     });
 
-    container.appendChild(orderList);
-
-    selectAll.addEventListener("change", function () {
-      toggleAllCheckboxes(orderList, selectAll.checked);
-      updateCheckboxCount(container);
-      updateDownloadButtonsState();
-    });
-
-    orderNumbers.forEach((orderNumber) => {
-      const checkbox = container.querySelector(`input[value="${orderNumber}"]`);
-      if (checkbox) {
-        checkbox.addEventListener("change", () => {
-          updateCheckboxCount(container);
-          updateDownloadButtonsState();
-        });
-      }
-    });
-
-    if (orderNumbers.length > 0 && !document.getElementById("singleFileDownload")) {
-      // Two-button model (spec §5.2): an equal, matched pair — Single file
-      // (one workbook with every selected order) and Multiple files (one
-      // file per selected order) — replacing the old mutating Download
-      // button + separate Quick Export button.
-      const actionRow = document.createElement("div");
-      actionRow.className = "action-row";
-
-      const singleButton = document.createElement("button");
-      singleButton.id = "singleFileDownload";
-      singleButton.className = "btn btn-accent-pair";
-      singleButton.innerHTML = `
-        ${renderIcon("DOWNLOAD")}
-        <span class="btn-text">Single file</span>
-      `;
-      singleButton.addEventListener("click", () =>
-        Sidepanel.download.downloadSelectedOrders(CONSTANTS.EXPORT_MODES.SINGLE)
-      );
-      actionRow.appendChild(singleButton);
-
-      const multiButton = document.createElement("button");
-      multiButton.id = "multiFileDownload";
-      multiButton.className = "btn btn-accent-pair";
-      multiButton.innerHTML = `
-        ${renderIcon("PACKAGE")}
-        <span class="btn-text">Multiple files</span>
-      `;
-      multiButton.addEventListener("click", () =>
-        Sidepanel.download.downloadSelectedOrders(CONSTANTS.EXPORT_MODES.MULTIPLE)
-      );
-      actionRow.appendChild(multiButton);
-
-      container.appendChild(actionRow);
-      updateDownloadButtonLabels();
-    }
-
-    updateDownloadButtonsState();
+    listState.rows = rows;
+    listState.container = container;
+    listState.openRowEl = null;
+    listState.openDetailEl = null;
+    renderFilteredList();
   }
 
   /**
    * Show (or add) the informational "✓ saved" chip next to one order after
    * its invoice lands in IndexedDB (spec §4.4: info-only, no delete
    * affordance — the only way to remove saved data is Settings' "Delete
-   * all saved data").
+   * all saved data"). Looks up the row by data-order-number since rows no
+   * longer live inside a .checkbox-container (spec v7.1 §B row layout).
    */
   function updateOrderCacheStatus(orderNumber) {
     const container = document.getElementById("orderNumbersContainer");
     if (!container) return;
 
-    const checkbox = container.querySelector(`input[value="${orderNumber}"]`);
-    if (!checkbox) return;
+    const rowEl = container.querySelector(`.order-row[data-order-number="${orderNumber}"]`);
+    if (!rowEl) return;
 
-    const checkboxDiv = checkbox.closest(".checkbox-container");
-    if (!checkboxDiv) return;
+    const right = rowEl.querySelector(".order-row-right");
+    if (!right) return;
 
-    const existingIndicator = checkboxDiv.querySelector(CACHE_INDICATOR_SELECTOR);
+    const existingIndicator = right.querySelector(CACHE_INDICATOR_SELECTOR);
     if (existingIndicator) {
       existingIndicator.style.display = "inline-flex";
       return;
     }
 
-    checkboxDiv.appendChild(createCacheIndicator(orderNumber));
+    right.appendChild(createCacheIndicator(orderNumber));
   }
 
   function setButtonLoading(button, isLoading) {
@@ -580,6 +1042,8 @@
     showConfirmDialog,
     hideConfirmDialog,
     applyLayout,
+    updateMacroState,
+    getActiveRangeLabelSuffix,
     getStatusRegion,
     renderStatusBanner,
     clearStatusBanner,
