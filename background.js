@@ -462,17 +462,25 @@ function collectAllFast() {
         }
         CollectionState.currentPage = response.pages || CollectionState.currentPage;
 
+        // Persist to IndexedDB and only THEN finish. finishCollection flips
+        // isCollecting off, which is the panel's cue to re-render the list from
+        // OrderDb — if we finished before this write committed, the panel would
+        // read a DB that doesn't have the orders yet and paint an empty/dateless
+        // list until it was reopened. Awaiting the write makes the full, dated
+        // list appear the instant collection ends.
         OrderDb.putSummaries(
           response.orderSummaries || {},
           response.additionalFields || {},
           CollectionState.provider
-        ).catch((error) => console.warn("Failed to persist Fast Collect result to order DB:", error));
-
-        saveSessionState();
-        console.log(
-          `[collect] Fast Collect stored ${response.orderNumbers.length} orders across ${response.pages || "?"} page(s).`
-        );
-        finishCollection();
+        )
+          .catch((error) => console.warn("Failed to persist Fast Collect result to order DB:", error))
+          .finally(() => {
+            saveSessionState();
+            console.log(
+              `[collect] Fast Collect stored ${response.orderNumbers.length} orders across ${response.pages || "?"} page(s).`
+            );
+            finishCollection();
+          });
       }
     );
   });
