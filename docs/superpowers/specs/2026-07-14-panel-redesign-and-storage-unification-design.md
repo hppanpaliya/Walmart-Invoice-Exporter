@@ -259,3 +259,50 @@ At ≤340px the two download buttons stack vertically, full-width. The header ne
 
 - The pre-redesign `#collectionPlaceholder` (baked-in disabled `#singleFileDownload`/`#multiFileDownload` buttons) was simplified to just its "No orders collected yet" message — first-run now owns the true empty state, so the placeholder only ever needs to cover "a render pass found zero orders while otherwise returning" (e.g. a filtered Walmart page with no matches), where no buttons should render at all rather than disabled ones.
 - `getCachedOrderNumbers` (utils.js) is no longer called from the list renderer — each row's `hasInvoice` now comes directly from the same `OrderDb` record already fetched for the row model, which is both simpler and one DB round-trip cheaper. The function itself was left in place (unused) rather than deleted, since it's a reasonable general-purpose helper and deleting it was out of scope for this pass.
+
+---
+
+## Addendum (2026-07-17c): v7.3 — the dashboard becomes a full browser page
+
+Owner decision: the in-panel dashboard view (v7.2) is **removed**; the dashboard
+is now a dedicated extension page, `dashboard.html`, opened (or focused, never
+duplicated) by the panel's existing chart-icon header button. No new manifest
+permissions — an extension page is same-origin with the panel (same IndexedDB,
+same service-worker messaging).
+
+**Page layout** (mockup-approved): topbar (brand, "Check for new orders",
+settings gear) · scope picker (`thisYear`/`lastYear`/`last3`/`last6`/`all`,
+same range engine as the list filter) · stat strip (Total spent + %-vs-previous
+delta, orders measured, avg/month, avg order, saved) · clickable monthly bar
+chart — **clicking a bar rescopes the entire page to that month**, with a
+"‹ Back to <range>" chip and click-again-to-deselect (fixes the v7.2 dead-end
+caption) · "Where it went" ledger + "Export <scope> orders" · price watch ·
+most bought · actionable coverage banner ("Select the missing N below" checks
+exactly the unmeasured rows) · searchable/sortable orders table (search spans
+item names + order numbers; Items is the single flexible, ellipsizing column).
+
+**Embedded panel rail**: the page iframes the real `sidepanel.html` (~400px
+sticky rail ≥1100px, stacked below otherwise) so collection/export UI is a
+live clone — panel changes reflect automatically. The page drives it over
+`postMessage` (origin-gated, `source: 'wie-dashboard'`): `START_COLLECTION`,
+`EXPORT_ORDERS {mode, orderNumbers}`, `OPEN_SETTINGS`,
+`SET_EXPORT_FORMAT {format}`, `SET_EXPORT_OPTION {option, value}`. Panel-side:
+when framed (`window.self !== window.top`), `checkCurrentTab` skips the
+off-tab gate, renders from the DB, and seeds `currentOrdersUrl` with the
+default orders URL (the worker opens the walmart tab itself when collecting).
+
+**Shared code**: `sidepanel.dashboard.js` is now a pure computation module
+(loaded by the page, no longer by the panel); `dashboard.page.js` owns all page
+behavior (CSP-safe, no inline scripts). Theme uses the same `theme` storage key
+in both surfaces, live-synced via `chrome.storage.onChanged` (added to the
+panel too, so no context ever shows a stale theme).
+
+**Panel escape hatch**: the list's "Showing" row gains a "✕ Clear" button
+whenever a non-`all` filter is active — the one-tap way back after a dashboard
+tap-through lands the list on a custom range.
+
+**Tests**: `tests/e2e/dashboard.e2e.js` (seeded DB → stats, embed boot without
+off-tab gate, month rescope + back, live search, coverage selection, bridge
+export producing a real .xlsx download with no walmart tab); shots driver
+covers the page at 1280 light/dark (dark via the real storage mechanism),
+month-scoped, and 900px stacked, with an overflow probe.

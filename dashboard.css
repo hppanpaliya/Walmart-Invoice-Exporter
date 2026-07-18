@@ -1,0 +1,382 @@
+/* Full-page dashboard (dashboard.html) — layout and class structure follow
+   the approved dashboard-page mockup; color tokens reuse the extension's
+   exact palette (sidepanel.css) for brand/status colors. Theme mechanism
+   matches sidepanel.css: light is the base, system dark applies via
+   `@media (prefers-color-scheme: dark)` unless the user forced light, and
+   an explicit data-theme="dark"/"light" (stamped by dashboard.page.js from
+   the shared chrome.storage.local "theme" key) wins in both directions. */
+
+:root {
+  --bg: #f2f4f7;
+  --surface: #ffffff;
+  --surface-2: #f8f9fa;
+  --border: #e5e7eb;
+  --border-strong: #c7ccd1;
+  --text: #1a1a1a;
+  --text-secondary: #666666;
+  --text-muted: #707070;
+  --accent: #0071dc;
+  --accent-hover: #005bb0;
+  --accent-weak: #e6f2fd;
+  --on-accent: #ffffff;
+  --focus-ring: #0071dc;
+  --success-fg: #146c2e;
+  --success-bg: #eafbf0;
+  --warn-fg: #856404;
+  --warn-bg: #fff3cd;
+  --warn-border: #b38104;
+  --danger-fg: #c4291f;
+  --bar: #b9cfe4;
+  --bar-hover: #8fb6da;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .06);
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --topbar-h: 53px;
+}
+
+/* System dark mode — applies unless the user explicitly forced light. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14181d;
+    --surface: #1c2127;
+    --surface-2: #262c34;
+    --border: #333a44;
+    --border-strong: #4a5361;
+    --text: #eef1f4;
+    --text-secondary: #b6bfca;
+    --text-muted: #8b95a3;
+    --accent: #4da3ff;
+    --accent-hover: #7cbcff;
+    --accent-weak: #1c3352;
+    --on-accent: #14181d;
+    --focus-ring: #6db2ff;
+    --success-fg: #5fd88a;
+    --success-bg: #153322;
+    --warn-fg: #f0c14b;
+    --warn-bg: #3a2f0f;
+    --warn-border: #b38c23;
+    --danger-fg: #ff8a80;
+    --bar: #31445a;
+    --bar-hover: #3f5c7c;
+    --shadow: none;
+  }
+}
+
+/* Manual override: force dark regardless of system preference. Values must
+   match the @media block above. */
+:root[data-theme="dark"] {
+  --bg: #14181d;
+  --surface: #1c2127;
+  --surface-2: #262c34;
+  --border: #333a44;
+  --border-strong: #4a5361;
+  --text: #eef1f4;
+  --text-secondary: #b6bfca;
+  --text-muted: #8b95a3;
+  --accent: #4da3ff;
+  --accent-hover: #7cbcff;
+  --accent-weak: #1c3352;
+  --on-accent: #14181d;
+  --focus-ring: #6db2ff;
+  --success-fg: #5fd88a;
+  --success-bg: #153322;
+  --warn-fg: #f0c14b;
+  --warn-bg: #3a2f0f;
+  --warn-border: #b38c23;
+  --danger-fg: #ff8a80;
+  --bar: #31445a;
+  --bar-hover: #3f5c7c;
+  --shadow: none;
+}
+
+/* Manual override: force light even when the OS is in dark mode. */
+:root[data-theme="light"] {
+  --bg: #f2f4f7;
+  --surface: #ffffff;
+  --surface-2: #f8f9fa;
+  --border: #e5e7eb;
+  --border-strong: #c7ccd1;
+  --text: #1a1a1a;
+  --text-secondary: #666666;
+  --text-muted: #707070;
+  --accent: #0071dc;
+  --accent-hover: #005bb0;
+  --accent-weak: #e6f2fd;
+  --on-accent: #ffffff;
+  --focus-ring: #0071dc;
+  --success-fg: #146c2e;
+  --success-bg: #eafbf0;
+  --warn-fg: #856404;
+  --warn-bg: #fff3cd;
+  --warn-border: #b38104;
+  --danger-fg: #c4291f;
+  --bar: #b9cfe4;
+  --bar-hover: #8fb6da;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .06);
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+button:focus-visible, select:focus-visible, input:focus-visible {
+  outline: 3px solid var(--focus-ring); outline-offset: 1px;
+}
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* ---------- top bar ---------- */
+.topbar {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 10;
+}
+.topbar-inner {
+  max-width: 1640px; margin: 0 auto; padding: 10px 24px;
+  display: flex; align-items: center; gap: 16px;
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; }
+.brand svg { color: var(--accent); flex: none; }
+.brand .crumb { color: var(--text-muted); font-weight: 400; }
+.topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.btn {
+  border: 1px solid var(--border-strong); background: var(--surface);
+  border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 500;
+  display: inline-flex; align-items: center; gap: 7px;
+}
+.btn:hover:not(:disabled) { background: var(--surface-2); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-quiet { border-color: transparent; color: var(--text-secondary); }
+.btn-quiet:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
+.btn-link {
+  border: none; background: none; padding: 0; color: var(--accent);
+  text-decoration: underline; font-size: inherit;
+}
+.btn-link:hover { color: var(--accent-hover); }
+
+/* ---------- shell: main column + sticky panel rail ---------- */
+.shell {
+  max-width: 1640px; margin: 0 auto; padding: 0 24px;
+  display: grid; grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 24px; align-items: start;
+}
+.col-main { min-width: 0; }
+.rail {
+  position: sticky; top: var(--topbar-h);
+  height: calc(100vh - var(--topbar-h));
+  padding: 24px 0; display: flex; flex-direction: column;
+}
+.rail-label {
+  margin: 0 0 8px; font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--text-secondary);
+}
+.rail iframe {
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); width: 100%; flex: 1;
+  height: calc(100vh - var(--topbar-h) - 76px);
+  min-height: 600px;
+}
+@media (max-width: 1099px) {
+  .shell { grid-template-columns: 1fr; }
+  .rail { position: static; height: auto; padding-top: 0; }
+  .rail iframe { height: 700px; }
+}
+
+/* ---------- page scaffold ---------- */
+/* Every vertical grid stack pins its column to minmax(0, 1fr): implicit
+   auto tracks size to their children's min-content (long nowrap rows) and
+   would overflow the column instead of letting ellipsis/wrapping engage. */
+.page { max-width: 1180px; margin: 0 auto; padding: 24px 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+.page-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.page-head h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -.01em; }
+.scope-select {
+  border: 1px solid var(--border-strong); background: var(--surface);
+  border-radius: 8px; padding: 6px 10px; font-size: 13px; color: var(--text);
+}
+.back-chip {
+  display: none; align-items: center; gap: 6px;
+  background: var(--accent-weak); color: var(--accent);
+  border: 1px solid transparent; border-radius: 999px;
+  padding: 4px 12px; font-size: 13px; font-weight: 500;
+}
+.back-chip:hover { border-color: var(--accent); }
+.month-scoped .back-chip { display: inline-flex; }
+
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: var(--shadow); padding: 18px 20px;
+}
+.card h2 {
+  margin: 0 0 4px; font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--text-secondary);
+}
+.card .sub { color: var(--text-muted); font-size: 12px; }
+
+/* ---------- empty states ---------- */
+.empty-card { text-align: center; padding: 48px 24px; }
+.empty-card svg { color: var(--text-muted); }
+.empty-card h3 { margin: 12px 0 6px; font-size: 17px; font-weight: 650; }
+.empty-card p { margin: 0 auto; max-width: 440px; color: var(--text-secondary); }
+
+/* ---------- stat strip ---------- */
+/* minmax(0, …) everywhere: fr tracks default to min-content sizing, so one
+   long unwrappable row (an item name + price) would otherwise squeeze its
+   sibling cards into a sliver. */
+.stats { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(4, minmax(0, 1fr)); gap: 14px; }
+.stat-value { font-size: 22px; font-weight: 650; margin-top: 2px; }
+.stat-hero .stat-value { font-size: 34px; letter-spacing: -.01em; }
+.stat-saved { color: var(--success-fg); }
+/* inline-block + nowrap: the delta never breaks internally, but wraps below
+   the big number as one unit when the hero card is too narrow for both. */
+.delta-up {
+  color: var(--warn-fg); font-size: 13px; font-weight: 600; margin-left: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-variant-numeric: normal; white-space: nowrap; vertical-align: 4px;
+  display: inline-block;
+}
+.delta-down { color: var(--success-fg); }
+.stat-note { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+@media (max-width: 900px) { .stats { grid-template-columns: 1fr 1fr; } .stat-hero { grid-column: 1 / -1; } }
+
+/* ---------- chart ---------- */
+.chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.chart {
+  display: flex; align-items: flex-end; gap: 10px;
+  height: 190px; margin-top: 18px; padding: 0 4px;
+  border-bottom: 1px solid var(--border-strong);
+}
+.cbar {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  gap: 0; height: 100%; background: none; border: none; padding: 0; position: relative;
+  min-width: 0;
+}
+.cbar-value {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: 11px; color: var(--text-muted); margin-bottom: 4px;
+  opacity: 0; transition: opacity .12s; white-space: nowrap;
+}
+.cbar:hover .cbar-value, .cbar:focus-visible .cbar-value, .cbar.selected .cbar-value { opacity: 1; }
+.cbar.selected .cbar-value { color: var(--accent); font-weight: 600; }
+.cbar-fill {
+  width: min(46px, 82%); border-radius: 4px 4px 0 0;
+  background: var(--bar); transition: background .12s;
+}
+.cbar:hover .cbar-fill { background: var(--bar-hover); }
+.cbar.selected .cbar-fill { background: var(--accent); }
+.cbar-month {
+  position: absolute; top: 100%; padding-top: 6px;
+  font-size: 12px; color: var(--text-secondary); white-space: nowrap;
+}
+.cbar.selected .cbar-month { color: var(--accent); font-weight: 600; }
+.chart-foot { margin-top: 30px; font-size: 12px; color: var(--text-muted); }
+
+/* ---------- insight grid ---------- */
+.insights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .insights { grid-template-columns: 1fr; } }
+.ledger { margin-top: 10px; display: grid; grid-template-columns: minmax(0, 1fr); }
+.lrow {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 7px 0; border-bottom: 1px dashed var(--border);
+  font-size: 13.5px;
+}
+.lrow:last-of-type { border-bottom: none; }
+.lrow .neg { color: var(--success-fg); }
+.lrow-total { border-top: 1px solid var(--border-strong); font-weight: 650; }
+.card .cta { margin-top: 12px; width: 100%; justify-content: center; }
+
+.plist { margin: 10px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); }
+.plist li {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 7px 0; border-bottom: 1px dashed var(--border); font-size: 13.5px;
+}
+.plist li:last-child { border-bottom: none; }
+.plist .muted { color: var(--text-muted); }
+.pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pmeta { color: var(--text-muted); font-size: 12.5px; }
+.up { color: var(--danger-fg); font-weight: 600; font-size: 12.5px; }
+.down { color: var(--success-fg); font-weight: 600; font-size: 12.5px; }
+.hint { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+
+/* ---------- coverage ---------- */
+.coverage {
+  background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-fg);
+  border-radius: 12px; padding: 14px 20px;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.coverage p { margin: 0; flex: 1; min-width: 260px; }
+.coverage .btn { border-color: var(--warn-border); background: transparent; color: inherit; font-weight: 600; }
+.coverage-ok { color: var(--text-muted); font-size: 12.5px; padding: 0 4px; }
+
+/* ---------- orders table ---------- */
+.orders-toolbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px;
+}
+.search {
+  flex: 1; min-width: 220px; display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  padding: 7px 12px; background: var(--surface); color: var(--text-muted); font-size: 13px;
+}
+.search:focus-within { outline: 3px solid var(--focus-ring); outline-offset: 1px; }
+.search input {
+  flex: 1; min-width: 0; border: none; background: none; padding: 0;
+  font: inherit; color: var(--text);
+}
+.search input:focus-visible { outline: none; }
+.search input::placeholder { color: var(--text-muted); }
+.selbar {
+  display: flex; align-items: center; gap: 10px; margin-left: auto; flex-wrap: wrap;
+  font-size: 13px; color: var(--text-secondary);
+}
+table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13.5px; }
+th {
+  text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-secondary); font-weight: 600;
+  padding: 8px 10px; border-bottom: 1px solid var(--border-strong); white-space: nowrap;
+}
+.th-sort {
+  border: none; background: none; padding: 0; display: inline-flex; align-items: center; gap: 4px;
+  font: inherit; text-transform: inherit; letter-spacing: inherit; color: inherit;
+}
+.th-sort:hover { color: var(--text); }
+.sort-arrow { font-size: 10px; }
+td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tr:hover td { background: var(--surface-2); }
+td.num, th.num { text-align: right; }
+th.num .th-sort { justify-content: flex-end; }
+td.date-cell { white-space: nowrap; }
+.status-chip {
+  display: inline-block; padding: 2px 9px; border-radius: 999px;
+  font-size: 12px; background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text-secondary); white-space: nowrap;
+}
+.saved-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: var(--success-fg); background: var(--success-bg);
+  border-radius: 999px; padding: 2px 9px; font-size: 12px; white-space: nowrap;
+}
+.pending-chip {
+  display: inline-flex; color: var(--warn-fg); background: var(--warn-bg);
+  border-radius: 999px; padding: 2px 9px; font-size: 12px; white-space: nowrap;
+}
+/* width:100% + max-width:0 makes Items the table's one flexible column — it
+   absorbs leftover space and ellipsizes first, so the fixed columns (dates,
+   totals, chips) never clip at the card edge. */
+.items-cell { color: var(--text-secondary); width: 100%; max-width: 0; min-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.onum { color: var(--text-muted); font-size: 12.5px; }
+.table-wrap { overflow-x: auto; }
+.table-empty td { text-align: center; color: var(--text-muted); padding: 24px 10px; }
+.fmt-row { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); }
+.fmt-row label { display: inline-flex; align-items: center; gap: 6px; }
+
+footer {
+  max-width: 1180px; margin: 0 auto; padding: 8px 0 28px;
+  color: var(--text-muted); font-size: 12.5px; display: flex; gap: 8px; flex-wrap: wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; scroll-behavior: auto !important; }
+}

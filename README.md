@@ -340,8 +340,9 @@ The extension is built with a modular design for maintainability:
 1. **On-Device Storage (IndexedDB via `orderdb.js`)** - Stores downloaded orders with no expiration; one "Delete all saved data" control clears it
 2. **Collection Engine** - Crawls Walmart pages to extract order numbers
 3. **Export Engines** - Handle both "Single file" and "Multiple files" downloads, across all export formats
-4. **UI Controller** - Modular side panel (state / view / actions / download / settings / dashboard)
-5. **Performance Optimizer** - Implements image blocking, throttling, and on-demand ExcelJS loading
+4. **UI Controller** - Modular side panel (state / view / actions / download / settings)
+5. **Spending Dashboard** - A full browser page (`dashboard.html`) with time-scoped stats, a clickable monthly chart, price watch, a searchable orders table, and the live side panel embedded for collection and export
+6. **Performance Optimizer** - Implements image blocking, throttling, and on-demand ExcelJS loading
 
 **Data Flow:**
 1. User initiates collection from the side panel ("Collect orders")
