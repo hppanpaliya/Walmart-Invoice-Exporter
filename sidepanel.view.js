@@ -715,22 +715,111 @@
   }
 
   /** Group already date-sorted rows under uppercase month labels (spec §B), e.g. "JULY 2026" / "NO DATE". */
+  /**
+   * Everything about a row that affects its rendered content. When the
+   * signature is unchanged the existing DOM node is reused untouched
+   * (keeping its checkbox, open state, and scroll); when it changes the
+   * node is rebuilt.
+   */
+  function rowSignature(row) {
+    return [
+      row.normalizedDate, row.status, row.itemCount, row.total,
+      row.hasInvoice, row.title, Boolean(row.summary || row.invoice),
+    ].join("|");
+  }
+
+  /** Build one row wrapper with its signature and checkbox listener attached. */
+  function createRowWrapper(row) {
+    const wrapper = buildOrderRowElement(row);
+    wrapper.dataset.sig = rowSignature(row);
+    const checkbox = wrapper.querySelector('input[type="checkbox"]');
+    if (checkbox) {
+      checkbox.addEventListener("change", () => {
+        updateCheckboxCount(listState.container);
+        updateDownloadButtonsState();
+      });
+    }
+    return wrapper;
+  }
+
   function buildOrderListBox(rows) {
     const box = document.createElement("div");
     box.className = "order-list";
+    reconcileOrderRows(box, rows);
+    return box;
+  }
+
+  /**
+   * Keyed reconciliation of the order list (v7.3 collection-time fix):
+   * bring `box` to exactly the desired sequence of month labels and rows
+   * WITHOUT wiping it. Existing row elements are moved, not recreated, so
+   * the user's scroll position, checked boxes, and the open accordion row
+   * all survive the once-a-second re-render during a live collection —
+   * new orders simply appear in place.
+   */
+  function reconcileOrderRows(box, visibleRows) {
+    const existingRows = new Map();
+    Array.from(box.querySelectorAll(".order-row-wrapper")).forEach((wrapper) => {
+      const key = wrapper.querySelector(".order-row")?.dataset.orderNumber;
+      if (key && !existingRows.has(key)) existingRows.set(key, wrapper);
+    });
+
+    const labelPool = new Map();
+    Array.from(box.querySelectorAll(".order-month-label")).forEach((el) => {
+      if (!labelPool.has(el.textContent)) labelPool.set(el.textContent, []);
+      labelPool.get(el.textContent).push(el);
+    });
+
+    const dropOpenTrackingIfInside = (node) => {
+      if (listState.openRowEl && node.contains(listState.openRowEl)) {
+        listState.openRowEl = null;
+        listState.openDetailEl = null;
+      }
+    };
+
+    const fragment = document.createDocumentFragment();
     let lastGroup = null;
-    rows.forEach((row) => {
+    visibleRows.forEach((row) => {
       const group = monthGroupLabel(row.normalizedDate);
       if (group !== lastGroup) {
-        const groupLabel = document.createElement("div");
-        groupLabel.className = "order-month-label";
-        groupLabel.textContent = group;
-        box.appendChild(groupLabel);
+        const pool = labelPool.get(group);
+        let labelEl = pool && pool.length ? pool.shift() : null;
+        if (!labelEl) {
+          labelEl = document.createElement("div");
+          labelEl.className = "order-month-label";
+          labelEl.textContent = group;
+        }
+        fragment.appendChild(labelEl);
         lastGroup = group;
       }
-      box.appendChild(buildOrderRowElement(row));
+
+      let wrapper = existingRows.get(row.orderNumber);
+      if (wrapper) {
+        existingRows.delete(row.orderNumber);
+        if (wrapper.dataset.sig !== rowSignature(row)) {
+          const wasChecked = Boolean(wrapper.querySelector('input[type="checkbox"]:checked'));
+          dropOpenTrackingIfInside(wrapper);
+          wrapper.remove();
+          wrapper = createRowWrapper(row);
+          if (wasChecked) {
+            const checkbox = wrapper.querySelector('input[type="checkbox"]');
+            if (checkbox) checkbox.checked = true;
+          }
+        }
+      } else {
+        wrapper = createRowWrapper(row);
+      }
+      fragment.appendChild(wrapper);
     });
-    return box;
+
+    // Whatever is still keyed here fell out of the visible set.
+    existingRows.forEach((wrapper) => {
+      dropOpenTrackingIfInside(wrapper);
+      wrapper.remove();
+    });
+    labelPool.forEach((els) => els.forEach((el) => el.remove()));
+
+    box.appendChild(fragment);
   }
 
   function buildFilterRow(rows) {
@@ -894,25 +983,73 @@
       customTo: listState.customTo,
     });
 
-    container.innerHTML = "";
     container.dataset.totalOrders = String(rows.length);
 
-    container.appendChild(buildFilterRow(rows));
-    if (listState.filter === "custom") {
-      container.appendChild(buildCustomRangeRow());
-    }
-    if (hiddenUndatedCount > 0 && listState.filter !== "all") {
-      container.appendChild(buildHiddenUndatedNote(hiddenUndatedCount));
+    let orderListBox = container.querySelector(".order-list");
+    if (!orderListBox) {
+      // ---- First build this session (coming from the placeholder) ----
+      container.innerHTML = "";
+
+      container.appendChild(buildFilterRow(rows));
+      if (listState.filter === "custom") {
+        container.appendChild(buildCustomRangeRow());
+      }
+      if (hiddenUndatedCount > 0 && listState.filter !== "all") {
+        container.appendChild(buildHiddenUndatedNote(hiddenUndatedCount));
+      }
+
+      const selectRow = buildSelectRow();
+      container.appendChild(selectRow);
+      orderListBox = buildOrderListBox(visible);
+      container.appendChild(orderListBox);
+
+      const selectAll = selectRow.querySelector("#selectAll");
+      if (selectAll) {
+        selectAll.addEventListener("change", () => {
+          toggleAllCheckboxes(container.querySelector(".order-list"), selectAll.checked);
+          updateCheckboxCount(container);
+          updateDownloadButtonsState();
+        });
+      }
+    } else {
+      // ---- Incremental update (v7.3): never wipe the container, so the
+      // scroll position, checked boxes, and open row survive the
+      // once-a-second refresh during a live collection. ----
+
+      // The filter row is tiny and stateless (its state IS listState) —
+      // swap it so the per-range counts stay current.
+      const oldFilterRow = container.querySelector(".list-filter-row");
+      const newFilterRow = buildFilterRow(rows);
+      if (oldFilterRow) oldFilterRow.replaceWith(newFilterRow);
+      else container.insertBefore(newFilterRow, container.firstChild);
+
+      // Custom-range inputs keep their element (and focus) while relevant.
+      const oldCustomRow = container.querySelector(".list-filter-custom");
+      if (listState.filter === "custom") {
+        if (!oldCustomRow) newFilterRow.after(buildCustomRangeRow());
+      } else if (oldCustomRow) {
+        oldCustomRow.remove();
+      }
+
+      const oldNote = container.querySelector("#listFilterHiddenNote");
+      const wantNote = hiddenUndatedCount > 0 && listState.filter !== "all";
+      if (wantNote) {
+        const note = oldNote || buildHiddenUndatedNote(hiddenUndatedCount);
+        note.textContent = `${hiddenUndatedCount} order${hiddenUndatedCount === 1 ? "" : "s"} without a date ${hiddenUndatedCount === 1 ? "is" : "are"} hidden`;
+        if (!oldNote) (container.querySelector(".list-filter-custom") || newFilterRow).after(note);
+      } else if (oldNote) {
+        oldNote.remove();
+      }
+
+      reconcileOrderRows(orderListBox, visible);
     }
 
-    const selectRow = buildSelectRow();
-    container.appendChild(selectRow);
-    const orderListBox = buildOrderListBox(visible);
-    container.appendChild(orderListBox);
-
+    const oldActionRow = container.querySelector(".action-row");
     if (visible.length > 0) {
-      container.appendChild(buildActionRow());
+      if (!oldActionRow) container.appendChild(buildActionRow());
       updateDownloadButtonLabels();
+    } else if (oldActionRow) {
+      oldActionRow.remove();
     }
 
     if (listState.pendingSelection) {
@@ -931,21 +1068,8 @@
       });
     }
 
-    const selectAll = selectRow.querySelector("#selectAll");
-    if (selectAll) {
-      selectAll.addEventListener("change", () => {
-        toggleAllCheckboxes(orderListBox, selectAll.checked);
-        updateCheckboxCount(container);
-        updateDownloadButtonsState();
-      });
-    }
-    orderListBox.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
-      checkbox.addEventListener("change", () => {
-        updateCheckboxCount(container);
-        updateDownloadButtonsState();
-      });
-    });
-
+    // Row checkbox listeners are attached at element creation
+    // (createRowWrapper); the select-all listener on first build above.
     updateCheckboxCount(container);
     updateDownloadButtonsState();
   }
