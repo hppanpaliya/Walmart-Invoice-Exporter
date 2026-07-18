@@ -1070,7 +1070,15 @@ function extractItemsFromNextData(orderNode) {
     seen.add(key);
 
     const canonicalUrl = cleanText(item?.productInfo?.canonicalUrl || item?.canonicalUrl || '');
-    const productLink = canonicalUrl ? toAbsoluteWalmartUrl(canonicalUrl) : 'N/A';
+    // Walmart dropped canonicalUrl from the order payload (live-verified
+    // 2026-07); /ip/<usItemId> is the canonical product URL, so the payload
+    // path stays link-complete even when the DOM backfill has nothing.
+    const usItemIdForLink = cleanText(item?.productInfo?.usItemId || item?.usItemId || '');
+    const productLink = canonicalUrl
+      ? toAbsoluteWalmartUrl(canonicalUrl)
+      : usItemIdForLink
+        ? `https://www.walmart.com/ip/${usItemIdForLink}`
+        : 'N/A';
     const thumbnailUrl = cleanText(
       item?.productInfo?.imageInfo?.thumbnailUrl || item?.imageInfo?.thumbnailUrl || ''
     );

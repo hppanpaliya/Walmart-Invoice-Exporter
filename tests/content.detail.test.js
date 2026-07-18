@@ -50,6 +50,24 @@ test('extractOrderDataFromNextData extracts items from groups and subGroups with
   assert.equal(marketplaceItem.usItemId, '998877');
 });
 
+test('payload items without canonicalUrl still get a product link built from usItemId (live shape since 2026-07)', () => {
+  const stripped = JSON.parse(JSON.stringify(detailPayload));
+  const strip = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if ('canonicalUrl' in node) delete node.canonicalUrl;
+    Object.values(node).forEach(strip);
+  };
+  strip(stripped);
+
+  const sandbox = loadSandbox({ nextData: stripped });
+  const order = sandbox.extractOrderDataFromNextData();
+
+  assert.equal(order.items.length, 3);
+  assert.equal(order.items[0].productLink, 'https://www.walmart.com/ip/10450114');
+  // subGroups-nested item builds its link from its own usItemId too.
+  assert.equal(order.items[2].productLink, 'https://www.walmart.com/ip/998877');
+});
+
 test('extractOrderDataFromNextData aggregates shipment metadata across groups', () => {
   const sandbox = loadDetailSandbox();
   const order = sandbox.extractOrderDataFromNextData();
