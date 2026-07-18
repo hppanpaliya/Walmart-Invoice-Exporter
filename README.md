@@ -142,6 +142,11 @@ See [docs/PORTS.md](./docs/PORTS.md) for the full list of differences.
 
 ## What's New
 
+### Version 7.3 (July 18, 2026)
+- **Full-page Spending Dashboard** with the live panel embedded beside it — scope by period, click a month to drill in, watch prices on items you rebuy, and export exactly what's on screen
+- **Receipt-style order list** grouped by month, with a "Showing" range filter
+- Product links now survive Walmart's data-shape changes (built from the item id when the payload omits the URL)
+
 ### Version 7.0 (July 17, 2026)
 - **Redesigned download** — two buttons, **Single file** (one file with every selected order) and **Multiple files** (one file per order), replace the old Download + Quick Export. Already-downloaded orders re-export instantly.
 - **Legacy Excel layout** option restores the older single-sheet workbook
@@ -357,7 +362,7 @@ The extension is built with a modular design for maintainability:
 
 For a complete list of changes, see [CHANGELOG.md](./CHANGELOG.md)
 
-**Latest (v7.0):** Redesigned download flow (Single file / Multiple files), dedicated Settings view, dark mode, unified on-device storage with a single "Delete all saved data" control, and a lighter-weight panel (ExcelJS no longer loads on every orders page).
+**Latest (v7.3):** Full-page Spending Dashboard with the live panel embedded, receipt-style order list with range filtering, plus the 7.0 redesign (Single file / Multiple files download, Settings view, dark mode, unified on-device storage with one "Delete all saved data" control).
 
 ## Support
 

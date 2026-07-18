@@ -1,5 +1,15 @@
 # Changelog
 
+## [7.3] - July 18, 2026
+
+### Added
+- **Spending Dashboard is now a full browser page** (opened via the chart icon), with the live side panel embedded alongside it: scope picker (all time / last 3 / last 6 / this year / last year / custom), monthly spend chart where clicking a bar re-scopes the whole page, stat strip with vs-previous-period deltas, price watch on items you rebuy, most-bought items, a searchable/sortable orders table, and scoped export straight from the page.
+- **Receipt-style order list** in the panel: orders grouped by month with a "Showing" range filter and one-open-at-a-time detail rows.
+
+### Fixed
+- **Product links survive Walmart's payload change** (issue #14 follow-up): Walmart removed the product URL from the order page's embedded data, so links now fall back to being built from the item id (`walmart.com/ip/<id>`) — item links keep working even if the visible page markup changes again.
+- CI unit-test job now installs dependencies, so the xlsx-verifying tests actually run.
+
 ## [7.0] - July 17, 2026
 
 ### Changed
