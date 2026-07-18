@@ -23,7 +23,7 @@
 
 # Dependency lock files
 yarn.lock
-package-lock.json
+# package-lock.json is committed: CI's `npm ci` (e2e job) requires it
 
 dev/
 
@@ -33,3 +33,6 @@ dev/
 repomix.config.json
 repomix-output.xmldesign.md
 .codex/
+# Browser automation artifacts
+.playwright-cli/
+.claude/

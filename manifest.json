@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Walmart Invoice Exporter",
-  "version": "6.2",
-  "description": "Download Walmart order details in xlsx format",
+  "version": "7.0",
+  "description": "Download Walmart order details in Excel, CSV, JSON, or printable receipt format",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "storage", "sidePanel"],
   "host_permissions": ["https://www.walmart.com/*"],
@@ -24,7 +24,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.walmart.com/orders*"],
-      "js": ["utils.js", "content.js", "exceljs.bare.min.js"]
+      "js": ["utils.js", "content.js"]
     }
   ],
   "icons": {

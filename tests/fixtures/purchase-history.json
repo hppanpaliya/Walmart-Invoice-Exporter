@@ -1,0 +1,89 @@
+{
+  "props": {
+    "pageProps": {
+      "initialData": {
+        "data": {
+          "purchaseHistory": {
+            "orders": [
+              {
+                "id": "200010000000042",
+                "displayId": "2000100-00000042",
+                "orderDate": "2026-07-01T14:23:00.000-04:00",
+                "itemCount": 3,
+                "type": "GLASS",
+                "isInStore": false,
+                "title": "July 01, 2026 order",
+                "priceDetails": {
+                  "orderTotal": { "displayValue": "$28.11" },
+                  "subTotal": { "displayValue": "$18.53" },
+                  "driverTip": { "displayValue": "$4.00" }
+                },
+                "groups": [
+                  {
+                    "status": { "message": { "parts": [{ "text": "Delivered" }] } },
+                    "fulfillmentType": "DELIVERY",
+                    "deliveredDate": "2026-07-02",
+                    "items": [
+                      {
+                        "id": "item-1",
+                        "name": "Great Value Milk 1 Gallon",
+                        "quantity": 2,
+                        "statusCode": "3700.0031",
+                        "imageInfo": { "thumbnailUrl": "https://i5.walmartimages.com/asr/milk.jpg" }
+                      },
+                      {
+                        "id": "item-2",
+                        "name": "Bananas, each",
+                        "quantity": 6,
+                        "statusCode": "3700.0031",
+                        "imageInfo": { "thumbnailUrl": "https://i5.walmartimages.com/asr/banana.jpg" }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "200010000000042",
+                "displayId": "2000100-00000042",
+                "orderDate": "2026-07-01T14:23:00.000-04:00",
+                "itemCount": 3,
+                "type": "GLASS",
+                "isInStore": false,
+                "title": "Duplicate render of the same order",
+                "groups": []
+              },
+              {
+                "id": "77501234567890123456",
+                "displayId": "7750-1234-5678-9012-3456",
+                "orderDate": "2026-06-15T11:05:00.000-04:00",
+                "itemCount": 1,
+                "type": "IN_STORE",
+                "isInStore": true,
+                "title": "June 15, 2026 in-store purchase",
+                "priceDetails": {
+                  "orderTotal": { "displayValue": "$9.42" },
+                  "subTotal": { "displayValue": "$8.88" }
+                },
+                "groups": [
+                  {
+                    "status": { "message": { "parts": [{ "text": "Purchased in store" }] } },
+                    "fulfillmentType": "IN_STORE",
+                    "items": [
+                      {
+                        "id": "item-3",
+                        "name": "AA Batteries 8-pack",
+                        "quantity": 1,
+                        "statusCode": "9000.450"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "pageInfo": { "nextPageCursor": "cursor-page-2" }
+          }
+        }
+      }
+    }
+  }
+}
