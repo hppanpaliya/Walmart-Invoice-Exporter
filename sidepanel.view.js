@@ -42,16 +42,16 @@
   }
 
   /**
-   * Switch between the panel's top-level views.
+   * Switch between the panel's top-level views. (The spending dashboard is
+   * no longer a panel view — it lives in its own full page, dashboard.html.)
    * Unknown names fall back to the main view (matching the old behavior).
-   * @param {string} viewName - "main", "faq", "dashboard", or "settings"
+   * @param {string} viewName - "main", "faq", or "settings"
    * @param {Function} [onMain] - Invoked after switching to the main view
    */
   function switchView(viewName, onMain) {
     const views = {
       main: document.getElementById("mainView"),
       faq: document.getElementById("faqView"),
-      dashboard: document.getElementById("dashboardView"),
       settings: document.getElementById("settingsView"),
     };
     const target = views[viewName] ? viewName : "main";
@@ -764,6 +764,26 @@
 
     row.appendChild(label);
     row.appendChild(select);
+
+    // Escape hatch: any non-default filter gets a one-tap way back to
+    // "All time" (also clears any custom dates) without hunting through
+    // the select — matters most when a dashboard tap-through landed the
+    // user on a pre-filtered list.
+    if (listState.filter !== "all") {
+      const clearButton = document.createElement("button");
+      clearButton.type = "button";
+      clearButton.id = "listRangeFilterClear";
+      clearButton.className = "btn-link list-filter-clear";
+      clearButton.textContent = "✕ Clear";
+      clearButton.setAttribute("aria-label", "Clear date filter");
+      clearButton.addEventListener("click", () => {
+        listState.filter = "all";
+        listState.customFrom = "";
+        listState.customTo = "";
+        renderFilteredList();
+      });
+      row.appendChild(clearButton);
+    }
     return row;
   }
 

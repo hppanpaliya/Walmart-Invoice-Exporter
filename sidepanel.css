@@ -430,16 +430,6 @@ body {
   margin-bottom: 0;
 }
 
-.dashboard-coverage {
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 7px 9px;
-  margin-bottom: var(--space-3);
-}
-
 /* Paired action buttons: Single file / Multiple files, side by side as an
    equal, matched pair (spec §5.2 — replaces the old mutating Download
    button + separate Quick Export button). */
@@ -766,7 +756,7 @@ body {
   background: var(--border);
 }
 
-/* Link-styled button (row-detail "Copy", dashboard "View & export"). */
+/* Link-styled button (row-detail "Copy", list filter "✕ Clear"). */
 .btn-link {
   background: none;
   border: none;
@@ -1153,282 +1143,6 @@ body {
 /* Main footer in main view */
 .main-footer {
   margin-top: var(--space-6);
-}
-
-/* Spending dashboard (v7.2 scoped redesign) */
-.dash-scope-row {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-  font-size: var(--font-size-sm);
-}
-
-.dash-scope-row label {
-  color: var(--text-secondary);
-}
-
-.dash-scope-row select {
-  background: var(--surface-2);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 4px var(--space-2);
-  font-size: var(--font-size-sm);
-}
-
-.dash-headline {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  padding: var(--space-3) var(--space-4);
-  margin-bottom: var(--space-4);
-}
-
-.dash-headline-label {
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.dash-headline-row {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: 2px;
-}
-
-.dash-headline-total {
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.dash-delta {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-/* Spend going up is a warning-toned signal, not an achievement. */
-.dash-delta-up {
-  color: var(--warning-fg);
-}
-
-.dash-delta-down {
-  color: var(--success-fg);
-}
-
-.dash-headline-sub {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  margin-top: var(--space-1);
-}
-
-.dashboard-section {
-  margin-bottom: var(--space-4);
-}
-
-.dashboard-section-title {
-  font-size: var(--font-size-md);
-  margin-bottom: var(--space-2);
-}
-
-.dash-bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 4px;
-  overflow-x: auto;
-  padding: 0 10px 2px 0; /* room for the last bar's (wider) selected label */
-}
-
-.dash-bar {
-  flex: 1 1 0;
-  min-width: 26px;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 3px;
-  background: none;
-  border: none;
-  padding: 2px;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-}
-
-.dash-bar-track {
-  display: flex;
-  align-items: flex-end;
-  height: 72px;
-  background: var(--surface);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
-
-.dash-bar-fill {
-  width: 100%;
-  background: var(--border-strong);
-  border-radius: 3px 3px 0 0;
-}
-
-.dash-bar:hover .dash-bar-fill {
-  background: var(--accent-hover);
-}
-
-.dash-bar.selected .dash-bar-fill {
-  background: var(--accent);
-}
-
-.dash-bar-label {
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  text-align: center;
-  white-space: nowrap;
-  min-height: 14px; /* unlabeled bars keep the same footprint */
-}
-
-.dash-bar.selected .dash-bar-label {
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.dash-bar-caption {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-  font-size: var(--font-size-sm);
-}
-
-.dash-ledger {
-  font-size: var(--font-size-sm);
-}
-
-.dash-ledger-row {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: 4px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.dash-ledger-negative .mono {
-  color: var(--success-fg);
-}
-
-.dash-export-btn {
-  margin-top: var(--space-2);
-  width: 100%;
-  justify-content: center;
-}
-
-.dash-watch-price {
-  flex-shrink: 0;
-}
-
-.dash-watch-delta {
-  flex-shrink: 0;
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  min-width: 44px;
-  text-align: right;
-}
-
-.dash-watch-up {
-  color: var(--warning-fg);
-}
-
-.dash-watch-down {
-  color: var(--success-fg);
-}
-
-.dash-coverage-warn {
-  background: var(--warning-bg);
-  border: 1px solid var(--warning-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-3);
-  margin-bottom: var(--space-4);
-  font-size: var(--font-size-sm);
-  color: var(--warning-fg);
-}
-
-.dash-coverage-warn p {
-  margin: 0 0 var(--space-2);
-  line-height: 1.4;
-}
-
-.dash-coverage-btn {
-  width: 100%;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid var(--warning-border);
-  color: var(--warning-fg);
-}
-
-.dash-coverage-btn:hover {
-  background: var(--warning-bg);
-  filter: brightness(0.97);
-}
-
-.dashboard-list {
-  list-style: none;
-  font-size: var(--font-size-sm);
-}
-
-.dashboard-list li {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--space-2);
-  padding: 4px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.dashboard-list .dashboard-item-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dashboard-muted {
-  color: var(--text-secondary);
-  flex-shrink: 0;
-  font-size: var(--font-size-xs);
-}
-
-.dashboard-hint {
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  margin-top: 6px;
-}
-
-.dashboard-empty {
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: var(--font-size-md);
-  padding: 40px 16px;
-}
-
-.dashboard-empty svg {
-  stroke: var(--text-muted);
-  margin-bottom: var(--space-3);
-}
-
-.dashboard-empty h3 {
-  color: var(--text);
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  margin: 0 0 var(--space-2);
-}
-
-.dashboard-empty p {
-  margin: 0 auto;
-  max-width: 300px;
-  line-height: 1.5;
 }
 
 /* ==========================================================================
@@ -1851,6 +1565,14 @@ body.first-run .export-options-panel {
   font-size: var(--font-size-sm);
   background: var(--surface-2);
   color: var(--text);
+}
+
+/* Quiet escape hatch shown beside the select whenever a non-default range
+   is active — resets the filter to All time. */
+.list-filter-clear {
+  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
 }
 
 .list-filter-hidden-note {

@@ -63,6 +63,11 @@ jobs:
           cp sidepanel.download.js temp/Walmart-Invoice-Exporter/
           cp sidepanel.settings.js temp/Walmart-Invoice-Exporter/
 
+          # Full-page spending dashboard (opened as its own tab)
+          cp dashboard.html temp/Walmart-Invoice-Exporter/
+          cp dashboard.css temp/Walmart-Invoice-Exporter/
+          cp dashboard.page.js temp/Walmart-Invoice-Exporter/
+
           # Helpful documentation files (optional)
           cp README.md temp/Walmart-Invoice-Exporter/ || true
           cp CHANGELOG.md temp/Walmart-Invoice-Exporter/ || true
