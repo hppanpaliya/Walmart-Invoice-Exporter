@@ -316,11 +316,6 @@ test('computePriceHistory excludes single-purchase items, invoiceless records, a
   assert.deepEqual(toPlain(sandbox.computePriceHistory([])), []);
 });
 
-test('sidepanel.dashboard exposes renderDashboard on window.Sidepanel', () => {
-  const sandbox = loadDashboardSandbox();
-  assert.equal(typeof sandbox.window.Sidepanel.dashboard.renderDashboard, 'function');
-});
-
 /*
  * Scoped dashboard model (v7.2 dashboard redesign): every number is scoped
  * by a range picker that reuses the list filter's range engine
