@@ -124,6 +124,79 @@ async function renderOrderList(panel, progress) {
   await panel.waitForSelector('#singleFileDownload');
 }
 
+/**
+ * Seed OrderDb with a deterministic, PII-free order history: `months`
+ * months walking back from the current month, 2-3 orders each, every 6th
+ * order summary-only (stored but never downloaded). Anchored to the real
+ * current date so date-scoped features ("This year") always have data.
+ * Returns the seeded records.
+ */
+async function seedOrderHistory(panel, { months = 14 } = {}) {
+  const catalog = [
+    ['Great Value Whole Milk, 1 Gallon', 3.98],
+    ['Bananas, each', 0.28],
+    ['Tide PODS Laundry Detergent, 42 ct', 12.97],
+    ['Eggs, Large, 12 ct', 2.52],
+    ['Chobani Greek Yogurt 4-pack', 4.48],
+    ['Charmin Ultra Soft, 12 Mega Rolls', 13.24],
+  ];
+  const now = new Date();
+  const records = [];
+  let n = 0;
+  for (let m = 0; m < months; m += 1) {
+    const d = new Date(now.getFullYear(), now.getMonth() - m, 12);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-12`;
+    const perMonth = m % 3 === 0 ? 3 : 2;
+    for (let k = 0; k < perMonth; k += 1) {
+      n += 1;
+      const orderNumber = `20009900000${String(1000 + n)}`;
+      const picked = catalog.slice(0, 2 + ((m + k) % 4));
+      const drift = 1 + m * 0.015; // older months slightly cheaper
+      const lineItems = picked.map(([name, price], i) => ({
+        name,
+        quantity: 1 + ((k + i) % 2),
+        price: Number((price / drift).toFixed(2)),
+      }));
+      const subtotal = lineItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      const tax = subtotal * 0.0825;
+      const total = subtotal + tax;
+      const summaryOnly = n % 6 === 0;
+      records.push({
+        orderNumber,
+        summaryOnly,
+        summary: {
+          orderDate: iso,
+          orderTotal: Number(total.toFixed(2)),
+          subTotal: Number(subtotal.toFixed(2)),
+          itemCount: lineItems.length,
+          status: 'Delivered',
+          items: lineItems.map((item) => ({ name: item.name, quantity: item.quantity })),
+        },
+        invoice: summaryOnly ? null : {
+          schemaVersion: 3,
+          orderDate: iso,
+          orderNumber,
+          orderSubtotal: Number(subtotal.toFixed(2)),
+          tax: Number(tax.toFixed(2)),
+          tip: 0,
+          orderTotal: Number(total.toFixed(2)),
+          savings: m % 2 === 0 ? Number((subtotal * 0.05).toFixed(2)) : 0,
+          items: lineItems.map((item) => ({ productName: item.name, quantity: item.quantity, price: item.price })),
+        },
+      });
+    }
+  }
+  await panel.evaluate(async (seeded) => {
+    const summaries = {};
+    for (const record of seeded) summaries[record.orderNumber] = record.summary;
+    await OrderDb.putSummaries(summaries, {});
+    for (const record of seeded) {
+      if (record.invoice) await OrderDb.putInvoice(record.orderNumber, record.invoice);
+    }
+  }, records);
+  return records;
+}
+
 /** Click a button and capture the next N downloads it triggers. */
 async function clickAndCollectDownloads(panel, selector, expectedCount, timeoutMs = 30000) {
   const downloads = [];
@@ -153,5 +226,6 @@ module.exports = {
   launch,
   collectOrders,
   renderOrderList,
+  seedOrderHistory,
   clickAndCollectDownloads,
 };
