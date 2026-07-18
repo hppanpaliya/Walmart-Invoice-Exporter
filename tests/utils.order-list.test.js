@@ -59,6 +59,23 @@ test('buildOrderRowModel: undated record falls back to the Walmart title date (o
   assert.equal(undated.normalizedDate, '');
 });
 
+test('buildOrderRowModel: undated record falls back to the delivered date before the title', () => {
+  const sandbox = loadUtils();
+
+  // List summaries store the delivery group timestamp as ISO.
+  const fromSummary = sandbox.buildOrderRowModel('21', {
+    title: 'Jun 15, 2022 order',
+    summary: { deliveredDate: '2022-06-17T14:03:00-05:00' },
+  });
+  assert.equal(fromSummary.normalizedDate, '2022-06-17');
+
+  // Invoices store it human-formatted, possibly ';'-joined across shipments.
+  const fromInvoice = sandbox.buildOrderRowModel('22', {
+    invoice: { deliveredDate: 'Jul 02, 2023; Jul 04, 2023' },
+  });
+  assert.equal(fromInvoice.normalizedDate, '2023-07-02');
+});
+
 // ---------------------------------------------------------------------------
 // buildOrderRowModel
 // ---------------------------------------------------------------------------

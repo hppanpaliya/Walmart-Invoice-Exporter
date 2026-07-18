@@ -2027,6 +2027,20 @@ function buildOrderRowModel(orderNumber, record, sessionTitle) {
   let rawDate = (summary && summary.orderDate) || (record && record.orderDate) || (invoice && invoice.orderDate) || '';
   let normalizedDate = normalizeDashboardDate(rawDate);
   if (!normalizedDate) {
+    // The delivery date Walmart shows ("Delivered on …") — stored on list
+    // summaries (ISO) and on downloaded invoices ('Jul 02, 2026', possibly
+    // ';'-joined across shipments). A few days after the order date at
+    // worst, and present on orders whose order date is long gone.
+    const deliveredRaw = String(
+      (summary && summary.deliveredDate) || (invoice && invoice.deliveredDate) || ''
+    ).split(';')[0].trim();
+    const delivered = normalizeDashboardDate(deliveredRaw);
+    if (delivered) {
+      normalizedDate = delivered;
+      rawDate = rawDate || deliveredRaw;
+    }
+  }
+  if (!normalizedDate) {
     // Old orders often have no date anywhere in the stored data (their
     // detail page stopped exposing one), but Walmart's own list title —
     // which we store — reads "Jun 15, 2022 order". Use it, so the list

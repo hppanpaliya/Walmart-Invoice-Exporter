@@ -85,9 +85,7 @@ function computeDashboardStats(records) {
     totalFees += parseNumericValue(invoice.deliveryCharges) + parseNumericValue(invoice.bagFee);
 
     // Month from any date format we may have stored (ISO or human).
-    const normalized = normalizeDashboardDate(
-      record?.orderDate || record?.summary?.orderDate || invoice.orderDate || ''
-    ) || parseWalmartTitleDate(record?.title || record?.summary?.title || '');
+    const normalized = dashboardRecordDate(record);
     const month = normalized.slice(0, 7);
     if (month && total) {
       const bucket = monthlyTotals.get(month) || { total: 0, orders: 0 };
@@ -158,10 +156,15 @@ function computeDashboardStats(records) {
  * else — else ''.
  */
 function dashboardRecordDate(record) {
+  const deliveredRaw = String(
+    record?.summary?.deliveredDate || record?.invoice?.deliveredDate || ''
+  ).split(';')[0].trim();
   return (
     normalizeDashboardDate(
       record?.orderDate || record?.summary?.orderDate || record?.invoice?.orderDate || ''
-    ) || parseWalmartTitleDate(record?.title || record?.summary?.title || '')
+    ) ||
+    normalizeDashboardDate(deliveredRaw) ||
+    parseWalmartTitleDate(record?.title || record?.summary?.title || '')
   );
 }
 
@@ -356,9 +359,7 @@ function computePriceHistory(records) {
 
     // Normalize to a sortable YYYY-MM-DD: DOM-collected orders store human
     // dates ('July 1, 2026'), which would otherwise sort alphabetically.
-    const date = normalizeDashboardDate(
-      record?.orderDate || record?.summary?.orderDate || invoice.orderDate || ''
-    ) || parseWalmartTitleDate(record?.title || record?.summary?.title || '');
+    const date = dashboardRecordDate(record);
 
     // One price point per item per order.
     const seenInOrder = new Set();
