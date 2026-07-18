@@ -27,10 +27,46 @@
 
   const SOURCE = "WIE_PURCHASE_HISTORY_BRIDGE";
   const TYPE = "PURCHASE_HISTORY_SNAPSHOT";
+  // Fast Collect replay protocol (isolated world ⇄ this main-world script).
+  const REPLAY_REQ = "WIE_REPLAY_REQUEST";
+  const REPLAY_RES = "WIE_REPLAY_RESULT";
 
   // Guard against double-install (e.g. SPA soft-navigations re-running scripts).
   if (window.__wiePurchaseHistoryBridgeInstalled) return;
   window.__wiePurchaseHistoryBridgeInstalled = true;
+
+  // The full header set from the page's OWN most recent PurchaseHistoryV3
+  // request. This is the piece Fast Collect needs: Walmart's bot detection
+  // accepts the page's real, sensor-signed headers but 429-challenges a request
+  // built from synthesized headers. We reuse EXACTLY what the page just sent.
+  let lastRequestHeaders = null;
+
+  const captureHeaders = (input, init) => {
+    const headers = {};
+    try {
+      if (
+        input &&
+        typeof input === "object" &&
+        input.headers &&
+        typeof input.headers.entries === "function"
+      ) {
+        for (const [k, v] of input.headers.entries()) headers[k] = v;
+      }
+      const ih = init && init.headers;
+      if (ih) {
+        if (typeof ih.entries === "function") {
+          for (const [k, v] of ih.entries()) headers[k] = v;
+        } else if (Array.isArray(ih)) {
+          ih.forEach((pair) => {
+            if (pair && pair.length === 2) headers[pair[0]] = pair[1];
+          });
+        } else {
+          Object.assign(headers, ih);
+        }
+      }
+    } catch (_) {}
+    return headers;
+  };
 
   const extractPurchaseHistoryNode = (payload) => {
     if (!payload || typeof payload !== "object") return null;
@@ -104,6 +140,12 @@
     const originalFetch = window.fetch.bind(window);
     const wrappedFetch = (...args) => {
       const requestUrl = urlOf(args[0]);
+      // Remember the real headers of the page's own PurchaseHistoryV3 request,
+      // so Fast Collect can replay later pages with the SAME (accepted) headers.
+      if (requestUrl.indexOf("PurchaseHistoryV3") > -1) {
+        const captured = captureHeaders(args[0], args[1]);
+        if (captured && Object.keys(captured).length) lastRequestHeaders = captured;
+      }
       return originalFetch(...args).then((response) => {
         try {
           response
@@ -153,4 +195,41 @@
 
   patchFetch();
   patchXHR();
+
+  // Fast Collect replay proxy. The isolated-world adapter asks us to fetch a
+  // purchase-history page; we run the request HERE, in the page's own world,
+  // reusing the real captured headers — so it is indistinguishable from the
+  // page's own request and passes Walmart's bot check (a synthesized request
+  // gets 429-challenged). We post the raw JSON payload back. We never fabricate
+  // a request the page didn't already prove it can make: without captured
+  // headers we decline (the caller then seeds by triggering one real request).
+  window.addEventListener("message", (event) => {
+    if (event.source !== window) return;
+    const msg = event.data;
+    if (!msg || msg.source !== SOURCE || msg.type !== REPLAY_REQ || !msg.reqId) return;
+
+    const reply = (body) =>
+      window.postMessage({ source: SOURCE, type: REPLAY_RES, reqId: msg.reqId, ...body }, "*");
+
+    if (!lastRequestHeaders) {
+      reply({ ok: false, reason: "no-headers" });
+      return;
+    }
+    if (!msg.url || typeof msg.url !== "string" || msg.url.indexOf("/orchestra/") !== 0) {
+      reply({ ok: false, reason: "bad-url" });
+      return;
+    }
+
+    fetch(msg.url, { credentials: "include", headers: lastRequestHeaders })
+      .then(async (r) => {
+        let payload = null;
+        if (r.ok) {
+          try {
+            payload = await r.json();
+          } catch (_) {}
+        }
+        reply({ ok: r.ok, status: r.status, payload });
+      })
+      .catch((err) => reply({ ok: false, reason: String(err && err.message) }));
+  });
 })();

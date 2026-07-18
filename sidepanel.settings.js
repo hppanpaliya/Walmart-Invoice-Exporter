@@ -122,9 +122,9 @@
         </div>
         <div class="toggle-group">
           <input type="checkbox" id="settingsFastFetch" ${fastFetch ? "checked" : ""}>
-          <label for="settingsFastFetch" title="Experimental: tries to pull your whole history via direct API requests instead of paginating. Walmart may challenge blindly-replayed requests, so this can stop after the first page — the default paginating method is more reliable. Nothing leaves this device.">Try direct-request collection (experimental)</label>
+          <label for="settingsFastFetch" title="Faster collection: loads the first page, does ONE 'Next' to capture your browser's real request, then replays the rest of the pages instantly with those same request details — so it isn't treated as a bot. All pages keep their real order dates. Uses your logged-in session; nothing leaves this device.">Fast collection (fewer page loads)</label>
         </div>
-        <p class="settings-about-note">Off by default. The normal method pages through your history and reads each page's real order date from your browser's own requests — reliable, and it keeps the dates. This experimental option instead replays the API directly; it can be faster but Walmart sometimes blocks it after the first page.</p>
+        <p class="settings-about-note">Loads page 1, does a single "Next" to capture your browser's own request, then pulls every remaining page instantly by replaying that exact request — much faster than clicking through each page, and every page keeps its real order date. Turn off to page through one at a time.</p>
       </div>
     `;
   }

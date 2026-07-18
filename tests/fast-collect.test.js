@@ -96,32 +96,29 @@ test('collectAllViaFetch: pages the whole history via cursor, every page fully d
   );
 });
 
-test('collectAllViaFetch: a 429 throttle is retried with backoff, not abandoned', async () => {
+test('collectAllViaFetch: a failed page fetch stops gracefully, keeping what was collected', async () => {
   const sandbox = loadSandbox({
-    nextData: nextDataWith([order('200000000000001', '2026-03-04T10:00:00-08:00', 'Mar 04, 2026 order')], 'c1'),
+    nextData: nextDataWith(
+      [
+        order('200000000000001', '2026-03-04T10:00:00-08:00', 'Mar 04, 2026 order'),
+        order('200000000000002', '2026-02-28T10:00:00-08:00', 'Feb 28, 2026 order'),
+      ],
+      'c1'
+    ),
     scripts: ['utils.js', 'providers/base.js', 'providers/registry.js', 'providers/walmart-us.js', 'flags.js'],
   });
   sandbox.chrome.storage.local.set({ wm_ph_signature: { hash: HASH } });
 
-  // First API call is throttled (429), then it succeeds on retry.
-  let n = 0;
-  const statuses = [];
-  sandbox.fetch = () => {
-    n += 1;
-    statuses.push(n);
-    if (n === 1) return Promise.resolve({ ok: false, status: 429, json: () => Promise.resolve({}) });
-    return Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve(apiBody([order('200000000000002', '2026-02-28T10:00:00-08:00', 'Feb 28, 2026 order')], null)),
-    });
-  };
+  // The very first replayed page errors — collection must keep page 1's orders
+  // (from __NEXT_DATA__) rather than losing everything or looping.
+  sandbox.fetch = () => Promise.resolve({ ok: false, status: 429, json: () => Promise.resolve({}) });
 
   const result = await evalIn(sandbox, 'PurchaseHistoryDataSource.collectAllViaFetch({})');
   const plain = toPlain(result);
 
-  assert.equal(plain.pages, 2, 'the retry recovered page 2 rather than falling back');
+  assert.equal(plain.fast, true);
+  assert.equal(plain.pages, 1, 'kept page 1 and stopped cleanly on the failed fetch');
   assert.deepEqual(plain.orderNumbers, ['200000000000001', '200000000000002']);
-  assert.ok(n >= 2, 'the throttled call was retried');
 });
 
 test('collectAllViaFetch: a single-page history needs no network at all', async () => {

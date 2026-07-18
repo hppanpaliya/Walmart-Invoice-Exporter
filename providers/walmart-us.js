@@ -664,44 +664,82 @@ const PurchaseHistoryDataSource = (() => {
     };
   }
 
+  // Fast Collect replay protocol — must match walmart-mainworld.js.
+  const REPLAY_REQ = "WIE_REPLAY_REQUEST";
+  const REPLAY_RES = "WIE_REPLAY_RESULT";
+  let replayCounter = 0;
+
   /**
-   * Fetch one page of purchase history; throws on a non-2xx or bad payload.
-   * Transient throttling (429) and gateway hiccups (503) are retried with a
-   * short backoff before giving up, so a large history collected quickly is not
-   * derailed by a momentary rate-limit. A hard bot-block (418) or 4xx is NOT
-   * retried — it signals a bad/rotated hash, which the caller re-seeds instead.
+   * Ask the MAIN-world bridge (walmart-mainworld.js) to fetch a purchase-history
+   * URL using the page's OWN captured request headers. Those real headers are
+   * what Walmart's bot check accepts — a request we build from synthesized
+   * headers gets 429-challenged. Resolves to the raw JSON payload, or null.
    */
-  async function fetchPurchaseHistoryPage(hash, cursor, headers) {
+  function replayViaMainWorld(url, timeoutMs = 15000) {
+    return new Promise((resolve) => {
+      const reqId = `wie-replay-${replayCounter++}`;
+      const onMessage = (event) => {
+        if (event.source !== window) return;
+        const msg = event.data;
+        if (!msg || msg.source !== MESSAGE_SOURCE || msg.type !== REPLAY_RES || msg.reqId !== reqId) {
+          return;
+        }
+        window.removeEventListener("message", onMessage);
+        clearTimeout(timer);
+        resolve(msg);
+      };
+      const timer = setTimeout(() => {
+        window.removeEventListener("message", onMessage);
+        resolve({ ok: false, reason: "timeout" });
+      }, timeoutMs);
+      window.addEventListener("message", onMessage);
+      window.postMessage({ source: MESSAGE_SOURCE, type: REPLAY_REQ, reqId, url }, "*");
+    });
+  }
+
+  /**
+   * Fetch one page of purchase history, returning its purchaseHistory node.
+   *
+   * Real runtime: the request is REPLAYED in the page's own world by
+   * walmart-mainworld.js with the page's captured headers (the only way it
+   * passes Walmart's bot check). Under the unit-test harness there is no
+   * main-world bridge, so we fetch directly (tests stub `fetch`). Throws on a
+   * non-2xx or a missing payload; `error.status` carries the HTTP status so the
+   * caller can tell a rotated hash (4xx) from a throttle (429/503).
+   */
+  async function fetchPurchaseHistoryPage(hash, cursor) {
     const variables = buildFetchVariables(cursor, FAST_FETCH_PAGE_LIMIT);
     const url = `${PH_ENDPOINT_PREFIX}${hash}?variables=${encodeURIComponent(JSON.stringify(variables))}`;
 
-    const backoffs = [0, 1500, 3500];
-    let lastStatus = 0;
-    for (const wait of backoffs) {
-      if (wait) await delay(wait);
-      const response = await fetch(url, { credentials: "include", headers });
-      if (response.ok) {
-        const json = await response.json();
-        const purchaseHistory = extractPurchaseHistoryNode(json);
-        if (!purchaseHistory) {
-          const err = new Error("PurchaseHistoryV3 payload missing purchaseHistory");
-          err.status = 200;
-          throw err;
-        }
-        return purchaseHistory;
+    if (typeof globalThis !== "undefined" && globalThis.__WIE_TEST_SANDBOX__) {
+      const response = await fetch(url, {
+        credentials: "include",
+        headers: buildFetchHeaders(getPlatformVersion()),
+      });
+      if (!response.ok) {
+        const err = new Error(`PurchaseHistoryV3 HTTP ${response.status}`);
+        err.status = response.status;
+        throw err;
       }
-      lastStatus = response.status;
-      if (response.status !== 429 && response.status !== 503) {
-        // Not a throttle — don't waste retries; let the caller decide.
-        break;
-      }
+      const json = await response.json();
+      const purchaseHistory = extractPurchaseHistoryNode(json);
+      if (!purchaseHistory) throw new Error("PurchaseHistoryV3 payload missing purchaseHistory");
+      return purchaseHistory;
     }
-    // Surface the HTTP status so the caller can tell a rotated hash (418/4xx —
-    // needs re-learning) apart from a transient throttle (429/503 — just keep
-    // what we have and stop; never navigate).
-    const err = new Error(`PurchaseHistoryV3 HTTP ${lastStatus}`);
-    err.status = lastStatus;
-    throw err;
+
+    const res = await replayViaMainWorld(url);
+    if (!res || !res.ok || !res.payload) {
+      const err = new Error(`PurchaseHistoryV3 replay failed (${(res && (res.reason || res.status)) || "unknown"})`);
+      err.status = res && res.status;
+      throw err;
+    }
+    const purchaseHistory = extractPurchaseHistoryNode(res.payload);
+    if (!purchaseHistory) {
+      const err = new Error("PurchaseHistoryV3 payload missing purchaseHistory");
+      err.status = 200;
+      throw err;
+    }
+    return purchaseHistory;
   }
 
   /**
@@ -736,7 +774,7 @@ const PurchaseHistoryDataSource = (() => {
    *   or { fallbackToClassic: true } when the hash cannot be resolved.
    */
   async function collectAllViaFetch({ pageLimit = 0 } = {}) {
-    const headers = buildFetchHeaders(getPlatformVersion());
+    const isTest = typeof globalThis !== "undefined" && globalThis.__WIE_TEST_SANDBOX__;
     const seen = new Set();
     const merged = { orderNumbers: [], additionalFields: {}, orderSummaries: {}, pages: 0 };
 
@@ -755,7 +793,7 @@ const PurchaseHistoryDataSource = (() => {
 
     const finalize = () => {
       console.log(
-        `[WIE] Fast Collect: ${merged.orderNumbers.length} order(s) across ${merged.pages} page(s) via direct fetch.`
+        `[WIE] Fast Collect: ${merged.orderNumbers.length} order(s) across ${merged.pages} page(s) — 1 real request + ${Math.max(0, merged.pages - 2)} replayed.`
       );
       return {
         orderNumbers: merged.orderNumbers,
@@ -774,62 +812,55 @@ const PurchaseHistoryDataSource = (() => {
       return finalize(); // single page, nothing more to fetch
     }
 
-    // The cursor loop over the API. Returns:
-    //   'ok'         ran to completion / hit the page limit
-    //   'bad-hash'   the FIRST fetch 4xx'd (a rotated persisted-query hash)
-    //   'throttled'  429/503 (or a later failure) — keep what we have, stop.
-    // Only 'bad-hash' ever justifies re-learning the hash; a throttle NEVER
-    // navigates (that's what used to make fast mode look like the slow crawl).
-    const runLoop = async (hash) => {
-      let guard = 0;
-      while (cursor) {
-        if (pageLimit > 0 && merged.pages >= pageLimit) return "ok";
-        if (guard++ > FAST_FETCH_MAX_PAGES) return "ok";
-        // Wait like a person between "Next" clicks so Walmart never throttles
-        // us — skipped under the unit-test harness so the suite stays fast.
-        if (!(typeof globalThis !== "undefined" && globalThis.__WIE_TEST_SANDBOX__)) {
-          await delay(humanPacingDelay());
-        }
-        let purchaseHistory;
+    // SEED (real runtime): trigger ONE genuine "Next" so the page makes its own
+    // PurchaseHistoryV3 request. The main-world bridge captures BOTH page 2's
+    // dated payload AND the page's real request headers — and those real
+    // headers are the only thing that lets us replay the REST of the pages past
+    // Walmart's bot check (a synthesized request gets 429-challenged). This is
+    // the one and only click; every remaining page is an instant replay.
+    if (!isTest && cursor) {
+      const beforeTs = getLatestSnapshotTimestamp();
+      const nextButton = findNextPageButton();
+      if (nextButton) {
         try {
-          purchaseHistory = await fetchPurchaseHistoryPage(hash, cursor, headers);
-        } catch (error) {
-          const status = error && error.status;
-          console.warn(`[WIE] Fast Collect page fetch failed (HTTP ${status}):`, error && error.message);
-          const rotatedHash = merged.pages <= 1 && status >= 400 && status < 500 && status !== 429;
-          return rotatedHash ? "bad-hash" : "throttled";
+          nextButton.scrollIntoView({ block: "center", inline: "center" });
+          nextButton.click();
+        } catch (_) {}
+        const deadline = Date.now() + 12000;
+        while (getLatestSnapshotTimestamp() <= beforeTs && Date.now() < deadline) {
+          await delay(300);
         }
-        cursor = absorb(buildSnapshot(purchaseHistory, "fetch"));
+        const page2 = getFreshUnconsumedNetworkSnapshot();
+        if (page2) {
+          cursor = absorb(page2); // page 2 collected (dated) + advance the cursor
+        }
       }
-      return "ok";
-    };
+    }
 
-    // Resolve the persisted-query hash: in-memory → storage → bundled default.
-    // The default means the common case needs ZERO clicks — fast collection is
-    // purely fetch-driven and never touches the DOM.
-    let hash = capturedHash || (await readCachedHash()) || DEFAULT_HASH;
-
-    let result = await runLoop(hash);
-    if (result === "bad-hash") {
-      // Walmart rotated the persisted-query hash on a deploy. This is the ONLY
-      // situation where fast mode touches the page: one click to re-learn the
-      // live hash from the page's own request, then retry — happens at most
-      // once per deploy, never on a normal run or a throttle.
-      console.warn("[WIE] Fast Collect: query hash looks rotated — re-learning it once from the page.");
-      invalidateCachedHash();
-      capturedHash = null;
-      if ((await seedSignatureViaClick()) && capturedHash) {
-        result = await runLoop(capturedHash);
+    // Replay the remaining pages. In the real runtime fetchPurchaseHistoryPage
+    // routes through the main-world bridge (captured real headers → passes);
+    // under the test harness it fetches directly (stubbed).
+    const hash = capturedHash || (await readCachedHash()) || DEFAULT_HASH;
+    let guard = 0;
+    while (cursor) {
+      if (pageLimit > 0 && merged.pages >= pageLimit) break;
+      if (guard++ > FAST_FETCH_MAX_PAGES) break;
+      if (!isTest) await delay(humanPacingDelay());
+      let purchaseHistory;
+      try {
+        purchaseHistory = await fetchPurchaseHistoryPage(hash, cursor);
+      } catch (error) {
+        console.warn(
+          `[WIE] Fast Collect stopped after ${merged.pages} page(s):`,
+          error && error.message
+        );
+        break; // keep everything collected so far
       }
+      cursor = absorb(buildSnapshot(purchaseHistory, "fetch"));
     }
 
     if (merged.orderNumbers.length === 0) {
       return { fallbackToClassic: true };
-    }
-    if (result === "throttled") {
-      console.warn(
-        `[WIE] Fast Collect stopped early after ${merged.pages} page(s) — Walmart is rate-limiting the API right now. Try again in a minute.`
-      );
     }
     return finalize();
   }
@@ -857,11 +888,7 @@ const PurchaseHistoryDataSource = (() => {
     if (cursor === undefined) return null; // don't know how to reach this page
     const hash = capturedHash || (await readCachedHash()) || DEFAULT_HASH;
     try {
-      const purchaseHistory = await fetchPurchaseHistoryPage(
-        hash,
-        cursor,
-        buildFetchHeaders(getPlatformVersion())
-      );
+      const purchaseHistory = await fetchPurchaseHistoryPage(hash, cursor);
       return buildSnapshot(purchaseHistory, "fetch");
     } catch (error) {
       console.warn(`[WIE] replayPage(${page}) failed:`, error && error.message);
