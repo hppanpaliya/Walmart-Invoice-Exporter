@@ -46,13 +46,27 @@ jobs:
           cp background.js temp/Walmart-Invoice-Exporter/
           cp content.js temp/Walmart-Invoice-Exporter/
           cp exceljs.bare.min.js temp/Walmart-Invoice-Exporter/
+          cp pdflite.js temp/Walmart-Invoice-Exporter/
           cp manifest.json temp/Walmart-Invoice-Exporter/
           cp utils.js temp/Walmart-Invoice-Exporter/
+          cp orderdb.js temp/Walmart-Invoice-Exporter/
 
           # Side panel (replaces old popup/faq structure)
           cp sidepanel.html temp/Walmart-Invoice-Exporter/
           cp sidepanel.js temp/Walmart-Invoice-Exporter/
           cp sidepanel.css temp/Walmart-Invoice-Exporter/
+          cp sidepanel.state.js temp/Walmart-Invoice-Exporter/
+          cp sidepanel.components.js temp/Walmart-Invoice-Exporter/
+          cp sidepanel.view.js temp/Walmart-Invoice-Exporter/
+          cp sidepanel.dashboard.js temp/Walmart-Invoice-Exporter/
+          cp sidepanel.actions.js temp/Walmart-Invoice-Exporter/
+          cp sidepanel.download.js temp/Walmart-Invoice-Exporter/
+          cp sidepanel.settings.js temp/Walmart-Invoice-Exporter/
+
+          # Full-page spending dashboard (opened as its own tab)
+          cp dashboard.html temp/Walmart-Invoice-Exporter/
+          cp dashboard.css temp/Walmart-Invoice-Exporter/
+          cp dashboard.page.js temp/Walmart-Invoice-Exporter/
 
           # Helpful documentation files (optional)
           cp README.md temp/Walmart-Invoice-Exporter/ || true
@@ -63,6 +77,15 @@ jobs:
           zip -r ../Walmart-Invoice-Exporter-${GITHUB_REF_NAME}-${version}.zip Walmart-Invoice-Exporter
           cd ..
           rm -rf temp
+
+      # The Edge/Firefox build scripts derive their packaged-file list at
+      # runtime from the `cp ... temp/Walmart-Invoice-Exporter/` lines in the
+      # step above (see scripts/release-files.lib.sh), so files added there
+      # flow into the Edge/Firefox zips automatically. Outputs land in dist/.
+      - name: Build Edge and Firefox packages
+        run: |
+          bash scripts/build-edge.sh
+          bash scripts/build-firefox.sh
 
       # ---------------------------
       # Handle versioned release
@@ -78,7 +101,9 @@ jobs:
       - name: Create versioned release
         uses: softprops/action-gh-release@v1
         with:
-          files: Walmart-Invoice-Exporter-${{ env.branch }}-${{ env.version }}.zip
+          files: |
+            Walmart-Invoice-Exporter-${{ env.branch }}-${{ env.version }}.zip
+            dist/*.zip
           tag_name: v${{ env.version }}-${{ env.branch }}
           name: Release v${{ env.version }} - ${{ env.branch }}
           body: ${{ env.changelog }}
@@ -98,7 +123,9 @@ jobs:
       - name: Create latest release for this branch
         uses: softprops/action-gh-release@v1
         with:
-          files: Walmart-Invoice-Exporter-${{ env.branch }}-${{ env.version }}.zip
+          files: |
+            Walmart-Invoice-Exporter-${{ env.branch }}-${{ env.version }}.zip
+            dist/*.zip
           tag_name: latest-${{ env.branch }}
           name: Latest Release - ${{ env.branch }}
           body: ${{ env.changelog }}
