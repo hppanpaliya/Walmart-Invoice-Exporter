@@ -35,6 +35,21 @@
   }
 
   function checkCurrentTab() {
+    // Embedded in the full-page dashboard (dashboard.html iframes
+    // sidepanel.html): there is no meaningful "active tab" to gate on — the
+    // dashboard tab itself is the app context. Skip the off-tab flow, render
+    // the stored orders, and give collection the default orders URL (the
+    // worker opens the walmart.com/orders tab itself when collecting).
+    if (window.self !== window.top) {
+      view.clearOffTabWarning();
+      view.setUIEnabled(true);
+      view.applyLayout(view.UI_MODES.MAIN_ORDERS);
+      app.currentOrdersUrl = CONSTANTS.URLS.WALMART_ORDERS;
+      view.updateFilterNotice(null);
+      loadCacheOnMainPage();
+      return;
+    }
+
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       if (!tabs || tabs.length === 0) {
         showOffTabWarning();
