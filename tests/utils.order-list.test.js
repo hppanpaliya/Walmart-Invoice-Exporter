@@ -20,6 +20,46 @@ function loadUtils() {
 }
 
 // ---------------------------------------------------------------------------
+// parseWalmartTitleDate — dates recovered from Walmart's own title text
+// ---------------------------------------------------------------------------
+
+test('parseWalmartTitleDate: parses "Mon D, YYYY" title variants, requires an explicit year', () => {
+  const sandbox = loadUtils();
+  assert.equal(sandbox.parseWalmartTitleDate('Jun 15, 2022 order'), '2022-06-15');
+  assert.equal(sandbox.parseWalmartTitleDate('June 15, 2022 purchase'), '2022-06-15');
+  assert.equal(sandbox.parseWalmartTitleDate('Sep. 3, 2023 order'), '2023-09-03');
+  assert.equal(sandbox.parseWalmartTitleDate('Dec 31 2021 order'), '2021-12-31');
+  // Year-less delivery strings are ambiguous — must NOT guess a year.
+  assert.equal(sandbox.parseWalmartTitleDate('Delivered on Jun 23'), '');
+  assert.equal(sandbox.parseWalmartTitleDate(''), '');
+  assert.equal(sandbox.parseWalmartTitleDate('Canceled'), '');
+});
+
+test('buildOrderRowModel: undated record falls back to the Walmart title date (old orders, issue: NO DATE pile)', () => {
+  const sandbox = loadUtils();
+
+  const fromRecordTitle = sandbox.buildOrderRowModel('11', {
+    title: 'Jun 15, 2022 order',
+    summary: { orderTotal: '$10.00', status: 'Delivered' },
+  });
+  assert.equal(fromRecordTitle.normalizedDate, '2022-06-15');
+
+  const fromSessionTitle = sandbox.buildOrderRowModel('12', null, 'Mar 2, 2021 order');
+  assert.equal(fromSessionTitle.normalizedDate, '2021-03-02');
+
+  // A real stored date always wins over the title.
+  const datedRecord = sandbox.buildOrderRowModel('13', {
+    title: 'Jun 15, 2022 order',
+    summary: { orderDate: '2026-01-05T00:00:00' },
+  });
+  assert.equal(datedRecord.normalizedDate, '2026-01-05');
+
+  // No date anywhere and no parseable title → still undated.
+  const undated = sandbox.buildOrderRowModel('14', { title: 'Delivered on Jun 23' });
+  assert.equal(undated.normalizedDate, '');
+});
+
+// ---------------------------------------------------------------------------
 // buildOrderRowModel
 // ---------------------------------------------------------------------------
 

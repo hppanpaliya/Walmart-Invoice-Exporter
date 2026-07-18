@@ -265,7 +265,9 @@ const PurchaseHistoryDataSource = (() => {
     return {
       source: "payload",
       orderNumber: normalizedOrderNumber,
-      orderDate: order?.orderDate || "",
+      // Years-old orders omit orderDate from the payload; their title
+      // ("Jun 15, 2022 order") still carries the full date Walmart shows.
+      orderDate: order?.orderDate || parseWalmartTitleDate(order?.title || order?.shortTitle || "") || "",
       orderType: cleanText(order?.type || ""),
       isInStore: Boolean(order?.isInStore),
       itemCount: order?.itemCount ?? "",
