@@ -1980,6 +1980,31 @@ function normalizeDashboardDate(rawDate) {
 }
 
 /**
+ * Parse a date out of Walmart's own order title text, e.g.
+ * "Jun 15, 2022 order", "June 15, 2022 purchase", "Sep. 3, 2023 order".
+ * Walmart's purchase-history payload titles carry the full date (with
+ * year) even for years-old orders whose detail page no longer exposes
+ * one — so the title is the most durable date source we have, and it is
+ * exactly what the user sees on walmart.com. Requires an explicit 4-digit
+ * year: year-less strings like "Delivered on Jun 23" are ambiguous and
+ * return ''.
+ * @param {string} text - order title / status text
+ * @returns {string} 'YYYY-MM-DD', or '' when no unambiguous date found
+ */
+function parseWalmartTitleDate(text) {
+  const match = String(text || '').match(
+    /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})\b/i
+  );
+  if (!match) return '';
+  const MONTH_PREFIXES = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const monthIndex = MONTH_PREFIXES.indexOf(match[1].toLowerCase());
+  const day = Number(match[2]);
+  const year = Number(match[3]);
+  if (monthIndex < 0 || day < 1 || day > 31) return '';
+  return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/**
  * Order list row model & date-range filtering (spec 2026-07-17 addendum,
  * "list & flow redesign v7.1"). Pure/testable — the DOM assembly that
  * consumes these lives in sidepanel.view.js's displayOrderNumbers.
@@ -1999,8 +2024,21 @@ function buildOrderRowModel(orderNumber, record, sessionTitle) {
   const summary = (record && record.summary) || null;
   const invoice = (record && record.invoice) || null;
 
-  const rawDate = (summary && summary.orderDate) || (record && record.orderDate) || (invoice && invoice.orderDate) || '';
-  const normalizedDate = normalizeDashboardDate(rawDate);
+  let rawDate = (summary && summary.orderDate) || (record && record.orderDate) || (invoice && invoice.orderDate) || '';
+  let normalizedDate = normalizeDashboardDate(rawDate);
+  if (!normalizedDate) {
+    // Old orders often have no date anywhere in the stored data (their
+    // detail page stopped exposing one), but Walmart's own list title —
+    // which we store — reads "Jun 15, 2022 order". Use it, so the list
+    // shows what walmart.com shows instead of "NO DATE".
+    const titleDate = parseWalmartTitleDate(
+      sessionTitle || (record && record.title) || (summary && summary.title) || ''
+    );
+    if (titleDate) {
+      normalizedDate = titleDate;
+      rawDate = rawDate || titleDate;
+    }
+  }
 
   const status = summary && summary.status ? String(summary.status).split(';')[0].trim() : '';
 

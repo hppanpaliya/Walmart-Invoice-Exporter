@@ -87,7 +87,7 @@ function computeDashboardStats(records) {
     // Month from any date format we may have stored (ISO or human).
     const normalized = normalizeDashboardDate(
       record?.orderDate || record?.summary?.orderDate || invoice.orderDate || ''
-    );
+    ) || parseWalmartTitleDate(record?.title || record?.summary?.title || '');
     const month = normalized.slice(0, 7);
     if (month && total) {
       const bucket = monthlyTotals.get(month) || { total: 0, orders: 0 };
@@ -151,10 +151,17 @@ function computeDashboardStats(records) {
   };
 }
 
-/** Resolve a record's best stored date (record → summary → invoice) to 'YYYY-MM-DD', else ''. */
+/**
+ * Resolve a record's best stored date (record → summary → invoice) to
+ * 'YYYY-MM-DD', else fall back to the date embedded in Walmart's own list
+ * title ("Jun 15, 2022 order") — old orders often have no date anywhere
+ * else — else ''.
+ */
 function dashboardRecordDate(record) {
-  return normalizeDashboardDate(
-    record?.orderDate || record?.summary?.orderDate || record?.invoice?.orderDate || ''
+  return (
+    normalizeDashboardDate(
+      record?.orderDate || record?.summary?.orderDate || record?.invoice?.orderDate || ''
+    ) || parseWalmartTitleDate(record?.title || record?.summary?.title || '')
   );
 }
 
@@ -351,7 +358,7 @@ function computePriceHistory(records) {
     // dates ('July 1, 2026'), which would otherwise sort alphabetically.
     const date = normalizeDashboardDate(
       record?.orderDate || record?.summary?.orderDate || invoice.orderDate || ''
-    );
+    ) || parseWalmartTitleDate(record?.title || record?.summary?.title || '');
 
     // One price point per item per order.
     const seenInOrder = new Set();
