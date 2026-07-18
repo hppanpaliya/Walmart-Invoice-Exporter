@@ -234,7 +234,13 @@
       }
 
       try {
-        await ChromeApi.tabsGet(downloadTab.id);
+        const current = await ChromeApi.tabsGet(downloadTab.id);
+        // Already parked on this URL (fast invoice reuses ONE list tab for every
+        // order) — don't re-navigate, which would needlessly reload the page.
+        if (current && normalizeUrl(current.url) === normalizeUrl(url)) {
+          downloadTab = current;
+          return downloadTab;
+        }
         const { promise, cleanup } = createTabLoadWaiter(downloadTab.id, url);
         try {
           downloadTab = await ChromeApi.tabsUpdate(downloadTab.id, { url });
@@ -248,6 +254,50 @@
       }
 
       return downloadTab;
+    };
+
+    /**
+     * Fast invoice: fetch one order's full invoice from its detail HTML via the
+     * content script's main-world bridge — NO per-order tab navigation. Reuses a
+     * single tab parked on the provider's orders list. Returns the invoice, or
+     * null to signal a fallback to the classic per-order page flow (which
+     * fetchOrderData then performs). Persists to IndexedDB on success.
+     */
+    const fetchViaFastInvoice = async (orderNumber, providerId, options = {}) => {
+      const { timeoutMs = CONSTANTS.TIMING.DOWNLOAD_TIMEOUT } = options;
+      const adapter =
+        (providerId && typeof ProviderRegistry !== "undefined" && ProviderRegistry.getById(providerId)) ||
+        activeAdapter();
+      if (!adapter || !adapter.supportsFastInvoice) return null;
+
+      const listUrl = (adapter && adapter.ordersListUrl) || CONSTANTS.URLS.WALMART_ORDERS;
+      const tab = await ensureTab(listUrl, timeoutMs);
+
+      let response;
+      try {
+        response = await promiseWithTimeout(
+          ChromeApi.tabsSendMessage(tab.id, {
+            action: CONSTANTS.MESSAGES.GET_ORDER_DATA_FAST,
+            orderNumber,
+          }),
+          timeoutMs,
+          `Timeout fast-fetching order #${orderNumber}`
+        );
+      } catch (error) {
+        return null; // fall back to the order page
+      }
+
+      if (!response || response.fallback || !response.data) {
+        return null; // adapter couldn't fast-fetch this one — fall back
+      }
+
+      try {
+        await OrderDb.putInvoice(orderNumber, response.data, providerId || activeProviderId());
+      } catch (error) {
+        console.warn(`Failed to persist fast invoice #${orderNumber} to order DB:`, error);
+      }
+      view.updateOrderCacheStatus(orderNumber);
+      return response.data;
     };
 
     const fetchFromUrl = async (orderNumber, url, options = {}, providerId = null) => {
@@ -307,6 +357,19 @@
       if (storedInvoice && isValidInvoiceData(storedInvoice)) {
         view.updateOrderCacheStatus(orderNumber);
         return storedInvoice;
+      }
+
+      // Fast invoice: when the user turned on fast collection, pull this order's
+      // invoice from its detail HTML via the main-world bridge — no tab opened
+      // for it. Any miss returns null and falls through to the classic flow, so
+      // this can only speed things up, never lose an invoice.
+      if (app && app.fastFetch) {
+        try {
+          const fast = await fetchViaFastInvoice(orderNumber, providerId, options);
+          if (fast) return fast;
+        } catch (error) {
+          console.warn(`Fast invoice for #${orderNumber} failed; using the order page:`, error && error.message);
+        }
       }
 
       // Nothing usable stored yet, or it predates the current schema —

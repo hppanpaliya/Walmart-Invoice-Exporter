@@ -30,6 +30,11 @@
   // Fast Collect replay protocol (isolated world ⇄ this main-world script).
   const REPLAY_REQ = "WIE_REPLAY_REQUEST";
   const REPLAY_RES = "WIE_REPLAY_RESULT";
+  // Fast invoice protocol: fetch an order-detail page's HTML in the page's own
+  // world and return its __NEXT_DATA__ order node (the full invoice), so the
+  // panel can build invoices without opening a tab per order.
+  const ORDER_REQ = "WIE_FETCH_ORDER";
+  const ORDER_RES = "WIE_FETCH_ORDER_RESULT";
 
   // Guard against double-install (e.g. SPA soft-navigations re-running scripts).
   if (window.__wiePurchaseHistoryBridgeInstalled) return;
@@ -206,30 +211,72 @@
   window.addEventListener("message", (event) => {
     if (event.source !== window) return;
     const msg = event.data;
-    if (!msg || msg.source !== SOURCE || msg.type !== REPLAY_REQ || !msg.reqId) return;
+    if (!msg || msg.source !== SOURCE || !msg.reqId) return;
 
-    const reply = (body) =>
-      window.postMessage({ source: SOURCE, type: REPLAY_RES, reqId: msg.reqId, ...body }, "*");
-
-    if (!lastRequestHeaders) {
-      reply({ ok: false, reason: "no-headers" });
+    // --- Fast Collect: replay a purchase-history GraphQL page ---
+    if (msg.type === REPLAY_REQ) {
+      const reply = (body) =>
+        window.postMessage({ source: SOURCE, type: REPLAY_RES, reqId: msg.reqId, ...body }, "*");
+      if (!lastRequestHeaders) {
+        reply({ ok: false, reason: "no-headers" });
+        return;
+      }
+      if (!msg.url || typeof msg.url !== "string" || msg.url.indexOf("/orchestra/") !== 0) {
+        reply({ ok: false, reason: "bad-url" });
+        return;
+      }
+      fetch(msg.url, { credentials: "include", headers: lastRequestHeaders })
+        .then(async (r) => {
+          let payload = null;
+          if (r.ok) {
+            try {
+              payload = await r.json();
+            } catch (_) {}
+          }
+          reply({ ok: r.ok, status: r.status, payload });
+        })
+        .catch((err) => reply({ ok: false, reason: String(err && err.message) }));
       return;
     }
-    if (!msg.url || typeof msg.url !== "string" || msg.url.indexOf("/orchestra/") !== 0) {
-      reply({ ok: false, reason: "bad-url" });
-      return;
-    }
 
-    fetch(msg.url, { credentials: "include", headers: lastRequestHeaders })
-      .then(async (r) => {
-        let payload = null;
-        if (r.ok) {
+    // --- Fast invoice: fetch one order's detail HTML, return its order node ---
+    if (msg.type === ORDER_REQ) {
+      const reply = (body) =>
+        window.postMessage({ source: SOURCE, type: ORDER_RES, reqId: msg.reqId, ...body }, "*");
+      const orderNumber = String(msg.orderNumber || "").replace(/[^\d]/g, "");
+      if (!orderNumber) {
+        reply({ ok: false, reason: "bad-order" });
+        return;
+      }
+      fetch(`/orders/${orderNumber}`, { credentials: "include", headers: { accept: "text/html" } })
+        .then(async (r) => {
+          if (!r.ok) {
+            reply({ ok: false, status: r.status });
+            return;
+          }
+          const html = await r.text();
+          const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+          if (!m) {
+            reply({ ok: false, reason: "no-next-data", status: r.status });
+            return;
+          }
+          let order = null;
           try {
-            payload = await r.json();
+            const nd = JSON.parse(m[1]);
+            const pp = nd && nd.props && nd.props.pageProps;
+            order =
+              (pp && pp.initialData && pp.initialData.data && pp.initialData.data.order) ||
+              (pp && pp.order) ||
+              null;
           } catch (_) {}
-        }
-        reply({ ok: r.ok, status: r.status, payload });
-      })
-      .catch((err) => reply({ ok: false, reason: String(err && err.message) }));
+          if (!order) {
+            reply({ ok: false, reason: "no-order-node", status: r.status });
+            return;
+          }
+          reply({ ok: true, status: r.status, order });
+        })
+        .catch((err) => reply({ ok: false, reason: String(err && err.message) }));
+      return;
+    }
   });
 })();

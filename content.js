@@ -176,6 +176,7 @@ const CONTENT_MESSAGE_ACTIONS = new Set([
   CONSTANTS.MESSAGES.CLICK_NEXT_BUTTON,
   CONSTANTS.MESSAGES.BLOCK_IMAGES,
   CONSTANTS.MESSAGES.GET_ORDER_DATA,
+  CONSTANTS.MESSAGES.GET_ORDER_DATA_FAST,
 ]);
 
 // The adapter that owns this hostname (or null if none is registered for it).
@@ -293,6 +294,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
           return { data };
         }),
+        // Fast invoice: build the invoice from the order's detail HTML via the
+        // main-world bridge — no navigation. Adapters that don't implement it
+        // (or return null, e.g. a fetch miss) signal a fallback so the panel
+        // opens the order page the classic way.
+        [CONSTANTS.MESSAGES.GET_ORDER_DATA_FAST]: async (req) => {
+          if (typeof provider.scrapeOrderById !== "function") {
+            return { data: null, fallback: true };
+          }
+          const data = (await provider.scrapeOrderById({ ...ctx, orderNumber: req.orderNumber })) || null;
+          if (!data) {
+            return { data: null, fallback: true };
+          }
+          if (Array.isArray(data.extractionWarnings) && data.extractionWarnings.length > 0) {
+            console.warn(
+              `Walmart Invoice Exporter: extraction warnings for order #${data.orderNumber || "unknown"}:`,
+              data.extractionWarnings
+            );
+          }
+          return { data };
+        },
       };
 
       return handlers[action](request).then(sendResponse);

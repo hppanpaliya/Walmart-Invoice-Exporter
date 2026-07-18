@@ -667,7 +667,38 @@ const PurchaseHistoryDataSource = (() => {
   // Fast Collect replay protocol — must match walmart-mainworld.js.
   const REPLAY_REQ = "WIE_REPLAY_REQUEST";
   const REPLAY_RES = "WIE_REPLAY_RESULT";
+  // Fast invoice protocol — must match walmart-mainworld.js.
+  const ORDER_REQ = "WIE_FETCH_ORDER";
+  const ORDER_RES = "WIE_FETCH_ORDER_RESULT";
   let replayCounter = 0;
+
+  /**
+   * Ask the MAIN-world bridge to fetch one order's detail HTML (same-origin,
+   * with the user's session) and return its __NEXT_DATA__ order node — the
+   * whole invoice — without navigating a tab to that order. Resolves to the
+   * order node, or null.
+   */
+  function fetchOrderNodeViaMainWorld(orderNumber, timeoutMs = 15000) {
+    return new Promise((resolve) => {
+      const reqId = `wie-order-${replayCounter++}`;
+      const onMessage = (event) => {
+        if (event.source !== window) return;
+        const msg = event.data;
+        if (!msg || msg.source !== MESSAGE_SOURCE || msg.type !== ORDER_RES || msg.reqId !== reqId) {
+          return;
+        }
+        window.removeEventListener("message", onMessage);
+        clearTimeout(timer);
+        resolve(msg && msg.ok ? msg.order || null : null);
+      };
+      const timer = setTimeout(() => {
+        window.removeEventListener("message", onMessage);
+        resolve(null);
+      }, timeoutMs);
+      window.addEventListener("message", onMessage);
+      window.postMessage({ source: MESSAGE_SOURCE, type: ORDER_REQ, reqId, orderNumber }, "*");
+    });
+  }
 
   /**
    * Ask the MAIN-world bridge (walmart-mainworld.js) to fetch a purchase-history
@@ -901,6 +932,7 @@ const PurchaseHistoryDataSource = (() => {
     getBestSnapshot,
     getLatestSnapshotTimestamp,
     collectAllViaFetch,
+    fetchOrderNodeViaMainWorld,
     noteCursor,
     replayPage,
   };
@@ -1444,9 +1476,15 @@ function mergeOrderItems(domItems, nextDataItems) {
   return mergedItems;
 }
 
-function extractOrderDataFromNextData() {
-  const payload = parseOrderNextDataPayload();
-  const orderNode = getOrderNodeFromNextDataPayload(payload);
+function extractOrderDataFromNextData(providedOrderNode) {
+  // Normally read from THIS page's __NEXT_DATA__; Fast invoice collection passes
+  // an order node fetched from another order's detail HTML (same shape), so the
+  // full invoice can be built without opening a tab for that order.
+  let orderNode = providedOrderNode || null;
+  if (!orderNode) {
+    const payload = parseOrderNextDataPayload();
+    orderNode = getOrderNodeFromNextDataPayload(payload);
+  }
   if (!orderNode) {
     return null;
   }
@@ -2420,6 +2458,26 @@ async function checkForNextPage() {
   }
 
   /**
+   * Fast invoice: build one order's full invoice by fetching its detail HTML
+   * directly (via the main-world bridge) and parsing its __NEXT_DATA__ order
+   * node — no tab navigation. Returns the same normalized shape as scrapeOrder,
+   * or null if the order couldn't be fetched (caller falls back to opening the
+   * order page). Used only when the fast setting is on.
+   * @param {ProviderContentCtx & {orderNumber?: string}} ctx
+   * @returns {Promise<Object|null>}
+   */
+  async function scrapeOrderById(ctx) {
+    const orderNumber = String((ctx && ctx.orderNumber) || "").replace(/[^\d]/g, "");
+    if (!orderNumber) return null;
+    const orderNode = await PurchaseHistoryDataSource.fetchOrderNodeViaMainWorld(orderNumber);
+    if (!orderNode) return null;
+    const data = extractOrderDataFromNextData(orderNode);
+    if (!data) return null;
+    data.extractionWarnings = computeExtractionWarnings(data);
+    return data;
+  }
+
+  /**
    * Advance the list to the next page (Walmart paginates by clicking "next").
    * @param {ProviderContentCtx} ctx
    * @returns {Promise<{success:boolean}>}
@@ -2480,8 +2538,12 @@ async function checkForNextPage() {
     initContent,
     collectOrderNumbers,
     scrapeOrder,
+    scrapeOrderById,
     clickNextPage,
     collectAllFast,
+    // Fast invoice fetching (HTML-fetch + __NEXT_DATA__ parse, no tab per order)
+    // is available for this provider; used only when the fast setting is on.
+    supportsFastInvoice: true,
   };
 })();
 

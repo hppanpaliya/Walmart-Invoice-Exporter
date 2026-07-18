@@ -1814,6 +1814,10 @@ const CONSTANTS = {
     CLICK_NEXT_BUTTON: 'clickNextButton',
     BLOCK_IMAGES: 'blockImagesForDownload',
     GET_ORDER_DATA: 'getOrderData',
+    // Fast invoice: fetch one order's full invoice by HTML-fetching its detail
+    // page and parsing __NEXT_DATA__ — no tab navigation. Handled by adapters
+    // that set supportsFastInvoice; used only when the fast setting is on.
+    GET_ORDER_DATA_FAST: 'getOrderDataFast',
   },
 
   // Storage Keys
