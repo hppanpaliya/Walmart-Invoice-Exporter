@@ -38,6 +38,7 @@ test('Sidepanel.settings exposes renderSettings/SETTINGS_DEFAULTS/deleteAllSaved
     'csvPreset',
     'exportFormat',
     'exportMode',
+    'fastFetch',
     'includeThumbnails',
     'incrementalCollect',
     'legacyExcel',
@@ -47,6 +48,8 @@ test('Sidepanel.settings exposes renderSettings/SETTINGS_DEFAULTS/deleteAllSaved
   assert.equal(settings.SETTINGS_DEFAULTS.theme, 'system');
   assert.equal(settings.SETTINGS_DEFAULTS.pageLimit, 0);
   assert.equal(settings.SETTINGS_DEFAULTS.legacyExcel, false);
+  // Pure request-replay is opt-in (default off); reliable pagination is default.
+  assert.equal(settings.SETTINGS_DEFAULTS.fastFetch, false);
 });
 
 test('deleteAllSavedData ("Delete all saved data", spec §4.4): clears OrderDb and resets session state via RESET_SESSION_STATE', async () => {

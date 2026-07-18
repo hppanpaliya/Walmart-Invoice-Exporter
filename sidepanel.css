@@ -449,6 +449,14 @@ body {
   white-space: nowrap;
 }
 
+/* Full-width, quiet secondary action under the download pair: fetch invoice
+   details into local storage without downloading a file. */
+.btn-save-library {
+  width: 100%;
+  margin-top: var(--space-2);
+  justify-content: center;
+}
+
 /* Accent-tinted, not a loud solid fill — neither button "wins" over the
    other (spec §5.2: "not two loud solid fills; accent-tinted"). */
 .btn-accent-pair {

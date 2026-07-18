@@ -156,9 +156,12 @@ document.addEventListener("DOMContentLoaded", async function () {
   }
 
   const incrementalToggle = document.getElementById("incrementalCollect");
-  chrome.storage.local.get(["incrementalCollect"], (res) => {
+  chrome.storage.local.get(["incrementalCollect", "fastFetch"], (res) => {
     app.incrementalCollect = Boolean(res.incrementalCollect);
     if (incrementalToggle) incrementalToggle.checked = app.incrementalCollect;
+    // Mirror the optional pure request-replay flag (OFF by default; the
+    // reliable pagination+capture path is the default collection method).
+    app.fastFetch = Boolean(res.fastFetch);
   });
 
   if (incrementalToggle) {
@@ -311,6 +314,93 @@ document.addEventListener("DOMContentLoaded", async function () {
   if (startButton) startButton.addEventListener("click", actions.handleStartCollection);
   if (stopButton) stopButton.addEventListener("click", actions.handleStopCollection);
 
+  // Active-provider dropdown (header, sidepanel.html): the panel's single
+  // provider switch — the active provider is first-class global state that
+  // scopes the WHOLE panel (order list, collection target, export). Always
+  // visible; with only Walmart enabled it renders just "Walmart.com" and
+  // everything behaves exactly as the Walmart-only tool always has.
+  const providerSelect = document.getElementById("providerSelect");
+
+  /**
+   * (Re)build the dropdown's options from Sidepanel.providers.selectable()
+   * — every enabled provider, plus "All providers" when more than one is —
+   * and sync app.provider to the persisted active selection. Re-run whenever
+   * a provider is enabled/disabled in Settings (spec: the options must stay
+   * current). When a flag flip retires the current selection (getActive
+   * falls back to WALMART_US), the whole panel re-renders for the fallback.
+   */
+  async function refreshProviderOptions() {
+    if (!providerSelect || !Sidepanel.providers) return;
+    let options;
+    let active;
+    try {
+      options = await Sidepanel.providers.selectable();
+      active = await Sidepanel.providers.getActive();
+    } catch (error) {
+      console.warn("Provider selector: could not load providers:", error);
+      return;
+    }
+
+    const previous = app.provider;
+    app.provider = active;
+    providerSelect.innerHTML = options
+      .map(
+        (option) =>
+          `<option value="${option.id}"${option.id === active ? " selected" : ""}>${escapeHtml(option.label)}</option>`
+      )
+      .join("");
+    providerSelect.value = active;
+    if (previous !== active) renderPanelForProvider();
+  }
+
+  // Exposed so Settings' provider toggles (sidepanel.settings.js) can refresh
+  // the options immediately after a flag flips, without waiting for the
+  // chrome.storage.onChanged echo below.
+  Sidepanel.refreshProviderOptions = refreshProviderOptions;
+
+  /**
+   * Re-render the ENTIRE panel for the active selection: the order list and
+   * collection target re-derive from app.provider via checkCurrentTab —
+   * never blocked by whatever tab is focused, since saved data comes
+   * straight from OrderDb. The dashboard renders itself; its entry point is
+   * just poked when present (separate module — no assumption about it).
+   */
+  function renderPanelForProvider() {
+    // A previous provider's stale progress line must not linger while the
+    // new selection's first render is in flight.
+    const progressEl = document.getElementById("progress");
+    if (progressEl) progressEl.style.display = "none";
+    view.clearStatusBanner("cacheInfo");
+    actions.checkCurrentTab();
+    if (Sidepanel.dashboard && typeof Sidepanel.dashboard.render === "function") {
+      Sidepanel.dashboard.render();
+    }
+  }
+
+  if (providerSelect) {
+    providerSelect.addEventListener("change", async () => {
+      const id =
+        providerSelect.value || (Sidepanel.providers && Sidepanel.providers.DEFAULT_PROVIDER) || "WALMART_US";
+      if (Sidepanel.providers) await Sidepanel.providers.setActive(id);
+      app.provider = id;
+      renderPanelForProvider();
+    });
+  }
+
+  // Provider flags live under the "settings" storage key (flags.js) and the
+  // persisted selection under "active_provider" (sidepanel.providers.js) —
+  // follow changes from any context (this panel's Settings, a second panel,
+  // the dashboard) so the options and selection never go stale.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && (changes.settings || changes.active_provider)) {
+      refreshProviderOptions();
+    }
+  });
+
+  // Resolve the persisted selection BEFORE the first checkCurrentTab()
+  // below, so the panel's very first paint is already scoped to it.
+  await refreshProviderOptions();
+
   // Embed bridge: the full-page dashboard (dashboard.html) embeds this
   // panel in a same-origin iframe and drives a fixed set of actions via
   // postMessage. Strictly gated — same-origin only, a required source tag,
@@ -325,7 +415,8 @@ document.addEventListener("DOMContentLoaded", async function () {
     switch (data.type) {
       case "START_COLLECTION":
         // Same handler as the collect button — keeps every existing guard
-        // (refuses during downloads, off-tab warning when not on orders).
+        // (refuses during downloads; tab-independent, so it collects for
+        // the active provider from anywhere).
         actions.handleStartCollection();
         break;
 

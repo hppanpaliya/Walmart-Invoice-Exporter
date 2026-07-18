@@ -6,6 +6,16 @@
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "storage", "sidePanel"],
   "host_permissions": ["https://www.walmart.com/*"],
+  "optional_host_permissions": [
+    "https://www.walmart.ca/*",
+    "https://www.target.com/*",
+    "https://api.target.com/*",
+    "https://www.ubereats.com/*",
+    "https://www.instacart.com/*",
+    "https://www.bestbuy.com/*",
+    "https://www.amazon.com/*",
+    "https://www.samsclub.com/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
@@ -23,8 +33,101 @@
   },
   "content_scripts": [
     {
+      "matches": ["https://www.walmart.com/orders*", "https://www.walmart.ca/orders*"],
+      "js": ["walmart-mainworld.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
       "matches": ["https://www.walmart.com/orders*"],
-      "js": ["utils.js", "content.js"]
+      "js": [
+        "utils.js",
+        "providers/base.js",
+        "providers/registry.js",
+        "providers/walmart-us.js",
+        "flags.js",
+        "content.js"
+      ]
+    },
+    {
+      "matches": ["https://www.walmart.ca/orders*"],
+      "js": [
+        "utils.js",
+        "providers/base.js",
+        "providers/registry.js",
+        "providers/walmart-ca.js",
+        "flags.js",
+        "content.js"
+      ]
+    },
+    {
+      "matches": ["https://www.target.com/orders*"],
+      "js": [
+        "utils.js",
+        "providers/base.js",
+        "providers/registry.js",
+        "providers/target.js",
+        "flags.js",
+        "content.js"
+      ]
+    },
+    {
+      "matches": ["https://www.ubereats.com/orders*"],
+      "js": [
+        "utils.js",
+        "providers/base.js",
+        "providers/registry.js",
+        "providers/ubereats.js",
+        "flags.js",
+        "content.js"
+      ]
+    },
+    {
+      "matches": ["https://www.instacart.com/store/account/orders*"],
+      "js": [
+        "utils.js",
+        "providers/base.js",
+        "providers/registry.js",
+        "providers/instacart.js",
+        "flags.js",
+        "content.js"
+      ]
+    },
+    {
+      "matches": ["https://www.bestbuy.com/purchasehistory/*"],
+      "js": [
+        "utils.js",
+        "providers/base.js",
+        "providers/registry.js",
+        "providers/bestbuy.js",
+        "flags.js",
+        "content.js"
+      ]
+    },
+    {
+      "matches": [
+        "https://www.amazon.com/gp/css/order-history*",
+        "https://www.amazon.com/your-orders/*"
+      ],
+      "js": [
+        "utils.js",
+        "providers/base.js",
+        "providers/registry.js",
+        "providers/amazon.js",
+        "flags.js",
+        "content.js"
+      ]
+    },
+    {
+      "matches": ["https://www.samsclub.com/orders*"],
+      "js": [
+        "utils.js",
+        "providers/base.js",
+        "providers/registry.js",
+        "providers/samsclub.js",
+        "flags.js",
+        "content.js"
+      ]
     }
   ],
   "icons": {

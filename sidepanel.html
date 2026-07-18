@@ -9,6 +9,23 @@
     <script src="pdflite.js"></script>
     <script src="utils.js"></script>
     <script src="orderdb.js"></script>
+    <!-- Provider registry + adapters + feature flags. Registry loads before the
+         adapters so they can self-register; flags loads after the registry it
+         reads. These make ProviderRegistry/Flags available to the panel's
+         Settings opt-in, provider-aware detail URLs, and collection picker.
+         All adapter files are load-safe outside a page (identity/config only). -->
+    <script src="providers/base.js"></script>
+    <script src="providers/registry.js"></script>
+    <script src="providers/walmart-us.js"></script>
+    <script src="providers/walmart-ca.js"></script>
+    <script src="providers/target.js"></script>
+    <script src="providers/ubereats.js"></script>
+    <script src="providers/instacart.js"></script>
+    <script src="providers/bestbuy.js"></script>
+    <script src="providers/amazon.js"></script>
+    <script src="providers/samsclub.js"></script>
+    <script src="flags.js"></script>
+    <script src="sidepanel.providers.js"></script>
     <script src="sidepanel.state.js"></script>
     <script src="sidepanel.components.js"></script>
     <script src="sidepanel.view.js"></script>
@@ -26,6 +43,13 @@
                     d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
             <h1><span class="header-title-text">Walmart Invoice Exporter</span> <span id="versionBadge" class="version-badge"></span></h1>
+            <!-- Active-provider dropdown: first-class global state that scopes
+                 the WHOLE panel (order list, collection target, export).
+                 Always visible; options come from Sidepanel.providers
+                 .selectable() (sidepanel.js), so a Walmart-only install shows
+                 just "Walmart.com" and behaves exactly as before. Styled by
+                 the injected provider-chrome styles (sidepanel.components.js). -->
+            <select id="providerSelect" class="provider-select" title="Active provider" aria-label="Active provider"></select>
             <!-- Compact icon buttons (spec §5.4/P4) — fixes the old
                  text-button header crowding at narrow widths. -->
             <div class="header-actions" id="headerActions">

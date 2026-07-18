@@ -31,6 +31,7 @@
     csvPreset: CONSTANTS.CSV_PRESETS.GENERIC,
     includeThumbnails: false,
     incrementalCollect: false,
+    fastFetch: false,
     theme: "system",
     pageLimit: 0,
   };
@@ -107,7 +108,7 @@
     `;
   }
 
-  function collectionSectionHtml(pageLimit, incrementalCollect) {
+  function collectionSectionHtml(pageLimit, incrementalCollect, fastFetch) {
     return `
       <div class="settings-section">
         <h3 class="settings-section-title">Collection</h3>
@@ -119,6 +120,11 @@
           <input type="checkbox" id="settingsIncrementalCollect" ${incrementalCollect ? "checked" : ""}>
           <label for="settingsIncrementalCollect">Only new orders by default</label>
         </div>
+        <div class="toggle-group">
+          <input type="checkbox" id="settingsFastFetch" ${fastFetch ? "checked" : ""}>
+          <label for="settingsFastFetch" title="Experimental: tries to pull your whole history via direct API requests instead of paginating. Walmart may challenge blindly-replayed requests, so this can stop after the first page — the default paginating method is more reliable. Nothing leaves this device.">Try direct-request collection (experimental)</label>
+        </div>
+        <p class="settings-about-note">Off by default. The normal method pages through your history and reads each page's real order date from your browser's own requests — reliable, and it keeps the dates. This experimental option instead replays the API directly; it can be faster but Walmart sometimes blocks it after the first page.</p>
       </div>
     `;
   }
@@ -232,6 +238,7 @@
     app.csvPreset = SETTINGS_DEFAULTS.csvPreset;
     app.includeThumbnails = SETTINGS_DEFAULTS.includeThumbnails;
     app.incrementalCollect = SETTINGS_DEFAULTS.incrementalCollect;
+    app.fastFetch = SETTINGS_DEFAULTS.fastFetch;
     app.legacyExcel = SETTINGS_DEFAULTS[CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL];
 
     if (Sidepanel.applyTheme) Sidepanel.applyTheme(SETTINGS_DEFAULTS.theme);
@@ -286,6 +293,86 @@
     `;
   }
 
+  /**
+   * "Advanced · Providers" opt-in section: one toggle per registered adapter
+   * whose defaultEnabled is false (never WALMART_US — it's always on and not
+   * shown). Each toggle reflects Flags.isEnabled(id). Turning one ON requests
+   * that adapter's host permission from within the user-gesture click handler;
+   * on grant the flag is set, on denial the toggle reverts. Turning one OFF
+   * clears the flag and best-effort removes the host permission.
+   * @returns {Promise<string>} section HTML ('' when no optional providers)
+   */
+  async function providersSectionHtml() {
+    const adapters = (typeof ProviderRegistry !== "undefined" ? ProviderRegistry.list() : []).filter(
+      (adapter) => adapter && adapter.defaultEnabled === false
+    );
+    if (adapters.length === 0) return "";
+
+    const rows = await Promise.all(
+      adapters.map(async (adapter) => {
+        let enabled = false;
+        try {
+          enabled = await Flags.isEnabled(adapter.id);
+        } catch (error) {
+          console.warn(`Settings: could not read flag for ${adapter.id}:`, error);
+        }
+        return `
+          <div class="toggle-group">
+            <input type="checkbox" id="providerToggle_${adapter.id}" data-provider-id="${adapter.id}" ${enabled ? "checked" : ""}>
+            <label for="providerToggle_${adapter.id}">${escapeHtml(adapter.label)}</label>
+          </div>
+        `;
+      })
+    );
+
+    return `
+      <div class="settings-section">
+        <h3 class="settings-section-title">Advanced · Providers</h3>
+        <p class="settings-about-note">Collect orders from other retailers. Turning one on asks Chrome for permission to that site; everything still stays on this device.</p>
+        ${rows.join("")}
+      </div>
+    `;
+  }
+
+  function wireProvidersControls(container) {
+    container.querySelectorAll("[data-provider-id]").forEach((toggle) => {
+      toggle.addEventListener("change", () => {
+        const providerId = toggle.dataset.providerId;
+        const adapter = typeof ProviderRegistry !== "undefined" ? ProviderRegistry.getById(providerId) : null;
+        if (!adapter) return;
+        const origins = adapter.hostPermissions || [];
+
+        // A flag flip changes what Sidepanel.providers.selectable() returns —
+        // refresh the header provider dropdown's options right away (the
+        // chrome.storage.onChanged echo in sidepanel.js also covers changes
+        // made from other contexts).
+        const refreshDropdown = () => {
+          if (Sidepanel.refreshProviderOptions) Sidepanel.refreshProviderOptions();
+        };
+
+        if (toggle.checked) {
+          // Must run inside this user-gesture handler for the prompt to appear.
+          chrome.permissions.request({ origins }, (granted) => {
+            if (chrome.runtime.lastError || !granted) {
+              // Denied (or errored) — revert the toggle, leave the flag off.
+              toggle.checked = false;
+              return;
+            }
+            Flags.setEnabled(providerId, true).then(refreshDropdown);
+          });
+        } else {
+          Flags.setEnabled(providerId, false).then(() => {
+            // Best-effort: revoke the host permission we no longer need.
+            chrome.permissions.remove({ origins }, () => {
+              void chrome.runtime.lastError;
+            });
+            refreshDropdown();
+          });
+        }
+      });
+    });
+  }
+
   function wireThemeControl(container) {
     const control = container.querySelector("#themeControl");
     if (!control) return;
@@ -312,6 +399,16 @@
     if (incrementalToggle) {
       incrementalToggle.addEventListener("change", () => {
         persist("incrementalCollect", incrementalToggle.checked);
+      });
+    }
+
+    const fastFetchToggle = container.querySelector("#settingsFastFetch");
+    if (fastFetchToggle) {
+      fastFetchToggle.addEventListener("change", () => {
+        chrome.storage.local.set({ fastFetch: fastFetchToggle.checked });
+        // Mirror into app state so a collection started right after toggling
+        // (no reload) picks it up synchronously.
+        state.app.fastFetch = fastFetchToggle.checked;
       });
     }
   }
@@ -353,6 +450,7 @@
       "theme",
       "pageLimit",
       "incrementalCollect",
+      "fastFetch",
       "exportFormat",
       "includeThumbnails",
       CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL,
@@ -362,6 +460,7 @@
     const theme = stored.theme || "system";
     const pageLimit = Number.isFinite(stored.pageLimit) ? stored.pageLimit : 0;
     const incrementalCollect = Boolean(stored.incrementalCollect);
+    const fastFetch = Boolean(stored.fastFetch);
     const exportFormat = stored.exportFormat || CONSTANTS.EXPORT_FORMATS.XLSX;
     const includeThumbnails = Boolean(stored.includeThumbnails);
     const legacyExcel = Boolean(stored[CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL]);
@@ -373,10 +472,13 @@
       console.warn("Settings: order database unavailable for stats:", error);
     }
 
+    const providersHtml = await providersSectionHtml();
+
     container.innerHTML = [
       themeSectionHtml(theme),
-      collectionSectionHtml(pageLimit, incrementalCollect),
+      collectionSectionHtml(pageLimit, incrementalCollect, fastFetch),
       exportDefaultsSectionHtml({ exportFormat, includeThumbnails, legacyExcel }),
+      providersHtml,
       dataSectionHtml(stats),
       aboutSectionHtml(),
     ].join("");
@@ -384,6 +486,7 @@
     wireThemeControl(container);
     wireCollectionControls(container);
     wireExportDefaultsControls(container);
+    wireProvidersControls(container);
     wireDataControls(container, stats);
   }
 

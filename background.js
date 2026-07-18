@@ -3,8 +3,28 @@
  * Handles order collection, pagination, and durable storage
  */
 
-// Load shared constants, utilities, and the durable order database
-importScripts('utils.js', 'orderdb.js');
+// Load shared constants, the provider registry + adapters, the feature-flag
+// helper, utilities, and the durable order database. Registry loads before the
+// adapters so they can self-register; flags loads after the registry it reads.
+importScripts(
+  'utils.js',
+  'providers/base.js',
+  'providers/registry.js',
+  'providers/walmart-us.js',
+  'providers/walmart-ca.js',
+  'providers/target.js',
+  'providers/ubereats.js',
+  'providers/instacart.js',
+  'providers/bestbuy.js',
+  'providers/amazon.js',
+  'providers/samsclub.js',
+  'flags.js',
+  'orderdb.js'
+);
+
+// Default provider for a collection when the panel does not name one — keeps
+// zero behavior change for the existing Walmart.com-only flow.
+const DEFAULT_PROVIDER_ID = 'WALMART_US';
 
 // One-time, idempotent cleanup of retired chrome.storage.local caches
 // (spec §4.5) — cheap, so it just runs on every worker start rather than
@@ -26,6 +46,7 @@ migrateLegacyStorage().catch((error) =>
 // instance can truthfully claim to be actively driving a crawl, so a dead
 // worker never leaves the panel stuck showing "collecting" forever.
 const CollectionState = {
+  provider: DEFAULT_PROVIDER_ID,
   allOrderNumbers: new Set(),
   allAdditionalFields: {},
   allOrderSummaries: {},
@@ -37,15 +58,27 @@ const CollectionState = {
   pageLimit: 0,
   pageLoadDelay: 1000,
   initialPageLoaded: false,
+  // Consecutive pages that contributed zero orders while still claiming a
+  // next page (legit for multi-view providers like Amazon, where whole
+  // filtered views can be empty). Capped so a misbehaving adapter can never
+  // spin the loop forever.
+  emptyPageStreak: 0,
   sessionKey: CONSTANTS.CACHE_KEYS.COLLECTION_SESSION,
   incremental: false,
   knownAtStart: null,
+  // Optional Fast Collect: when true (and the active adapter supports it), the
+  // whole history is pulled in one in-page API-replay call instead of the
+  // click-through loop. Off by default → the classic flow is byte-for-byte
+  // unchanged. Falls back to the classic loop automatically if the adapter
+  // can't fast-collect (e.g. it can't learn the query signature).
+  fastFetch: false,
 
   // Reset state for new collection
   reset() {
     this.currentPage = 1;
     this.retryCount = 0;
     this.initialPageLoaded = false;
+    this.emptyPageStreak = 0;
   },
 
   // Clear all collected data
@@ -81,6 +114,7 @@ function loadSessionState() {
     chrome.storage.session.get([CollectionState.sessionKey], (result) => {
       const saved = result[CollectionState.sessionKey];
       if (saved) {
+        CollectionState.provider = saved.provider || CollectionState.provider || DEFAULT_PROVIDER_ID;
         CollectionState.allOrderNumbers = new Set(saved.orderNumbers || []);
         CollectionState.allAdditionalFields = saved.additionalFields || {};
         CollectionState.allOrderSummaries = saved.orderSummaries || {};
@@ -96,6 +130,7 @@ function loadSessionState() {
 /** Mirror live collection progress to chrome.storage.session (best-effort). */
 function saveSessionState() {
   const dataToSave = {
+    provider: CollectionState.provider,
     orderNumbers: Array.from(CollectionState.allOrderNumbers),
     additionalFields: CollectionState.allAdditionalFields,
     orderSummaries: CollectionState.allOrderSummaries,
@@ -127,33 +162,92 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return handler(request, sendResponse);
 });
 
+/** The adapter driving the current (or requested) collection. */
+function activeAdapter() {
+  return ProviderRegistry.getById(CollectionState.provider) || null;
+}
+
+/**
+ * Whether a provider may be collected right now: it must be registered, its
+ * feature flag on, and its host permission granted. WALMART_US is always
+ * on/granted (static host permission + defaultEnabled), so the Walmart flow is
+ * never blocked.
+ * @returns {Promise<boolean>}
+ */
+async function canCollectProvider(providerId) {
+  const adapter = ProviderRegistry.getById(providerId);
+  if (!adapter) return false;
+  const enabled = await Flags.isEnabled(providerId);
+  if (!enabled) return false;
+  const granted = await new Promise((resolve) =>
+    chrome.permissions.contains({ origins: adapter.hostPermissions || [] }, (has) =>
+      resolve(Boolean(has) && !chrome.runtime.lastError)
+    )
+  );
+  return granted;
+}
+
 function handleStartCollection(request, sendResponse) {
   if (!CollectionState.isCollecting) {
+    const providerId = request.provider || DEFAULT_PROVIDER_ID;
+    // Claim the collecting flag synchronously so a rapid double-Start can't
+    // race two crawls; release it if the provider turns out to be disallowed.
     CollectionState.isCollecting = true;
-    // Hydrate from session first — e.g. this worker was just (re)spawned
-    // after an eviction and the panel is resuming a collection.
-    loadSessionState().then(() => {
-      CollectionState.reset();
-      CollectionState.pageLimit = request.pageLimit || 0;
-      CollectionState.incremental = Boolean(request.incremental);
-      CollectionState.knownAtStart = null;
 
-      if (!CollectionState.incremental) {
-        startCollection(request.url);
+    // Refuse providers that are unknown, flag-off, or not permission-granted.
+    canCollectProvider(providerId).then((allowed) => {
+      if (!allowed) {
+        console.warn(`Refusing collection for provider ${providerId} (disabled or not permitted).`);
+        CollectionState.isCollecting = false;
         return;
       }
+      // Hydrate from session first — e.g. this worker was just (re)spawned
+      // after an eviction and the panel is resuming a collection. The provider
+      // is assigned AFTER hydration: loadSessionState restores saved.provider,
+      // which for a snapshot left by a DIFFERENT provider's run (e.g. a
+      // Walmart crawl earlier this session, now starting Amazon) would
+      // otherwise silently clobber the requested provider — the crawl would
+      // then judge the new provider's tab URL with the wrong adapter, fail the
+      // orders-list check every retry, and die having stored nothing (or
+      // stored under the wrong OrderDb partition).
+      loadSessionState().then(() => {
+        if (CollectionState.provider !== providerId) {
+          // Cross-provider snapshot: never leak another retailer's orders
+          // (or its page cursor) into this crawl.
+          console.log(`[collect] Session snapshot belongs to ${CollectionState.provider}; starting ${providerId} with a clean slate.`);
+          CollectionState.clearAll();
+        }
+        CollectionState.provider = providerId;
+        CollectionState.reset();
+        CollectionState.pageLimit = request.pageLimit || 0;
+        CollectionState.incremental = Boolean(request.incremental);
+        CollectionState.knownAtStart = null;
+        // Pure request-replay Fast Collect is OPT-IN (default off). The
+        // reliable default is the paginating crawl, which reads each page's
+        // real order date from the page's OWN captured request — Walmart does
+        // not challenge its own requests the way it can challenge a blindly
+        // replayed one, so pagination is what works for everyone.
+        CollectionState.fastFetch =
+          Boolean(request.fastFetch) &&
+          Boolean(ProviderRegistry.getById(providerId)?.supportsFastFetch);
 
-      // Incremental mode stops when a whole page of already-stored orders is
-      // seen — snapshot what the database knows before we begin.
-      OrderDb.getKnownOrderNumbers()
-        .then((known) => {
-          CollectionState.knownAtStart = known;
-        })
-        .catch((error) => {
-          console.warn("Order DB unavailable; running a full collection:", error);
-          CollectionState.incremental = false;
-        })
-        .then(() => startCollection(request.url));
+        if (!CollectionState.incremental) {
+          startCollection(request.url);
+          return;
+        }
+
+        // Incremental mode stops when a whole page of already-stored orders is
+        // seen — snapshot what the database knows before we begin.
+        OrderDb.getKnownOrderNumbers(CollectionState.provider)
+          .then((known) => {
+            CollectionState.knownAtStart = known;
+          })
+          .catch((error) => {
+            console.warn("Order DB unavailable; running a full collection:", error);
+            CollectionState.incremental = false;
+          })
+          .then(() => startCollection(request.url));
+      });
     });
   }
   sendResponse({ status: "started" });
@@ -194,14 +288,24 @@ function handleStopCollection(_request, sendResponse) {
 
 function handleGetProgress(_request, sendResponse) {
   const respond = () => {
-    sendResponse({
+    const payload = {
       currentPage: CollectionState.currentPage,
       pageLimit: CollectionState.pageLimit,
       orderNumbers: Array.from(CollectionState.allOrderNumbers),
       additionalFields: CollectionState.allAdditionalFields,
       orderSummaries: CollectionState.allOrderSummaries,
       isCollecting: CollectionState.isCollecting,
-    });
+    };
+    // PANEL CONTRACT: `provider` names the OrderDb partition this progress
+    // belongs to (the live or most recent collection's provider id). It is
+    // OMITTED for the default WALMART_US so the historic response shape —
+    // which the Walmart-only panel and tests rely on — is unchanged; the
+    // panel should treat a missing `provider` as WALMART_US and read
+    // OrderDb.getAllOrders(provider) accordingly.
+    if (CollectionState.provider && CollectionState.provider !== DEFAULT_PROVIDER_ID) {
+      payload.provider = CollectionState.provider;
+    }
+    sendResponse(payload);
   };
 
   // While collecting, the in-memory state is authoritative — reloading the
@@ -237,16 +341,33 @@ function handleResetSessionState(_request, sendResponse) {
   return true; // Indicate async response
 }
 
-/** The orders LIST page (an order-detail URL like /orders/123 is NOT it). */
+/**
+ * The orders LIST page (an order-detail URL like /orders/123 is NOT it).
+ * Delegates to the active provider adapter so the crawl is host-agnostic.
+ */
 function isOrdersListUrl(url) {
-  return /^https:\/\/www\.walmart\.com\/orders\/?($|\?)/.test(String(url || ""));
+  const adapter = activeAdapter();
+  return adapter ? adapter.isOrdersListUrl(url) : false;
 }
 
 // Collection always runs in its OWN background tab — never in a tab the
 // user is looking at (owner decision: reverted the 6.20 in-tab collection).
 function startCollection(url) {
-  console.log("Starting collection in a background tab from URL:", url);
-  chrome.tabs.create({ url: url, active: false }, (tab) => {
+  const adapter = activeAdapter();
+  let targetUrl = url || (adapter && adapter.ordersListUrl) || url;
+  // Defensive: a stale/foreign URL (e.g. a Walmart tab URL passed while a
+  // non-Walmart provider is selected) must not be crawled with this adapter —
+  // fall back to the adapter's own orders list. Walmart URLs (including
+  // filter-scoped ones) resolve to WALMART_US and pass through untouched.
+  if (adapter && targetUrl) {
+    const owner = ProviderRegistry.getByUrl(targetUrl);
+    if (!owner || owner.id !== adapter.id) {
+      console.warn(`[collect] URL ${targetUrl} does not belong to provider ${adapter.id}; using ${adapter.ordersListUrl} instead.`);
+      targetUrl = adapter.ordersListUrl || targetUrl;
+    }
+  }
+  console.log(`[collect] Starting ${adapter ? adapter.id : "unknown-provider"} collection in a background tab from URL:`, targetUrl);
+  chrome.tabs.create({ url: targetUrl, active: false }, (tab) => {
     if (chrome.runtime.lastError) {
       console.error("Failed to create tab:", chrome.runtime.lastError);
       CollectionState.isCollecting = false;
@@ -263,9 +384,142 @@ function onTabUpdated(updatedTabId, changeInfo, tab) {
       return;
     }
     CollectionState.initialPageLoaded = true;
+    if (CollectionState.fastFetch) {
+      console.log("Tab updated; running Fast Collect (single-call API replay).");
+      setTimeout(() => collectAllFast(), CollectionState.pageLoadDelay);
+      return;
+    }
     console.log("Tab updated, collecting order numbers for page:", CollectionState.currentPage);
     setTimeout(() => collectOrderNumbers(), CollectionState.pageLoadDelay);
   }
+}
+
+// How long Fast Collect may run in one call. Generous: a large history pages
+// through the API at a human pace inside a single content-script call. On
+// timeout (or any failure) it falls back to the classic click-through loop, so
+// a very large account still completes — just the slow way.
+const FAST_COLLECT_MS = 150000;
+
+/**
+ * Fast Collect driver: one message collects the WHOLE history via the adapter's
+ * in-page API replay. Anything that goes wrong (timeout, error, or the adapter
+ * asking to fall back) drops cleanly into the classic per-page loop, so this
+ * path can only speed things up, never lose a collection.
+ */
+function collectAllFast() {
+  if (!CollectionState.isCollecting) {
+    finishCollection();
+    return;
+  }
+
+  const runClassicInstead = (why) => {
+    console.warn(`[collect] Fast Collect unavailable (${why}); using the classic loop.`);
+    CollectionState.fastFetch = false;
+    CollectionState.reset();
+    CollectionState.initialPageLoaded = true;
+    collectOrderNumbers();
+  };
+
+  chrome.tabs.get(CollectionState.tabId, (tab) => {
+    if (chrome.runtime.lastError || !tab || !isOrdersListUrl(tab.url)) {
+      runClassicInstead("tab not on orders list");
+      return;
+    }
+
+    sendTabMessageWithTimeout(
+      CollectionState.tabId,
+      { action: CONSTANTS.MESSAGES.COLLECT_ALL_FAST, pageLimit: CollectionState.pageLimit },
+      FAST_COLLECT_MS,
+      (response) => {
+        if (chrome.runtime.lastError || !response) {
+          runClassicInstead("no response");
+          return;
+        }
+        if (response.fallbackToClassic) {
+          runClassicInstead("adapter requested fallback");
+          return;
+        }
+        if (!Array.isArray(response.orderNumbers) || response.orderNumbers.length === 0) {
+          runClassicInstead("no orders returned");
+          return;
+        }
+
+        response.orderNumbers.forEach((num) => CollectionState.allOrderNumbers.add(num));
+        if (response.additionalFields) {
+          CollectionState.allAdditionalFields = {
+            ...CollectionState.allAdditionalFields,
+            ...response.additionalFields,
+          };
+        }
+        if (response.orderSummaries) {
+          Object.entries(response.orderSummaries).forEach(([orderNumber, summary]) => {
+            const existing = CollectionState.allOrderSummaries[orderNumber];
+            if (existing && isPayloadQualitySummary(existing) && !isPayloadQualitySummary(summary)) {
+              return;
+            }
+            CollectionState.allOrderSummaries[orderNumber] = summary;
+          });
+        }
+        CollectionState.currentPage = response.pages || CollectionState.currentPage;
+
+        OrderDb.putSummaries(
+          response.orderSummaries || {},
+          response.additionalFields || {},
+          CollectionState.provider
+        ).catch((error) => console.warn("Failed to persist Fast Collect result to order DB:", error));
+
+        saveSessionState();
+        console.log(
+          `[collect] Fast Collect stored ${response.orderNumbers.length} orders across ${response.pages || "?"} page(s).`
+        );
+        finishCollection();
+      }
+    );
+  });
+}
+
+// Upper bounds on how long the loop waits for a content-script response.
+// Generous on purpose: fetch-based adapters legitimately spend seconds paging
+// their own APIs inside one COLLECT_ORDER_NUMBERS call, and Walmart never
+// comes close to these — so for WALMART_US the watchdog is a no-op. What it
+// prevents is an adapter promise that never settles (a hung in-page fetch/
+// bridge) freezing the crawl forever in a background tab (bounded, then the
+// normal retry/finish path takes over).
+const RESPONSE_TIMEOUTS = {
+  COLLECT_MS: 90000,
+  CLICK_NEXT_MS: 45000,
+};
+
+// How many consecutive zero-order pages (that still claim hasNextPage) the
+// loop will advance through before finishing. Amazon legitimately produces a
+// few (empty year/digital/business views); anything beyond this smells like a
+// broken pager.
+const MAX_EMPTY_PAGE_STREAK = 15;
+
+/**
+ * chrome.tabs.sendMessage with a bounded wait. If no response (and no error)
+ * arrives within timeoutMs, the callback fires once with undefined so the
+ * caller's normal failure/retry path runs instead of hanging forever.
+ */
+function sendTabMessageWithTimeout(tabId, message, timeoutMs, callback) {
+  let settled = false;
+  const timer = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    console.warn(`[collect] No response to ${message.action} after ${timeoutMs}ms; treating as a failed page.`);
+    callback(undefined);
+  }, timeoutMs);
+  chrome.tabs.sendMessage(tabId, message, (response) => {
+    if (settled) {
+      // Late response after the watchdog fired — read lastError so Chrome
+      // does not log an unchecked-error warning, then drop it.
+      void chrome.runtime.lastError;
+      return;
+    }
+    settled = true;
+    clearTimeout(timer);
+    callback(response);
+  });
 }
 
 function collectOrderNumbers() {
@@ -286,18 +540,22 @@ function collectOrderNumbers() {
   // still on the orders list before asking it for a page.
   chrome.tabs.get(CollectionState.tabId, (tab) => {
     if (chrome.runtime.lastError || !tab || !isOrdersListUrl(tab.url)) {
-      console.warn("Collection tab is no longer on the orders list; retrying.");
+      console.warn(
+        `[collect] Tab is no longer on the ${CollectionState.provider} orders list (url: ${tab && tab.url}); retrying. ` +
+          "If this repeats, the site may have redirected to a sign-in page."
+      );
       retryCollection();
       return;
     }
 
   // Always collect order numbers to ensure cache is up to date with any changes
-  chrome.tabs.sendMessage(
+  sendTabMessageWithTimeout(
     CollectionState.tabId,
     {
       action: CONSTANTS.MESSAGES.COLLECT_ORDER_NUMBERS,
       currentPage: CollectionState.currentPage,
     },
+    RESPONSE_TIMEOUTS.COLLECT_MS,
     (response) => {
     if (chrome.runtime.lastError) {
       console.error("Error collecting order numbers:", chrome.runtime.lastError);
@@ -311,8 +569,23 @@ function collectOrderNumbers() {
       return;
     }
 
-    if (response && response.orderNumbers && (response.orderNumbers.length > 0 || response.endOfOrders)) {
-      console.log(`Collected ${response.orderNumbers.length} order numbers from page ${CollectionState.currentPage}`);
+    // A page counts as valid when it has orders, is a declared end of the
+    // list, or is an EMPTY page that still declares a next page — the latter
+    // is normal for multi-view providers (e.g. an Amazon year/digital view
+    // with no orders) and must advance the crawl, not burn retries.
+    if (response && response.orderNumbers && (response.orderNumbers.length > 0 || response.endOfOrders || response.hasNextPage)) {
+      console.log(`[collect] ${CollectionState.provider}: ${response.orderNumbers.length} order(s) on page ${CollectionState.currentPage}, hasNextPage=${Boolean(response.hasNextPage)}`);
+
+      if (response.orderNumbers.length === 0) {
+        CollectionState.emptyPageStreak++;
+        if (CollectionState.emptyPageStreak > MAX_EMPTY_PAGE_STREAK) {
+          console.warn(`[collect] ${CollectionState.emptyPageStreak} consecutive empty pages — finishing to avoid a runaway crawl.`);
+          finishCollection();
+          return;
+        }
+      } else {
+        CollectionState.emptyPageStreak = 0;
+      }
 
       // Add order numbers to the set
       response.orderNumbers.forEach((num) => CollectionState.allOrderNumbers.add(num));
@@ -335,7 +608,7 @@ function collectOrderNumbers() {
       }
 
       // Persist this page into the durable order database (best-effort).
-      OrderDb.putSummaries(response.orderSummaries || {}, response.additionalFields || {}).catch(
+      OrderDb.putSummaries(response.orderSummaries || {}, response.additionalFields || {}, CollectionState.provider).catch(
         (error) => console.warn("Failed to persist page to order DB:", error)
       );
 
@@ -377,7 +650,14 @@ function goToNextPage() {
   }
 
   console.log("Attempting to go to next page:", CollectionState.currentPage + 1);
-  chrome.tabs.sendMessage(CollectionState.tabId, { action: CONSTANTS.MESSAGES.CLICK_NEXT_BUTTON }, (response) => {
+  // currentPage rides along so cursor-paged adapters (e.g. Sam's Club) can
+  // validate the advance against the page the loop is actually on; Walmart's
+  // clickNextPage ignores it.
+  sendTabMessageWithTimeout(
+    CollectionState.tabId,
+    { action: CONSTANTS.MESSAGES.CLICK_NEXT_BUTTON, currentPage: CollectionState.currentPage },
+    RESPONSE_TIMEOUTS.CLICK_NEXT_MS,
+    (response) => {
     if (chrome.runtime.lastError) {
       console.error("Error clicking next button:", chrome.runtime.lastError);
       retryCollection();
@@ -416,7 +696,7 @@ function retryCollection() {
  */
 async function hydrateCollectionFromDb() {
   try {
-    const records = await OrderDb.getAllOrders();
+    const records = await OrderDb.getAllOrders(CollectionState.provider);
     records.forEach((record) => {
       if (!record?.orderNumber) return;
       CollectionState.allOrderNumbers.add(record.orderNumber);
@@ -445,5 +725,5 @@ function finishCollection() {
     });
     CollectionState.tabId = null;
   }
-  console.log(`Collection finished. Total pages: ${CollectionState.currentPage}, Total order numbers: ${CollectionState.allOrderNumbers.size}`);
+  console.log(`[collect] ${CollectionState.provider} collection finished. Total pages: ${CollectionState.currentPage}, Total order numbers: ${CollectionState.allOrderNumbers.size}`);
 }

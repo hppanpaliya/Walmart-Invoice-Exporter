@@ -34,7 +34,22 @@
     sortDir: 'desc', // 'asc' | 'desc'
     selected: new Set(), // order numbers
     shownRows: [], // last-rendered table row models (post filter+sort)
+    // Provider scoping (2026-07-18): the stored active selection drives the
+    // whole page. `provider` is a provider id or PROVIDER_ALL;
+    // `providerScopes` holds one {id,label,currency,records} per queried
+    // provider (a single entry except in the combined view); `currency` is
+    // the display currency for single-provider mode (null when combined);
+    // `multiProvider` mirrors whether the header selector is shown.
+    provider: null,
+    providerScopes: [],
+    currency: 'USD',
+    multiProvider: false,
   };
+
+  /** The provider-selection contract (sidepanel.providers.js), if loaded. */
+  function providersApi() {
+    return typeof Sidepanel !== 'undefined' && Sidepanel.providers ? Sidepanel.providers : null;
+  }
 
   /* ------------------------------------------------------------------ *
    * Formatting helpers
@@ -42,13 +57,14 @@
 
   /**
    * Defensive money formatter: accepts numbers or stored strings like
-   * "$42.17" and renders "$X,XXX.XX" with thousands grouping.
+   * "$42.17" and renders them in the ACTIVE provider's currency via the
+   * shared formatDashboardMoney (sidepanel.dashboard.js). USD output is
+   * byte-identical to the historical "$X,XXX.XX" rendering.
    * @param {number|string} value
    * @returns {string}
    */
   function formatMoney(value) {
-    const amount = typeof value === 'number' ? value : parseNumericValue(value);
-    return `$${(Number(amount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return formatDashboardMoney(value, state.currency);
   }
 
   /** Short display label for a range value, e.g. "2026", "Last 3 months". */
@@ -513,19 +529,43 @@
    * Top-level render
    * ------------------------------------------------------------------ */
 
-  /** Show/hide the main sections for the three page modes. */
-  function setSectionVisibility({ empty, stats, chart, insights, coverage, orders }) {
+  /** Show/hide the main sections for the page modes (incl. combined). */
+  function setSectionVisibility({ empty, stats, chart, insights, coverage, orders, combined }) {
     $('emptyRegion').hidden = !empty;
     $('statsSection').hidden = !stats;
     $('chartCard').hidden = !chart;
     $('insightsSection').hidden = !insights;
     $('coverageRegion').hidden = !coverage;
     $('ordersCard').hidden = !orders;
+    $('combinedSection').hidden = !combined;
     $('scopeSelect').hidden = empty && !orders;
+    // Combined mode: mixed-currency averages/savings would be meaningless,
+    // so those tiles hide and the stat strip re-flows (CSS .combined-scoped).
+    document.body.classList.toggle('combined-scoped', Boolean(combined));
+    ['statAvgMonth', 'statAvgOrder', 'statSaved'].forEach((id) => {
+      const card = $(id).closest('.card');
+      if (card) card.hidden = Boolean(combined);
+    });
   }
 
-  /** Render the whole page from state.records. */
+  /**
+   * The active provider's label for the page title — but only once several
+   * providers are selectable. With just Walmart.com enabled this is '' so
+   * the default page title stays exactly as it always was.
+   */
+  function providerEcho() {
+    if (!state.multiProvider) return '';
+    return state.providerScopes.length === 1 ? state.providerScopes[0].label || '' : '';
+  }
+
+  /** Render the whole page from state.records / state.providerScopes. */
   function renderAll() {
+    const api = providersApi();
+    if (api && state.provider === api.PROVIDER_ALL) {
+      renderCombined();
+      return;
+    }
+
     const now = new Date();
     const records = state.records;
 
@@ -534,7 +574,7 @@
     // Mode (a): nothing stored at all.
     if (!records.length) {
       setSectionVisibility({ empty: true, stats: false, chart: false, insights: false, coverage: false, orders: false });
-      $('scopeTitle').textContent = 'Your spending';
+      $('scopeTitle').textContent = `Your spending${providerEcho() ? ` · ${providerEcho()}` : ''}`;
       $('emptyRegion').innerHTML = `
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
           <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
@@ -558,7 +598,7 @@
     const allStats = computeDashboardStats(records);
     if (allStats.invoiceCount === 0) {
       setSectionVisibility({ empty: true, stats: false, chart: false, insights: false, coverage: false, orders: true });
-      $('scopeTitle').textContent = `Your spending · ${rangeLabel(state.range, now)}`;
+      $('scopeTitle').textContent = `Your spending · ${providerEcho() ? `${providerEcho()} · ` : ''}${rangeLabel(state.range, now)}`;
       $('emptyRegion').innerHTML = `
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
           <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
@@ -588,7 +628,7 @@
     const scopedStats = state.selectedMonth ? computeDashboardStats(scopedRecords) : model.stats;
 
     const echo = scopeEchoLabel(now);
-    $('scopeTitle').textContent = `Your spending · ${echo}`;
+    $('scopeTitle').textContent = `Your spending · ${providerEcho() ? `${providerEcho()} · ` : ''}${echo}`;
     $('backChip').textContent = `‹ Back to ${rangeLabel(state.range, now)}`;
     document.querySelectorAll('.scope-echo').forEach((el) => { el.textContent = echo; });
 
@@ -599,6 +639,100 @@
     renderMostBought(scopedStats);
     renderCoverage(scopedRecords, scopedStats);
     renderTable(now);
+  }
+
+  /**
+   * Combined "All providers" view. Providers can bill in different
+   * currencies, so this NEVER sums or converts across currencies: the hero
+   * shows one total per currency and the breakdown card groups per-provider
+   * spend under per-currency subtotals (computeProviderDashboard). The
+   * single-provider sections (chart, insights, coverage, orders table) stay
+   * hidden — they are currency-scoped by design.
+   */
+  function renderCombined() {
+    const now = new Date();
+    const scopes = state.providerScopes;
+
+    // Month scoping belongs to the single-provider chart; drop it here.
+    state.selectedMonth = null;
+    document.body.classList.remove('month-scoped');
+
+    const totalStored = scopes.reduce((sum, scope) => sum + scope.records.length, 0);
+    if (!totalStored) {
+      setSectionVisibility({ empty: true, stats: false, chart: false, insights: false, coverage: false, orders: false, combined: false });
+      $('scopeTitle').textContent = 'Your spending · All providers';
+      $('emptyRegion').innerHTML = `
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
+        </svg>
+        <h3>No spending data yet</h3>
+        <p>None of your enabled providers has stored orders. Use the panel on the right to load orders,
+           then download them once — the dashboard builds itself from your full invoices.</p>`;
+      return;
+    }
+
+    // Default scope: this year unless nothing measured this year anywhere.
+    if (!state.range) {
+      const thisYear = computeProviderDashboard(scopes, 'thisYear', now);
+      state.range = thisYear.invoiceCount > 0 ? 'thisYear' : 'all';
+      $('scopeSelect').value = state.range;
+    }
+
+    const combined = computeProviderDashboard(scopes, state.range, now);
+    setSectionVisibility({ empty: false, stats: true, chart: false, insights: false, coverage: false, orders: false, combined: true });
+
+    const echo = rangeLabel(state.range, now);
+    $('scopeTitle').textContent = `Your spending · All providers · ${echo}`;
+    document.querySelectorAll('.scope-echo').forEach((el) => { el.textContent = echo; });
+
+    // Hero: one clearly-labeled total PER CURRENCY — never one fake sum.
+    const totals = combined.currencyTotals;
+    $('statTotal').textContent = totals.length
+      ? totals.map((group) => formatDashboardMoney(group.totalSpend, group.currency)).join('  +  ')
+      : formatDashboardMoney(0, null);
+    const deltaEl = $('statDelta');
+    deltaEl.textContent = '';
+    deltaEl.hidden = true;
+    const invoicesLabel = `${combined.invoiceCount} downloaded invoice${combined.invoiceCount === 1 ? '' : 's'}`;
+    $('statTotalNote').textContent = combined.mixedCurrency
+      ? `All providers — one total per currency, never converted, from ${invoicesLabel}`
+      : `All providers, from ${invoicesLabel}`;
+    $('statOrders').textContent = String(combined.invoiceCount);
+
+    renderProviderBreakdown(combined);
+  }
+
+  /** The per-currency, per-provider breakdown card of the combined view. */
+  function renderProviderBreakdown(combined) {
+    const groups = combined.currencyTotals;
+    $('providerBreakdown').innerHTML = groups.length
+      ? groups
+          .map((group) => {
+            const max = group.providers.reduce((m, p) => Math.max(m, p.totalSpend), 0);
+            const rows = group.providers
+              .map((provider) => {
+                const percent = max > 0 && provider.totalSpend > 0
+                  ? Math.max(2, Math.round((provider.totalSpend / max) * 100))
+                  : 0;
+                const invoices = `${provider.invoiceCount} invoice${provider.invoiceCount === 1 ? '' : 's'}`;
+                return `<div class="pbar-row">
+                  <span class="pbar-label">${escapeHtml(provider.label)}</span>
+                  <div class="pbar"><div class="pbar-fill" style="width:${percent}%"></div></div>
+                  <span class="mono pbar-amount">${escapeHtml(formatDashboardMoney(provider.totalSpend, group.currency))}</span>
+                  <span class="pbar-meta">${escapeHtml(invoices)}</span>
+                </div>`;
+              })
+              .join('');
+            return `<div class="currency-group">
+              <div class="cg-head">
+                <span class="cg-code">${escapeHtml(group.currency)}</span>
+                <span class="mono">${escapeHtml(formatDashboardMoney(group.totalSpend, group.currency))}</span>
+              </div>
+              ${rows}
+            </div>`;
+          })
+          .join('')
+      : '<div class="breakdown-empty">No measured spend in this range yet.</div>';
   }
 
   /* ------------------------------------------------------------------ *
@@ -621,22 +755,66 @@
   }
 
   /**
-   * Re-query the order database and re-render when anything changed.
+   * Re-read the active provider selection, re-query the order database for
+   * its scope (one provider, or every enabled provider for PROVIDER_ALL),
+   * and re-render when anything changed.
    * @param {boolean} [force] - render even when the signature is unchanged
    */
   async function refresh(force = false) {
-    let records = [];
-    try {
-      records = await OrderDb.getAllOrders();
-    } catch (error) {
-      console.warn('Dashboard page: order database unavailable:', error);
+    const api = providersApi();
+    let provider = 'WALMART_US';
+    let scopes = [];
+    if (api) {
+      try {
+        provider = await api.getActive();
+        const ids = await api.scopeIds(provider);
+        const enabled = await api.enabledAdapters();
+        const metaById = new Map(enabled.map((entry) => [entry.id, entry]));
+        for (const id of ids) {
+          let records = [];
+          try {
+            records = await OrderDb.getAllOrders(id);
+          } catch (error) {
+            console.warn('Dashboard page: order database unavailable:', error);
+          }
+          const meta = metaById.get(id);
+          scopes.push({
+            id,
+            label: (meta && meta.label) || api.labelFor(id),
+            currency: (meta && meta.currency) || api.currencyFor(id) || 'USD',
+            records,
+          });
+        }
+      } catch (error) {
+        console.warn('Dashboard page: provider contract unavailable:', error);
+        scopes = [];
+      }
     }
-    const signature = signatureOf(records);
+    if (!scopes.length) {
+      // Provider contract missing or failed — Walmart-only fallback, exactly
+      // the page's historical behavior.
+      provider = 'WALMART_US';
+      let records = [];
+      try {
+        records = await OrderDb.getAllOrders();
+      } catch (error) {
+        console.warn('Dashboard page: order database unavailable:', error);
+      }
+      scopes = [{ id: provider, label: 'Walmart.com', currency: 'USD', records }];
+    }
+
+    const combined = Boolean(api) && provider === api.PROVIDER_ALL;
+    const signature =
+      `${provider}||` + scopes.map((scope) => `${scope.id}::${signatureOf(scope.records)}`).join('##');
     if (!force && signature === state.signature) return;
     state.signature = signature;
-    state.records = records;
-    // Drop selections for orders that no longer exist.
-    const known = new Set(records.map((record) => String(record.orderNumber || '')));
+    state.provider = provider;
+    state.providerScopes = scopes;
+    state.currency = combined ? null : (scopes[0] && scopes[0].currency) || 'USD';
+    state.records = combined ? [] : (scopes[0] && scopes[0].records) || [];
+    syncProviderSelect();
+    // Drop selections for orders that no longer exist in this scope.
+    const known = new Set(state.records.map((record) => String(record.orderNumber || '')));
     state.selected = new Set([...state.selected].filter((orderNumber) => known.has(orderNumber)));
     renderAll();
   }
@@ -683,7 +861,85 @@
       if (changes[CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL]) {
         $('pageLegacyExcel').checked = Boolean(changes[CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL].newValue);
       }
+      // Provider live sync: another surface (the panel, its embedded copy,
+      // or a second dashboard tab) switched the stored active provider —
+      // refresh() re-reads it, and the changed provider id changes the
+      // signature, so the page re-renders for the new selection.
+      if (changes.active_provider) refresh();
+      // Provider opt-ins/outs change what is enabled/selectable.
+      if (changes.settings) {
+        populateProviderSelect().then(() => refresh(true));
+      }
     });
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Provider selection
+   * ------------------------------------------------------------------ */
+
+  /**
+   * Fill the header provider selector from Sidepanel.providers.selectable().
+   * Hidden while only one provider is enabled — the Walmart.com-only default
+   * page looks exactly as it always has.
+   */
+  async function populateProviderSelect() {
+    const select = $('providerSelect');
+    const api = providersApi();
+    if (!api) {
+      select.hidden = true;
+      state.multiProvider = false;
+      return;
+    }
+    let options = [];
+    try {
+      options = await api.selectable();
+    } catch (error) {
+      console.warn('Dashboard page: provider options unavailable:', error);
+    }
+    if (!options.length) {
+      select.hidden = true;
+      state.multiProvider = false;
+      return;
+    }
+    select.innerHTML = options
+      .map((option) => `<option value="${escapeHtml(option.id)}">${escapeHtml(option.label)}</option>`)
+      .join('');
+    state.multiProvider = options.length > 1;
+    select.hidden = !state.multiProvider;
+    try {
+      select.value = await api.getActive();
+    } catch (error) {
+      /* keep the first option selected */
+    }
+  }
+
+  /** Reflect the active provider in the selector (no-op if not an option). */
+  function syncProviderSelect() {
+    const select = $('providerSelect');
+    if (!select || !state.provider) return;
+    if (select.value !== state.provider) select.value = state.provider;
+  }
+
+  $('providerSelect').addEventListener('change', async () => {
+    const value = $('providerSelect').value;
+    state.selectedMonth = null;
+    const api = providersApi();
+    if (api) {
+      try {
+        await api.setActive(value);
+      } catch (error) {
+        console.warn('Dashboard page: could not persist provider selection:', error);
+      }
+    }
+    refresh(true);
+  });
+
+  // Provider-switch render entry point (contract for panel-core):
+  // Sidepanel.dashboard.render() re-reads the stored active provider and
+  // re-renders the whole page. The callable shim is defined in
+  // sidepanel.dashboard.js; this page registers the real implementation.
+  if (typeof Sidepanel !== 'undefined' && Sidepanel.dashboard) {
+    Sidepanel.dashboard._renderImpl = () => refresh(true);
   }
 
   /* ------------------------------------------------------------------ *
@@ -791,6 +1047,6 @@
     sendToPanel('SET_EXPORT_OPTION', { option: 'legacyExcel', value: $('pageLegacyExcel').checked });
   });
 
-  // First paint.
-  refresh(true);
+  // First paint: provider options first, then the initial render.
+  populateProviderSelect().then(() => refresh(true));
 })();

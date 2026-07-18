@@ -113,10 +113,28 @@ function createFakeIndexedDB() {
       this._notify = notifyActivity;
     }
     createIndex() { /* no-op — tests here never query by index */ }
+    // Real IndexedDB matches compound keys ([provider, orderNumber]) by
+    // structured-clone equality; a JS Map keys by identity, so array keys
+    // never match. Normalize keys (scalar or array) to a stable string so
+    // put/get agree — this mirrors real IndexedDB behavior, it does not
+    // change anything a test asserts.
+    _normalizeKey(key) {
+      const keyPath = this.keyPath;
+      const source = (key && typeof key === 'object' && !Array.isArray(key)) ? undefined : key;
+      const parts = Array.isArray(keyPath)
+        ? (Array.isArray(source) ? source : keyPath.map((p) => (key && typeof key === 'object' ? key[p] : key)))
+        : [source];
+      return JSON.stringify(parts);
+    }
+    _keyForValue(value) {
+      const keyPath = this.keyPath;
+      const parts = Array.isArray(keyPath) ? keyPath.map((p) => value[p]) : [value[keyPath]];
+      return JSON.stringify(parts);
+    }
     get(key) {
       this._notify();
       const req = new FakeRequest();
-      queueMicrotask(() => req._succeed(this._records.get(key)));
+      queueMicrotask(() => req._succeed(this._records.get(this._normalizeKey(key))));
       return req;
     }
     getAll() {
@@ -133,7 +151,7 @@ function createFakeIndexedDB() {
     }
     put(value) {
       this._notify();
-      const key = value[this.keyPath];
+      const key = this._keyForValue(value);
       this._records.set(key, value);
       const req = new FakeRequest();
       queueMicrotask(() => req._succeed(key));
@@ -221,7 +239,14 @@ function createFakeIndexedDB() {
  */
 function loadSandbox({
   nextData = null,
-  scripts = ['utils.js', 'content.js'],
+  scripts = [
+    'utils.js',
+    'providers/base.js',
+    'providers/registry.js',
+    'providers/walmart-us.js',
+    'flags.js',
+    'content.js',
+  ],
   url = 'https://www.walmart.com/orders',
 } = {}) {
   const documentElement = makeFakeElement();
@@ -361,12 +386,18 @@ function loadSandbox({
     navigator: {},
     document,
     window,
+    location: window.location,
     chrome,
     ExcelJS: {},
     indexedDB: createFakeIndexedDB(),
   };
   sandbox.globalThis = sandbox;
   sandbox.self = sandbox;
+  // Tells provider adapters (providers/walmart-us.js) they are running under
+  // the unit-test harness, so they re-expose their internal parsing helpers
+  // (scrapeOrderData, mergeOrderItems, …) as sandbox globals. Never set in
+  // the real extension runtimes, where those helpers stay IIFE-private.
+  sandbox.__WIE_TEST_SANDBOX__ = true;
   // Service-worker-only global (background.js's first line). Loads each
   // named repo-relative file into this SAME context, synchronously, just
   // like the real one — lets tests load background.js by itself and have

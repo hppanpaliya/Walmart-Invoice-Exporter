@@ -380,3 +380,38 @@ footer {
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* ---------- combined "All providers" view ---------- */
+/* Mixed-currency averages are meaningless, so combined mode hides the
+   avg/saved tiles (via [hidden] in dashboard.page.js) and re-flows the
+   stat strip to hero + Orders. */
+.combined-scoped .stats { grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr); }
+@media (max-width: 900px) { .combined-scoped .stats { grid-template-columns: 1fr; } }
+
+/* Per-currency groups: each currency keeps its own subtotal and its own
+   bar scale — bars only ever compare amounts within one currency. */
+.provider-breakdown { display: grid; gap: 20px; margin-top: 14px; }
+.currency-group { display: grid; gap: 8px; }
+.cg-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+  border-bottom: 1px solid var(--border); padding-bottom: 4px;
+  font-size: 14px; font-weight: 600;
+}
+.cg-code {
+  color: var(--text-secondary); text-transform: uppercase;
+  letter-spacing: .06em; font-size: 12px;
+}
+.pbar-row {
+  display: grid; grid-template-columns: minmax(90px, 170px) minmax(0, 1fr) auto auto;
+  gap: 10px; align-items: center; font-size: 13px;
+}
+.pbar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pbar { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.pbar-fill { height: 100%; border-radius: 999px; background: var(--bar-hover); }
+.pbar-amount { text-align: right; }
+.pbar-meta { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+@media (max-width: 700px) {
+  .pbar-row { grid-template-columns: minmax(80px, 120px) minmax(0, 1fr) auto; }
+  .pbar-meta { display: none; }
+}
+.breakdown-empty { color: var(--text-muted); font-size: 13px; }

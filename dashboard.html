@@ -8,12 +8,30 @@
     <link rel="stylesheet" href="dashboard.css">
     <!-- Same load order as sidepanel.html for the shared data layer:
          utils.js defines CONSTANTS/escapeHtml/row-model helpers,
-         orderdb.js the IndexedDB store, sidepanel.dashboard.js the pure
-         aggregation functions (computeDashboardModel & friends). All page
-         behavior lives in dashboard.page.js — MV3 extension-page CSP
-         forbids inline scripts and inline event handlers here. -->
+         orderdb.js the IndexedDB store; then the provider registry +
+         adapters + feature flags + the shared provider-selection contract
+         (sidepanel.providers.js) in sidepanel.html's exact order — the
+         registry loads before the adapters so they can self-register,
+         flags after the registry it reads. All adapter files are load-safe
+         outside a page (identity/config only). sidepanel.dashboard.js
+         (the pure aggregation functions — computeDashboardModel & friends)
+         loads last. All page behavior lives in dashboard.page.js — MV3
+         extension-page CSP forbids inline scripts and inline event
+         handlers here. -->
     <script src="utils.js"></script>
     <script src="orderdb.js"></script>
+    <script src="providers/base.js"></script>
+    <script src="providers/registry.js"></script>
+    <script src="providers/walmart-us.js"></script>
+    <script src="providers/walmart-ca.js"></script>
+    <script src="providers/target.js"></script>
+    <script src="providers/ubereats.js"></script>
+    <script src="providers/instacart.js"></script>
+    <script src="providers/bestbuy.js"></script>
+    <script src="providers/amazon.js"></script>
+    <script src="providers/samsclub.js"></script>
+    <script src="flags.js"></script>
+    <script src="sidepanel.providers.js"></script>
     <script src="sidepanel.dashboard.js"></script>
 </head>
 
@@ -41,6 +59,11 @@
             <main class="page" id="page">
                 <div class="page-head">
                     <h1 id="scopeTitle">Your spending</h1>
+                    <!-- Provider selector: populated by dashboard.page.js from
+                         Sidepanel.providers.selectable() and kept in sync with
+                         the stored active provider. Stays hidden while only
+                         one provider is enabled (Walmart.com-only default). -->
+                    <select class="scope-select" id="providerSelect" aria-label="Provider" hidden></select>
                     <select class="scope-select" id="scopeSelect" aria-label="Date range">
                         <option value="thisYear">This year</option>
                         <option value="lastYear">Last year</option>
@@ -65,6 +88,17 @@
                     <div class="card"><h2>Avg / month</h2><div class="stat-value mono" id="statAvgMonth">$0.00</div><div class="stat-note" id="statAvgMonthNote"></div></div>
                     <div class="card"><h2>Avg order</h2><div class="stat-value mono" id="statAvgOrder">$0.00</div><div class="stat-note">per invoice</div></div>
                     <div class="card"><h2>Saved</h2><div class="stat-value mono stat-saved" id="statSaved">$0.00</div><div class="stat-note">discounts &amp; rollbacks</div></div>
+                </section>
+
+                <!-- Combined "All providers" breakdown (dashboard.page.js).
+                     Shown only when the provider selection is PROVIDER_ALL:
+                     spend per provider, grouped and subtotaled BY CURRENCY —
+                     amounts in different currencies are never summed together
+                     or converted. -->
+                <section class="card" id="combinedSection" hidden>
+                    <h2>Spend by provider · <span class="scope-echo"></span></h2>
+                    <div class="sub">Each provider keeps its own currency — subtotals are per currency, never converted.</div>
+                    <div class="provider-breakdown" id="providerBreakdown"></div>
                 </section>
 
                 <section class="card" id="chartCard">

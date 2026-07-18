@@ -1779,36 +1779,7 @@ const CONSTANTS = {
     LOADING_SPINNER: 'loading-spinner',
   },
 
-  // DOM Selectors (content.js)
-  SELECTORS: {
-    PRINT_ITEMS: '.dn.print-items-list',
-    PRINT_ITEM_NAME: '.flex.justify-between > .w_U9_0.w_sD6D.w_QcqU, .flex.justify-between > div:first-child',
-    PRINT_BILL_TYPE: '.print-bill-type .w_U9_0.w_sD6D.w_QcqU, .print-bill-type > div',
-    PRINT_BILL_QTY: '.print-bill-qty .w_U9_0.w_sD6D.w_QcqU, .print-bill-qty > div',
-    PRINT_BILL_PRICE: '.print-bill-price .w_U9_0.w_sD6D.w_QcqU, .print-bill-price > div',
-    VISIBLE_ITEMS: '[data-testid="itemtile-stack"] [data-testid="productName"] span',
-    ITEM_STACK: '[data-testid="itemtile-stack"]',
-    PRODUCT_LINK: 'a[link-identifier="itemClick"]',
-
-    PRINT_BILL_GROUP: '.print-bill-group',
-    PRINT_ITEM_ROW: '.dn.print-items-list > .flex.justify-between',
-    PAYMENT_METHODS: '[aria-labelledby^="card-description-"]',
-    ADDRESS: '.print-bill-payment-section .w_U9_0.w_sD6D.w_QcqU span, .print-bill-payment-section .w_yTSq.w_0aYG.w_MwbK, .print-bill-payment-section .flex.flex-column.mid-gray [data-sensitivity="medium"], .print-bill-payment-section .flex.flex-column.mid-gray span',
-    ORDER_NUMBER_BAR: '.f-subheadline-m.dark-gray-m.print-bill-bar-id',
-    ORDER_INFO_CARD: "[data-testid='orderInfoCard'] .dark-gray",
-    ORDER_NUMBER_HEADING: '.print-bill-heading .dark-gray',
-    PRINT_BILL_ID: '.print-bill-bar-id',
-    ORDER_DATE: '.print-bill-date',
-    ORDER_SUBTOTAL: '.flex.justify-between.pb3.bill-order-payment-subtotal, span[aria-label^="Subtotal after savings"]',
-    ORDER_TOTAL: '.bill-order-total-payment',
-    DELIVERY_CHARGES: '.print-fees-item',
-    TAX_ELEMENTS: '.print-fees-item',
-    TIP: '.flex.justify-between.pb2.pt3',
-    FEE_LABEL: '.ld_FS',
-    ORDER_CARDS: '[data-testid^="order-"], div.ld_V.mv4',
-    NEXT_BUTTON: 'button[data-automation-id="next-pages-button"]:not([disabled])',
-    MAIN_HEADING: 'h1, .ld_FM.ld_FQ.ld_FO',
-  },
+  // DOM selectors moved to providers/walmart-us.js (WalmartUsProvider.SELECTORS).
 
   // Text Strings
   TEXT: {
@@ -1836,6 +1807,10 @@ const CONSTANTS = {
     // there is no more chrome.storage invoice cache to clear.
     RESET_SESSION_STATE: 'resetSessionState',
     COLLECT_ORDER_NUMBERS: 'collectOrderNumbers',
+    // Optional Fast Collect: one call collects the whole history via direct
+    // in-page API replay (adapters that set supportsFastFetch). Used only when
+    // the `fastFetch` setting is on; otherwise the classic per-page flow runs.
+    COLLECT_ALL_FAST: 'collectAllFast',
     CLICK_NEXT_BUTTON: 'clickNextButton',
     BLOCK_IMAGES: 'blockImagesForDownload',
     GET_ORDER_DATA: 'getOrderData',

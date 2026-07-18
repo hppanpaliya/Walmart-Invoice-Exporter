@@ -55,13 +55,115 @@
       return schemaVersion >= MIN_ORDER_SCHEMA_VERSION && isUsableInvoiceData(data);
     };
 
-    const buildOrderUrls = (orderNumber) => {
-      const baseUrl = `${CONSTANTS.URLS.WALMART_ORDERS}/${orderNumber}`;
-      const isLongOrderNumber = orderNumber.length >= 20;
-      if (isLongOrderNumber) {
-        return [`${baseUrl}?storePurchase=true`, baseUrl];
+    /** The adapter driving the current export (defaults to WALMART_US). */
+    const activeAdapter = () => {
+      const id = (app && app.provider) || "WALMART_US";
+      return (typeof ProviderRegistry !== "undefined" && ProviderRegistry.getById(id)) || null;
+    };
+
+    /** Provider partition used for OrderDb reads/writes in this fetcher. */
+    const activeProviderId = () => (app && app.provider) || "WALMART_US";
+
+    /**
+     * Resolve the CONCRETE provider partition to use for ONE order.
+     *
+     * Fast path (the common case, and every single-provider build): the active
+     * selection is already a concrete provider id — return app.provider
+     * directly with NO DB scan, so Walmart / single-provider behavior is
+     * byte-identical to before.
+     *
+     * Under the combined "All providers" view app.provider is the PROVIDER_ALL
+     * sentinel ("__ALL__"), which is NOT a real OrderDb partition — reads and
+     * writes against it would hit a non-existent partition. So probe each
+     * enabled provider's partition (spec: scopeIds(PROVIDER_ALL)) and return the
+     * first one that already holds this order; fall back to WALMART_US when none
+     * does (a not-yet-collected order still lands in a sensible partition).
+     *
+     * Guarded for a test sandbox where Sidepanel.providers is not loaded: with
+     * no selector module there is no combined view, so app.provider (or
+     * WALMART_US) is authoritative and no scan happens.
+     * @param {string} orderNumber
+     * @returns {Promise<string>} a concrete provider id
+     */
+    const resolveProviderId = async (orderNumber) => {
+      const providers = Sidepanel.providers;
+      if (!providers) {
+        return (app && app.provider) || "WALMART_US";
       }
-      return [baseUrl, `${baseUrl}?storePurchase=true`];
+
+      const active = (app && app.provider) || "WALMART_US";
+      if (active !== providers.PROVIDER_ALL) {
+        return active;
+      }
+
+      let ids = [];
+      try {
+        ids = await providers.scopeIds(providers.PROVIDER_ALL);
+      } catch (error) {
+        ids = [];
+      }
+      for (const id of ids) {
+        try {
+          const record = await OrderDb.getOrder(orderNumber, id);
+          if (record) {
+            return id;
+          }
+        } catch (error) {
+          // This partition is unreadable — try the next provider.
+        }
+      }
+      return "WALMART_US";
+    };
+
+    /**
+     * Candidate order-DETAIL URLs to try, in order, for one order.
+     *
+     * Delegates to the active adapter so the crawl is host-agnostic and works
+     * with NON-NUMERIC ids (Uber UUIDs, Amazon 112-… ids) — no digit stripping:
+     *  - an adapter that exposes orderDetailUrl()/buildDetailUrl() (Amazon) wins;
+     *  - otherwise fall back to the adapter's ordersListUrl + '/' + orderNumber.
+     *
+     * Walmart is unchanged: it exposes neither helper, so it takes the fallback,
+     * and because its ordersListUrl === CONSTANTS.URLS.WALMART_ORDERS the base is
+     * identical to before — including the historic ?storePurchase=true dual-URL
+     * ordering, preserved for the Walmart platform (.com/.ca) only.
+     *
+     * The optional providerId pins the adapter to the concrete provider that
+     * owns THIS order (resolved by fetchOrderData) so the combined view crawls
+     * the right site; for a concrete active provider it resolves to the exact
+     * same adapter as activeAdapter() did. Omitting it falls back to
+     * activeAdapter() (unchanged for callers that don't pass one).
+     */
+    const buildOrderUrls = (orderNumber, providerId) => {
+      const adapter =
+        (providerId && typeof ProviderRegistry !== "undefined" && ProviderRegistry.getById(providerId)) ||
+        activeAdapter();
+
+      if (adapter && typeof adapter.orderDetailUrl === "function") {
+        const url = adapter.orderDetailUrl(orderNumber);
+        if (url) return [url];
+      }
+      if (adapter && typeof adapter.buildDetailUrl === "function") {
+        const url = adapter.buildDetailUrl(orderNumber);
+        if (url) return [url];
+      }
+
+      const listUrl = (adapter && adapter.ordersListUrl) || CONSTANTS.URLS.WALMART_ORDERS;
+      const baseUrl = `${listUrl}/${orderNumber}`;
+
+      // The Walmart Orchestra platform (.com and .ca) serves in-store receipts
+      // behind ?storePurchase=true; keep the historic dual-URL probe order so
+      // Walmart's resulting URLs are byte-for-byte identical to before.
+      const isWalmartPlatform = /(^|\.)walmart\./i.test(listUrl);
+      if (isWalmartPlatform) {
+        const isLongOrderNumber = String(orderNumber).length >= 20;
+        if (isLongOrderNumber) {
+          return [`${baseUrl}?storePurchase=true`, baseUrl];
+        }
+        return [baseUrl, `${baseUrl}?storePurchase=true`];
+      }
+
+      return [baseUrl];
     };
 
     const createTabLoadWaiter = (tabId, expectedUrl = "") => {
@@ -148,7 +250,7 @@
       return downloadTab;
     };
 
-    const fetchFromUrl = async (orderNumber, url, options = {}) => {
+    const fetchFromUrl = async (orderNumber, url, options = {}, providerId = null) => {
       const { timeoutMs = CONSTANTS.TIMING.DOWNLOAD_TIMEOUT, stabilizeDelayMs = 1000 } = options;
       const tab = await ensureTab(url, timeoutMs);
 
@@ -173,7 +275,7 @@
       // IndexedDB is the only durable store for invoices now (spec §4.1) —
       // no more chrome.storage invoice cache to duplicate this into.
       try {
-        await OrderDb.putInvoice(orderNumber, response.data);
+        await OrderDb.putInvoice(orderNumber, response.data, providerId || activeProviderId());
       } catch (error) {
         console.warn(`Failed to persist invoice #${orderNumber} to order DB:`, error);
       }
@@ -182,6 +284,13 @@
     };
 
     const fetchOrderData = async (orderNumber, options = {}) => {
+      // Resolve the concrete provider partition that owns THIS order once, up
+      // front, and thread it through every per-order DB read/write and URL
+      // build below. Under the combined "All providers" view app.provider is
+      // the PROVIDER_ALL sentinel (not a real partition); for a concrete active
+      // provider this returns app.provider directly with no extra DB reads.
+      const providerId = await resolveProviderId(orderNumber);
+
       // Fast path (spec §4.2): an already-downloaded, current-schema
       // invoice sits in IndexedDB — return it and open NO tab at all. This
       // is what makes re-exporting an already-downloaded order instant,
@@ -189,7 +298,7 @@
       // expired.
       let storedInvoice = null;
       try {
-        const record = await OrderDb.getOrder(orderNumber);
+        const record = await OrderDb.getOrder(orderNumber, providerId);
         storedInvoice = (record && record.invoice) || null;
       } catch (error) {
         console.warn(`Order DB unavailable for fast-path lookup of #${orderNumber}:`, error);
@@ -204,13 +313,13 @@
       // fetch live, but keep the stale record around unused unless every
       // live fetch fails, so a failed re-fetch never destroys usable data
       // (fetchFromUrl overwrites the DB record on success).
-      const [primaryUrl, fallbackUrl] = buildOrderUrls(orderNumber);
+      const [primaryUrl, fallbackUrl] = buildOrderUrls(orderNumber, providerId);
       try {
-        return await fetchFromUrl(orderNumber, primaryUrl, options);
+        return await fetchFromUrl(orderNumber, primaryUrl, options, providerId);
       } catch (error) {
         console.error(`Primary fetch failed for order #${orderNumber}:`, error);
         try {
-          return await fetchFromUrl(orderNumber, fallbackUrl, options);
+          return await fetchFromUrl(orderNumber, fallbackUrl, options, providerId);
         } catch (fallbackError) {
           if (isUsableInvoiceData(storedInvoice)) {
             console.warn(
@@ -642,9 +751,120 @@
     }
   }
 
+  /**
+   * Fetch full invoice details for the selected orders into IndexedDB WITHOUT
+   * producing any file. Same per-order scrape+store the download flow uses
+   * (OrderDataFetcher.fetchOrderData persists each invoice), just without the
+   * export step — so the user can build up their local library / dashboard
+   * data and download later, instantly, from storage.
+   *
+   * fetchOrderData's fast path means orders whose current-schema invoice is
+   * already stored are skipped (no tab opened), so this is cheap to re-run.
+   * @param {string[]} [orderNumbersOverride] - specific orders; defaults to the selection
+   */
+  async function loadSelectedOrdersToDb(orderNumbersOverride) {
+    try {
+      if (app && app.downloadInProgress) {
+        showGuardBanner("A run is already in progress. Please wait.");
+        return;
+      }
+
+      const selectedOrders =
+        Array.isArray(orderNumbersOverride) && orderNumbersOverride.length > 0
+          ? orderNumbersOverride
+          : getSelectedOrderNumbers();
+
+      if (selectedOrders.length === 0) {
+        showGuardBanner("Select at least one order to save.");
+        return;
+      }
+
+      const button = document.getElementById("loadToLibrary");
+      if (app) app.downloadInProgress = true;
+      view.setButtonLoading(button, true);
+      // The download pair shares the downloadInProgress guard; disable it too.
+      ["singleFileDownload", "multiFileDownload"].forEach((id) => {
+        const b = document.getElementById(id);
+        if (b) b.disabled = true;
+      });
+      view.clearStatusBanner("downloadResultBanner");
+      view.showDownloadProgress(0, selectedOrders.length, {
+        onCancel: () => {
+          if (app) app.downloadInProgress = false;
+        },
+      });
+
+      let extractionWarningsDetected = false;
+      const onProgress = (current, total, orderNumber, actionText) => {
+        view.updateDownloadProgress(current, total, `${actionText} ${current} / ${total} (#${orderNumber})`);
+      };
+
+      try {
+        const { failedOrders, cancelled } = await runDownloadQueue({
+          selectedOrders,
+          actionText: CONSTANTS.TEXT.COLLECTING,
+          options: {
+            timeoutMs: CONSTANTS.TIMING.COLLECTION_TIMEOUT,
+            stabilizeDelayMs: CONSTANTS.TIMING.PAGE_LOAD_WAIT,
+          },
+          errorPrefix: "Failed to load data for order",
+          onOrder: async (orderNumber, options) => {
+            // fetchOrderData stores the invoice in IndexedDB as a side effect.
+            const data = await OrderDataFetcher.fetchOrderData(orderNumber, options);
+            if (checkExtractionWarnings(orderNumber, data)) {
+              extractionWarningsDetected = true;
+            }
+          },
+          onProgress,
+        });
+
+        if (cancelled) {
+          showDownloadResultBanner({ variant: "info", message: "Saving cancelled." });
+          return;
+        }
+        if (extractionWarningsDetected) {
+          view.showExtractionWarning();
+        }
+
+        const succeeded = selectedOrders.length - failedOrders.length;
+        if (failedOrders.length === 0) {
+          showDownloadResultBanner({
+            variant: "success",
+            message: `Saved ${succeeded} order${succeeded === 1 ? "" : "s"} to your library — no file downloaded.`,
+          });
+        } else {
+          showDownloadResultBanner({
+            variant: "danger",
+            message: `${succeeded} of ${selectedOrders.length} saved — ${failedOrders.length} failed (${escapeHtml(formatFailedOrders(failedOrders))})`,
+            retryOrders: failedOrders,
+          });
+        }
+      } catch (error) {
+        console.error("Load-to-library error:", error);
+        showDownloadResultBanner({
+          variant: "danger",
+          message: "An error occurred while saving. Some orders may have failed.",
+        });
+      } finally {
+        await OrderDataFetcher.cleanup();
+        view.hideDownloadProgress();
+        view.setButtonLoading(button, false);
+        if (app) app.downloadInProgress = false;
+        view.updateDownloadButtonsState();
+        // Reflect the newly-saved invoices (✓ saved chips, dashboard data).
+        if (Sidepanel.actions && Sidepanel.actions.checkCurrentTab) {
+          Sidepanel.actions.checkCurrentTab();
+        }
+      }
+    } catch (outerError) {
+      console.error("Error in loadSelectedOrdersToDb:", outerError);
+    }
+  }
+
   Sidepanel.download = {
     OrderDataFetcher,
     downloadSelectedOrders,
+    loadSelectedOrdersToDb,
     exportCombinedOrders,
     exportOneOrder,
   };

@@ -59,6 +59,22 @@ test('buildOrderRowModel: undated record falls back to the Walmart title date (o
   assert.equal(undated.normalizedDate, '');
 });
 
+test('buildOrderRowModel: the request order date WINS over the delivery date when both are present', () => {
+  const sandbox = loadUtils();
+
+  // A PurchaseHistoryV3 summary carries the specific order date (orderDate) AND
+  // a later delivery date. The row must show the ORDER date, never delivery.
+  const row = sandbox.buildOrderRowModel('30', {
+    title: 'Mar 04, 2026 order',
+    summary: {
+      orderDate: '2026-03-04T17:59:29-08:00', // when the order was placed
+      deliveredDate: '2026-03-09T16:40:21-05:00', // 5 days later — must NOT win
+    },
+  });
+
+  assert.equal(row.normalizedDate, '2026-03-04', 'uses the order date from the request, not the delivery date');
+});
+
 test('buildOrderRowModel: undated record falls back to the delivered date before the title', () => {
   const sandbox = loadUtils();
 

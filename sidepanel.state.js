@@ -10,7 +10,23 @@
     includeThumbnails: false,
     legacyExcel: false,
     incrementalCollect: false,
+    // Optional pure request-replay collection (direct API requests, no
+    // pagination). OFF by default: Walmart bot-challenges blindly-replayed
+    // requests, so the reliable default is to paginate and capture the page's
+    // OWN (un-challenged) requests for dates. Opt in via Settings.
+    fastFetch: false,
     currentOrdersUrl: null,
+    // The ACTIVE provider selection driving the whole panel — a provider id,
+    // or Sidepanel.providers.PROVIDER_ALL for the combined view. Hydrated from
+    // Sidepanel.providers.getActive() on load and updated by the header
+    // dropdown (sidepanel.js). Defaults to WALMART_US so the Walmart.com-only
+    // flow is byte-for-byte unchanged until the user opts other providers in.
+    provider: "WALMART_US",
+    // Concrete provider id the last collection started from THIS panel runs
+    // for — the fallback scope for GET_PROGRESS responses (which don't name a
+    // provider), so one provider's live progress never renders into another
+    // provider's view (sidepanel.actions.js's progressMatchesActiveScope).
+    collectionProvider: null,
   };
 
   Sidepanel.state = {

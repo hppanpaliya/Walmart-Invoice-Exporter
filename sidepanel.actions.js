@@ -7,60 +7,94 @@
     return app.downloadInProgress || app.collectionInProgress;
   }
 
-  function switchToWalmartOrdersTab() {
-    chrome.tabs.query({ url: `${CONSTANTS.URLS.WALMART_ORDERS}*` }, function (tabs) {
-      if (tabs && tabs.length > 0) {
-        chrome.tabs.update(tabs[0].id, { active: true });
-        chrome.windows.update(tabs[0].windowId, { focused: true });
-      } else {
-        chrome.tabs.create({ url: CONSTANTS.URLS.WALMART_ORDERS });
-      }
-    });
+  /**
+   * The active selection (a provider id, or Sidepanel.providers.PROVIDER_ALL
+   * for the combined view). Always a real value — defaults to WALMART_US, so
+   * everything below behaves exactly as the Walmart-only tool did when the
+   * provider contract module isn't loaded (unit tests) or nothing is opted in.
+   */
+  function activeSelection() {
+    return (app && app.provider) || "WALMART_US";
   }
 
-  function showOffTabWarning() {
-    view.setUIEnabled(false);
-    view.applyLayout(view.UI_MODES.OFF_TAB);
-    view.ensureOffTabWarning(switchToWalmartOrdersTab);
+  /**
+   * The concrete provider id a collection runs for. The background crawls one
+   * provider at a time, so the combined "All providers" view collects for the
+   * always-on default (WALMART_US) rather than refusing outright.
+   */
+  function collectionProviderId() {
+    const active = activeSelection();
+    const providers = Sidepanel.providers;
+    if (providers && active === providers.PROVIDER_ALL) return providers.DEFAULT_PROVIDER;
+    return active;
+  }
 
-    chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.GET_PROGRESS }, function (response) {
-      if (response && response.orderNumbers && response.orderNumbers.length > 0) {
-        const container = document.getElementById("orderNumbersContainer");
-        if (!container) return;
-        if (!container.querySelector(".order-list") || container.querySelector(".order-list").children.length === 0) {
-          view.displayOrderNumbers(response.orderNumbers, response.additionalFields);
-        }
+  /**
+   * Provider ids to read OrderDb for: the single active provider, or every
+   * enabled provider under the combined view (Sidepanel.providers.scopeIds).
+   * @returns {Promise<string[]>}
+   */
+  async function activeScopeIds() {
+    const active = activeSelection();
+    const providers = Sidepanel.providers;
+    if (providers && typeof providers.scopeIds === "function") {
+      try {
+        return await providers.scopeIds(active);
+      } catch (error) {
+        console.warn("Could not resolve the active provider scope:", error);
       }
-    });
+    }
+    return [active];
+  }
+
+  /**
+   * Whether a GET_PROGRESS response's collection belongs to the active
+   * selection. The background runs ONE collection at a time; when its
+   * provider isn't the one this panel is showing, the panel must not render
+   * that collection's progress or overlay its order numbers (a Walmart crawl
+   * never bleeds into an Amazon view, and vice-versa). The response carries
+   * no provider field today, so the panel falls back to the provider it last
+   * started a collection for (app.collectionProvider), then WALMART_US —
+   * matching the background's own default.
+   * @param {Object|null} response - a GET_PROGRESS response
+   * @returns {boolean}
+   */
+  function progressMatchesActiveScope(response) {
+    const active = activeSelection();
+    const providers = Sidepanel.providers;
+    if (providers && active === providers.PROVIDER_ALL) return true;
+    const progressProvider = (response && response.provider) || app.collectionProvider || "WALMART_US";
+    return progressProvider === active;
   }
 
   function checkCurrentTab() {
+    const providerId = collectionProviderId();
+
     // Embedded in the full-page dashboard (dashboard.html iframes
     // sidepanel.html): there is no meaningful "active tab" to gate on — the
-    // dashboard tab itself is the app context. Skip the off-tab flow, render
-    // the stored orders, and give collection the default orders URL (the
-    // worker opens the walmart.com/orders tab itself when collecting).
+    // dashboard tab itself is the app context. Render the stored orders and
+    // give a Walmart collection the default orders URL (the worker opens the
+    // provider's own tab itself when collecting).
     if (window.self !== window.top) {
       view.clearOffTabWarning();
       view.setUIEnabled(true);
       view.applyLayout(view.UI_MODES.MAIN_ORDERS);
-      app.currentOrdersUrl = CONSTANTS.URLS.WALMART_ORDERS;
+      app.currentOrdersUrl = providerId === "WALMART_US" ? CONSTANTS.URLS.WALMART_ORDERS : null;
       view.updateFilterNotice(null);
       loadCacheOnMainPage();
       return;
     }
 
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      if (!tabs || tabs.length === 0) {
-        showOffTabWarning();
-        return;
-      }
-
-      const tab = tabs[0];
-      const url = tab.url;
+      const tab = tabs && tabs[0];
+      const url = tab && tab.url;
       view.clearOffTabWarning();
 
-      if (url && url.startsWith(CONSTANTS.URLS.WALMART_ORDERS)) {
+      // The Walmart-on-its-own-tab experience is IDENTICAL to before:
+      // single-order view on an order page, live filter notice and a
+      // filter-scoped crawl URL on the list page. (Under the combined view
+      // providerId resolves to WALMART_US, so this branch still applies.)
+      if (url && url.startsWith(CONSTANTS.URLS.WALMART_ORDERS) && providerId === "WALMART_US") {
         const cleanUrl = url.replace(/\/$/, "");
         const orderPath = cleanUrl.split("/orders/")[1];
         app.currentOrdersUrl = null;
@@ -89,9 +123,16 @@
           loadCacheOnMainPage();
         }
       } else {
+        // Tab-independence: any other tab — or a non-Walmart provider — is
+        // NOT a blocked state. Show the active provider's saved orders from
+        // OrderDb with Collect enabled; the background worker opens the
+        // provider's own orders page in its own tab when collecting, so
+        // nothing here depends on where the user happens to be browsing.
         app.currentOrdersUrl = null;
+        view.setUIEnabled(true);
+        view.applyLayout(view.UI_MODES.MAIN_ORDERS);
         view.updateFilterNotice(null);
-        showOffTabWarning();
+        loadCacheOnMainPage();
       }
     });
   }
@@ -107,10 +148,25 @@
       });
       return;
     }
-    if (!app.currentOrdersUrl) {
-      showOffTabWarning();
-      return;
+    // The crawl URL never blocks on the current tab. WALMART_US on its own
+    // orders tab keeps crawling the LIVE tab URL exactly as before (preserves
+    // filter-scoped crawls); everywhere else — Walmart off its tab, or any
+    // other provider — the background worker opens the adapter's own orders
+    // list (ordersListUrl) in its OWN tab.
+    const providerId = collectionProviderId();
+    const providers = Sidepanel.providers;
+    let collectionUrl = providerId === "WALMART_US" ? app.currentOrdersUrl : null;
+    if (!collectionUrl && providers && typeof providers.ordersListUrlFor === "function") {
+      collectionUrl = providers.ordersListUrlFor(providerId);
     }
+    if (!collectionUrl && typeof ProviderRegistry !== "undefined") {
+      const adapter = ProviderRegistry.getById(providerId);
+      if (adapter && adapter.ordersListUrl) collectionUrl = adapter.ordersListUrl;
+    }
+    if (!collectionUrl) collectionUrl = CONSTANTS.URLS.WALMART_ORDERS;
+
+    // Scope this run's progress to its provider (progressMatchesActiveScope).
+    app.collectionProvider = providerId;
 
     const pageLimitInput = document.getElementById("pageLimit");
     const startButton = document.getElementById("startCollection");
@@ -126,9 +182,18 @@
     chrome.runtime.sendMessage(
       {
         action: CONSTANTS.MESSAGES.START_COLLECTION,
-        url: app.currentOrdersUrl,
+        url: collectionUrl,
         pageLimit: pageLimit,
         incremental: Boolean(app.incrementalCollect),
+        // Optional pure request-replay mode (OFF by default). The reliable
+        // default paginates and reads dates from the page's own captured
+        // requests; this flag is opt-in for users where blind replay works.
+        fastFetch: Boolean(app.fastFetch),
+        // Always name the provider so the background gate is explicit. Defaults
+        // to WALMART_US, so nothing changes for the Walmart.com-only flow; the
+        // header provider dropdown (sidepanel.js) drives app.provider, and the
+        // combined "All providers" view collects for WALMART_US.
+        provider: providerId,
       },
       function (response) {
         if (response && response.status === "started") {
@@ -169,18 +234,34 @@
    * (spec §4.3). Collection still upserts every page into OrderDb via
    * putSummaries as it goes, so the overlay only ever needs to cover a
    * short lag, not the whole in-progress result set.
+   *
+   * Reads are scoped to the ACTIVE provider selection: one provider's records,
+   * or the union of every enabled provider's under the combined view. The
+   * overlay is additionally scope-guarded so another provider's in-flight
+   * collection never leaks its order numbers into this view.
    * @param {Object|null} [progress] - a GET_PROGRESS response to overlay
    * @returns {Promise<boolean>} whether anything was rendered
    */
   async function displayOrdersFromDb(progress = null) {
     try {
-      const records = await OrderDb.getAllOrders();
+      const scopeIds = await activeScopeIds();
+      const perProvider = await Promise.all(scopeIds.map((providerId) => OrderDb.getAllOrders(providerId)));
+      const records = perProvider.flat();
       const withData = records.filter((record) => record.summary || record.invoice);
       withData.sort((a, b) => String(b.orderDate).localeCompare(String(a.orderDate)));
 
-      const orderNumbers = withData.map((record) => record.orderNumber);
-      const titles = Object.fromEntries(withData.map((record) => [record.orderNumber, record.title || ""]));
+      // Dedupe by order number — under the combined view the same number
+      // could theoretically exist in two providers' partitions, and one row
+      // per number is what the checkbox/id contract downstream expects.
+      const orderNumbers = [];
+      const titles = {};
+      withData.forEach((record) => {
+        if (Object.prototype.hasOwnProperty.call(titles, record.orderNumber)) return;
+        orderNumbers.push(record.orderNumber);
+        titles[record.orderNumber] = record.title || "";
+      });
 
+      if (progress && !progressMatchesActiveScope(progress)) progress = null;
       if (progress && Array.isArray(progress.orderNumbers)) {
         const known = new Set(orderNumbers);
         progress.orderNumbers.forEach((orderNumber) => {
@@ -191,7 +272,19 @@
         });
       }
 
-      if (orderNumbers.length === 0) return false;
+      if (orderNumbers.length === 0) {
+        // Nothing to show for the active scope — clear any rows still on
+        // screen instead of leaving them there. This is what makes "Delete all
+        // saved data" (and switching to an empty provider) take effect
+        // immediately, rather than the stale list lingering until the panel is
+        // closed and reopened. A running collection never reaches here: its
+        // live order numbers are merged into `orderNumbers` just above, so the
+        // list is only empty when there is genuinely nothing to display.
+        await view.displayOrderNumbers([]);
+        const staleBanner = document.getElementById("cacheInfo");
+        if (staleBanner) staleBanner.remove();
+        return false;
+      }
 
       await view.displayOrderNumbers(orderNumbers, titles);
 
@@ -219,8 +312,12 @@
    */
   async function renderOrderList(response) {
     const shown = await displayOrdersFromDb(response);
+    // Everything progress-derived is scoped: a collection running for a
+    // DIFFERENT provider contributes neither its raw order numbers nor its
+    // "collecting" macro state to this provider's view.
+    const matches = progressMatchesActiveScope(response);
     let hasOrders = shown;
-    if (!shown && response && response.orderNumbers && response.orderNumbers.length > 0) {
+    if (!shown && matches && response && response.orderNumbers && response.orderNumbers.length > 0) {
       await view.displayOrderNumbers(response.orderNumbers, response.additionalFields);
       hasOrders = true;
     }
@@ -228,7 +325,7 @@
     // history OR a still-running collection, even one that hasn't found
     // anything yet (handleStartCollection already reveals it optimistically;
     // this keeps it correct on every subsequent poll/reload too).
-    view.updateMacroState(hasOrders || Boolean(response && response.isCollecting));
+    view.updateMacroState(hasOrders || Boolean(matches && response && response.isCollecting));
   }
 
   function loadCacheOnMainPage() {
@@ -241,10 +338,21 @@
     chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.GET_PROGRESS }, function (response) {
       if (!response) return;
 
+      // One collection runs in the background at a time; only paint its
+      // page/count progress when it belongs to the provider this panel is
+      // showing (spec: a Walmart crawl's progress must never render into an
+      // Amazon view). The collecting/buttons state itself stays global —
+      // Stop still controls the one running crawl from any view.
+      const matches = progressMatchesActiveScope(response);
+      const progressElement = document.getElementById("progress");
+      if (!matches && progressElement) progressElement.style.display = "none";
+
       if (response.isCollecting) {
         app.collectionInProgress = true;
         setCollectionButtonsState({ running: true });
-        view.updateProgressUI(response.currentPage, response.pageLimit, true, (response.orderNumbers || []).length);
+        if (matches) {
+          view.updateProgressUI(response.currentPage, response.pageLimit, true, (response.orderNumbers || []).length);
+        }
         // Checkboxes are disabled during collection (below), so the order
         // list re-render always lands on 0 selected — updateDownloadButtonsState
         // (called from within displayOrderNumbers) already reflects that.
@@ -253,7 +361,7 @@
         setCheckboxesDisabled(true);
       } else {
         app.collectionInProgress = false;
-        view.updateProgressUI(response.currentPage, response.pageLimit, false);
+        if (matches) view.updateProgressUI(response.currentPage, response.pageLimit, false);
         // Chained (not fire-and-forget): setCollectionButtonsState's
         // default label reads state.app.hasOrders, which renderOrderList
         // only refreshes once its async DB read resolves — must run first.
@@ -269,8 +377,8 @@
 
   Sidepanel.actions = {
     isOperationRunning,
-    switchToWalmartOrdersTab,
-    showOffTabWarning,
+    activeScopeIds,
+    progressMatchesActiveScope,
     checkCurrentTab,
     handleStartCollection,
     handleStopCollection,
