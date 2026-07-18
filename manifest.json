@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Walmart Invoice Exporter",
-  "version": "7.0",
-  "description": "Download Walmart order details in Excel, CSV, JSON, or printable receipt format",
+  "version": "7.3",
+  "description": "Export your Walmart order history to Excel, CSV, or PDF — and see where the money went on a built-in spending dashboard.",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "storage", "sidePanel"],
   "host_permissions": ["https://www.walmart.com/*"],
