@@ -1811,6 +1811,11 @@ const CONSTANTS = {
     // in-page API replay (adapters that set supportsFastFetch). Used only when
     // the `fastFetch` setting is on; otherwise the classic per-page flow runs.
     COLLECT_ALL_FAST: 'collectAllFast',
+    // Fired by the content script during Fast Collect after each page so the
+    // panel shows live progress (page number + orders) instead of waiting for
+    // the whole history in silence. Fire-and-forget; the final COLLECT_ALL_FAST
+    // response still carries the complete result.
+    FAST_COLLECT_PROGRESS: 'fastCollectProgress',
     CLICK_NEXT_BUTTON: 'clickNextButton',
     BLOCK_IMAGES: 'blockImagesForDownload',
     GET_ORDER_DATA: 'getOrderData',

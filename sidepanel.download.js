@@ -20,6 +20,9 @@
 
   const OrderDataFetcher = (() => {
     let downloadTab = null;
+    // Whether the reused fast-invoice list tab has had a moment to initialize
+    // its content script + main-world bridge. Reset when the tab is closed.
+    let fastTabWarmedUp = false;
     // Older cached invoices (pre-v3 item-dedup fix) may contain doubled
     // items with $0.00 prices — they are re-fetched, never trusted.
     const MIN_ORDER_SCHEMA_VERSION = CONSTANTS.ORDER_SCHEMA_VERSION;
@@ -272,6 +275,13 @@
 
       const listUrl = (adapter && adapter.ordersListUrl) || CONSTANTS.URLS.WALMART_ORDERS;
       const tab = await ensureTab(listUrl, timeoutMs);
+      // Give a freshly-opened list tab a beat to install its content script and
+      // main-world bridge before the first message, so the first order doesn't
+      // fall back to a full order-page load. Reused tab → no wait.
+      if (!fastTabWarmedUp) {
+        await delay(800);
+        fastTabWarmedUp = true;
+      }
 
       let response;
       try {
@@ -397,6 +407,7 @@
     };
 
     const cleanup = async () => {
+      fastTabWarmedUp = false;
       if (!downloadTab) return;
       try {
         await ChromeApi.tabsRemove(downloadTab.id);

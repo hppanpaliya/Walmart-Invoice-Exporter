@@ -152,6 +152,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     [CONSTANTS.MESSAGES.STOP_COLLECTION]: handleStopCollection,
     [CONSTANTS.MESSAGES.GET_PROGRESS]: handleGetProgress,
     [CONSTANTS.MESSAGES.RESET_SESSION_STATE]: handleResetSessionState,
+    [CONSTANTS.MESSAGES.FAST_COLLECT_PROGRESS]: handleFastCollectProgress,
   };
 
   const handler = handlers[request.action];
@@ -323,6 +324,50 @@ function handleGetProgress(_request, sendResponse) {
   // snapshot, so a dead crawl never reports itself as still running.
   loadSessionState().then(respond);
   return true; // Indicate async response
+}
+
+/**
+ * Live progress from a Fast Collect run: the content script sends one of these
+ * per page as it fetches, so the panel's GET_PROGRESS polling shows the page
+ * number and the growing order list in real time instead of nothing until the
+ * whole history is done. Merges exactly like the classic per-page path, and
+ * persists each page to OrderDb so the list shows dates as it fills.
+ */
+function handleFastCollectProgress(request, sendResponse) {
+  // Ignore stray progress that doesn't belong to the run this worker is driving.
+  if (CollectionState.isCollecting) {
+    if (request.page) CollectionState.currentPage = request.page;
+
+    (request.orderNumbers || []).forEach((num) => CollectionState.allOrderNumbers.add(num));
+
+    if (request.additionalFields) {
+      CollectionState.allAdditionalFields = {
+        ...CollectionState.allAdditionalFields,
+        ...request.additionalFields,
+      };
+    }
+    if (request.orderSummaries) {
+      Object.entries(request.orderSummaries).forEach(([orderNumber, summary]) => {
+        const existing = CollectionState.allOrderSummaries[orderNumber];
+        if (existing && isPayloadQualitySummary(existing) && !isPayloadQualitySummary(summary)) {
+          return;
+        }
+        CollectionState.allOrderSummaries[orderNumber] = summary;
+      });
+    }
+
+    // Persist this page so the panel's DB-backed render shows dated rows as the
+    // collection fills, not just bare order numbers.
+    OrderDb.putSummaries(
+      request.orderSummaries || {},
+      request.additionalFields || {},
+      CollectionState.provider
+    ).catch((error) => console.warn("Failed to persist Fast Collect page to order DB:", error));
+
+    saveSessionState();
+  }
+  sendResponse({ status: "ok" });
+  return false;
 }
 
 /**

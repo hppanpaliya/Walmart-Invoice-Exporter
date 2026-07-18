@@ -809,6 +809,25 @@ const PurchaseHistoryDataSource = (() => {
     const seen = new Set();
     const merged = { orderNumbers: [], additionalFields: {}, orderSummaries: {}, pages: 0 };
 
+    // Tell the panel (via the background) about each page the moment it lands,
+    // so the order count, the page number, and the list update live instead of
+    // the user staring at a spinner until the whole history is done.
+    const reportProgress = (snapshot) => {
+      if (isTest || !snapshot) return;
+      try {
+        chrome.runtime.sendMessage({
+          action: CONSTANTS.MESSAGES.FAST_COLLECT_PROGRESS,
+          page: merged.pages,
+          orderNumbers: snapshot.orderNumbers || [],
+          additionalFields: snapshot.additionalFields || {},
+          orderSummaries: snapshot.orderSummaries || {},
+        });
+      } catch (_) {
+        // Panel/background not reachable — progress is best-effort; the final
+        // COLLECT_ALL_FAST response still carries the complete result.
+      }
+    };
+
     const absorb = (snapshot) => {
       if (!snapshot) return null;
       snapshot.orderNumbers.forEach((num) => {
@@ -819,6 +838,7 @@ const PurchaseHistoryDataSource = (() => {
       Object.assign(merged.additionalFields, snapshot.additionalFields);
       Object.assign(merged.orderSummaries, snapshot.orderSummaries);
       merged.pages += 1;
+      reportProgress(snapshot);
       return snapshot.nextPageCursor || null; // null => no further page
     };
 
