@@ -8,6 +8,8 @@
 
 ### Fixed
 - **Product links survive Walmart's payload change** (issue #14 follow-up): Walmart removed the product URL from the order page's embedded data, so links now fall back to being built from the item id (`walmart.com/ip/<id>`) — item links keep working even if the visible page markup changes again.
+- **The order list no longer resets while collecting**: updates now append in place instead of rebuilding the list every second, so your scroll position, checked orders, and the expanded row all survive a live collection.
+- **Years-old orders get real dates**: when an old order has no date anywhere in Walmart's data, the date is recovered from Walmart's own order title ("Jun 15, 2022 order") — the same date walmart.com shows — instead of piling up under "NO DATE". Applies to the list, filters, and the dashboard, including orders you've already collected.
 - CI unit-test job now installs dependencies, so the xlsx-verifying tests actually run.
 
 ## [7.0] - July 17, 2026
