@@ -19,6 +19,11 @@ jobs:
         with:
           node-version: "22"
 
+      # The unit tests parse real generated .xlsx output via the exceljs
+      # devDependency, so the test job needs node_modules too.
+      - name: Install dev dependencies
+        run: npm ci
+
       - name: Syntax check every extension script
         run: |
           for f in *.js; do
