@@ -268,6 +268,10 @@ const PurchaseHistoryDataSource = (() => {
       // Years-old orders omit orderDate from the payload; their title
       // ("Jun 15, 2022 order") still carries the full date Walmart shows.
       orderDate: order?.orderDate || parseWalmartTitleDate(order?.title || order?.shortTitle || "") || "",
+      // Full ISO timestamp per delivery group (live-verified 2026-07) —
+      // the "Delivered on …" date Walmart shows. Kept as a fallback date
+      // source for orders whose orderDate/title yield nothing.
+      deliveredDate: groups.map((group) => group?.deliveredDate || group?.deliveryDate || "").find(Boolean) || "",
       orderType: cleanText(order?.type || ""),
       isInStore: Boolean(order?.isInStore),
       itemCount: order?.itemCount ?? "",
