@@ -51,7 +51,7 @@ Walmart Invoice Exporter collects every order from walmart.com/orders, saves it 
 
 Bulk downloads work best with Chrome's "Ask where to save each file" setting off — the in-app Help & FAQ walks you through it.
 
-★ WHAT'S NEW IN 7.0
+★ WHAT'S NEW IN 7.3
 • All-new Spending Dashboard — a full page with monthly charts, price watch, and drill-down export
 • New export formats: CSV, JSON, PDF, and printable receipts alongside Excel
 • Dark mode, redesigned order list, and a Settings page
