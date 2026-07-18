@@ -6,7 +6,7 @@
 'use strict';
 
 const path = require('node:path');
-const { launch, collectOrders, renderOrderList } = require('./harness');
+const { launch, collectOrders, renderOrderList, seedOrderHistory } = require('./harness');
 
 const OUT = process.argv[2] || '.';
 const HEIGHT = 860;
@@ -93,6 +93,42 @@ async function setTheme(panel, theme) {
     );
     console.log(`overflow @280px: ${overflow}px ${overflow > 0 ? '*** HORIZONTAL SCROLL ***' : '(none, good)'}`);
     await shot(panel, '09-list-narrow-280');
+
+    // ---- Full-page dashboard (dashboard.html) ----
+    await seedOrderHistory(panel);
+    const dash = await panel.context().newPage();
+    await dash.setViewportSize({ width: 1280, height: 940 });
+    await dash.goto(panel.url().replace('sidepanel.html', 'dashboard.html'));
+    await dash.waitForSelector('.cbar', { timeout: 10000 });
+    await dash.waitForTimeout(600);
+    await dash.screenshot({ path: path.join(OUT, '10-dashboard-1280-light.png') });
+    console.log('saved 10-dashboard-1280-light.png');
+
+    await dash.locator('.cbar').nth(1).click();
+    await dash.waitForTimeout(300);
+    await dash.screenshot({ path: path.join(OUT, '11-dashboard-month-scoped.png') });
+    console.log('saved 11-dashboard-month-scoped.png');
+    await dash.locator('#backChip').click();
+
+    // Dark via the REAL mechanism (the shared storage setting) so the page
+    // AND the embedded panel both switch — exercising the live theme sync.
+    await dash.evaluate(() => chrome.storage.local.set({ theme: 'dark' }));
+    await dash.waitForTimeout(400);
+    await dash.screenshot({ path: path.join(OUT, '12-dashboard-1280-dark.png') });
+    console.log('saved 12-dashboard-1280-dark.png');
+    await dash.evaluate(() => chrome.storage.local.set({ theme: 'system' }));
+    await dash.waitForTimeout(300);
+
+    // Below the rail breakpoint: single column, panel stacks underneath
+    await dash.setViewportSize({ width: 900, height: 940 });
+    await dash.waitForTimeout(300);
+    await dash.screenshot({ path: path.join(OUT, '13-dashboard-narrow-900.png') });
+    console.log('saved 13-dashboard-narrow-900.png');
+
+    const dashOverflow = await dash.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    );
+    console.log(`dashboard overflow @900px: ${dashOverflow}px ${dashOverflow > 0 ? '*** HORIZONTAL SCROLL ***' : '(none, good)'}`);
   } finally {
     await close();
   }
