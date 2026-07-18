@@ -6,10 +6,18 @@
     <meta charset="UTF-8">
     <link rel="stylesheet" href="sidepanel.css">
     <script src="exceljs.bare.min.js"></script>
+    <script src="pdflite.js"></script>
     <script src="utils.js"></script>
+    <script src="orderdb.js"></script>
+    <script src="sidepanel.state.js"></script>
+    <script src="sidepanel.components.js"></script>
+    <script src="sidepanel.view.js"></script>
+    <script src="sidepanel.settings.js"></script>
+    <script src="sidepanel.download.js"></script>
+    <script src="sidepanel.actions.js"></script>
 </head>
 
-<body>
+<body class="first-run">
     <!-- Main View -->
     <div id="mainView" class="view active">
         <div class="header">
@@ -17,107 +25,171 @@
                 <path
                     d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
-            <h1>Walmart Invoice Exporter</h1>
-            <button id="faqButton" class="faq-button">
-                <svg width="16" height="16" viewBox="0 0 29.536 29.536" fill="currentColor">
-                    <g>
-                        <path d="M14.768,0C6.611,0,0,6.609,0,14.768c0,8.155,6.611,14.767,14.768,14.767s14.768-6.612,14.768-14.767
-                            C29.535,6.609,22.924,0,14.768,0z M14.768,27.126c-6.828,0-12.361-5.532-12.361-12.359c0-6.828,5.533-12.362,12.361-12.362
-                            c6.826,0,12.359,5.535,12.359,12.362C27.127,21.594,21.594,27.126,14.768,27.126z"
-                            stroke="currentColor" stroke-width="0.5" />
-                        <path d="M14.385,19.337c-1.338,0-2.289,0.951-2.289,2.34c0,1.336,0.926,2.339,2.289,2.339c1.414,0,2.314-1.003,2.314-2.339
-                            C16.672,20.288,15.771,19.337,14.385,19.337z" stroke="currentColor" stroke-width="0.5" />
-                        <path
-                            d="M14.742,6.092c-1.824,0-3.34,0.513-4.293,1.053l0.875,2.804c0.668-0.462,1.697-0.772,2.545-0.772
-                            c1.285,0.027,1.879,0.644,1.879,1.543c0,0.85-0.67,1.697-1.494,2.701c-1.156,1.364-1.594,2.701-1.516,4.012l0.025,0.669h3.42
-                            v-0.463c-0.025-1.158,0.387-2.162,1.311-3.215c0.979-1.08,2.211-2.366,2.211-4.321C19.705,7.968,18.139,6.092,14.742,6.092z"
-                            stroke="currentColor" stroke-width="0.5" />
-                    </g>
-                </svg>
-                <b>Help & FAQ</b>
-            </button>
+            <h1><span class="header-title-text">Walmart Invoice Exporter</span> <span id="versionBadge" class="version-badge"></span></h1>
+            <!-- Compact icon buttons (spec §5.4/P4) — fixes the old
+                 text-button header crowding at narrow widths. -->
+            <div class="header-actions" id="headerActions">
+                <button id="dashboardButton" class="icon-button" title="Open spending dashboard" aria-label="Open spending dashboard">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="20" x2="18" y2="10" />
+                        <line x1="12" y1="20" x2="12" y2="4" />
+                        <line x1="6" y1="20" x2="6" y2="14" />
+                    </svg>
+                </button>
+                <button id="settingsButton" class="icon-button" title="Settings" aria-label="Settings">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                </button>
+                <button id="faqButton" class="icon-button" title="Help & FAQ" aria-label="Help & FAQ">
+                    <svg width="16" height="16" viewBox="0 0 29.536 29.536" fill="currentColor">
+                        <g>
+                            <path d="M14.768,0C6.611,0,0,6.609,0,14.768c0,8.155,6.611,14.767,14.768,14.767s14.768-6.612,14.768-14.767
+                                C29.535,6.609,22.924,0,14.768,0z M14.768,27.126c-6.828,0-12.361-5.532-12.361-12.359c0-6.828,5.533-12.362,12.361-12.362
+                                c6.826,0,12.359,5.535,12.359,12.362C27.127,21.594,21.594,27.126,14.768,27.126z"
+                                stroke="currentColor" stroke-width="0.5" />
+                            <path d="M14.385,19.337c-1.338,0-2.289,0.951-2.289,2.34c0,1.336,0.926,2.339,2.289,2.339c1.414,0,2.314-1.003,2.314-2.339
+                                C16.672,20.288,15.771,19.337,14.385,19.337z" stroke="currentColor" stroke-width="0.5" />
+                            <path
+                                d="M14.742,6.092c-1.824,0-3.34,0.513-4.293,1.053l0.875,2.804c0.668-0.462,1.697-0.772,2.545-0.772
+                                c1.285,0.027,1.879,0.644,1.879,1.543c0,0.85-0.67,1.697-1.494,2.701c-1.156,1.364-1.594,2.701-1.516,4.012l0.025,0.669h3.42
+                                v-0.463c-0.025-1.158,0.387-2.162,1.311-3.215c0.979-1.08,2.211-2.366,2.211-4.321C19.705,7.968,18.139,6.092,14.742,6.092z"
+                                stroke="currentColor" stroke-width="0.5" />
+                        </g>
+                    </svg>
+                </button>
+            </div>
         </div>
 
+        <!-- Consolidated status strip (spec §5.1): off-tab / filter /
+             extraction warnings and the cache/db-stats/rating-hint notices
+             all render here as Banner elements (sidepanel.components.js),
+             replacing five separate ad-hoc notice styles and insertion
+             points. Individual banners also carry their own role
+             (alert|status) per variant. -->
+        <div id="statusRegion" role="status" aria-live="polite"></div>
+
         <div class="card">
-            <div class="input-group" id="pageLimitGroup">
-                <label for="pageLimit">Number of pages to crawl (0 = unlimited)</label>
-                <input type="number" id="pageLimit" min="0" value="0">
+            <!-- First-run hero (spec v7.1 §A): shown only while body has the
+                 "first-run" class (default in markup below, cleared by
+                 view.updateMacroState once any order exists anywhere). One
+                 invitation only — the list/download sections stay hidden
+                 the whole time this is visible. -->
+            <div class="hero-content" id="heroContent">
+                <div class="hero-icon">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                        <path d="M9 8h10M10 5h7" stroke-dasharray="1 2.4" />
+                    </svg>
+                </div>
+                <h2 class="hero-heading">Export your Walmart orders</h2>
+                <p class="hero-subtext">Loads your order history from the page beside, ready to save as Excel, CSV, or PDF.</p>
             </div>
-            <div class="input-group" id="exportModeGroup">
-                <label for="exportMode">Export mode</label>
-                <select id="exportMode">
-                    <option value="multiple">Multiple files (one per order)</option>
-                    <option value="single">Single file (all items)</option>
-                </select>
-            </div>
+            <!-- Collect-step demotion (spec §5.1/P6): the primary action is
+                 a single button (label depends on macro state — "Load my
+                 orders" first-run, "Check for new orders" returning);
+                 page-limit + "only new" move behind a small disclosure.
+                 Same behavior/storage keys as before. -->
             <div class="button-group" id="buttonGroup">
                 <button id="startCollection" class="btn btn-primary">
-                    <span class="btn-text">Start Collection</span>
+                    <span class="btn-text">Load my orders</span>
                 </button>
                 <button id="stopCollection" class="btn btn-danger" style="display: none;">
                     Stop Collection
                 </button>
             </div>
+            <details class="options-group" id="collectionOptionsGroup">
+                <summary>Options</summary>
+                <div class="input-group" id="pageLimitGroup">
+                    <label for="pageLimit">Number of pages to crawl (0 = unlimited)</label>
+                    <input type="number" id="pageLimit" min="0" value="0">
+                </div>
+                <div class="toggle-group" id="incrementalToggleGroup">
+                    <input type="checkbox" id="incrementalCollect">
+                    <label for="incrementalCollect" title="Stops paginating when a whole page of already-stored orders is reached. Uses the local order database, which persists across sessions.">Only collect new orders (stop at known)</label>
+                </div>
+            </details>
         </div>
 
         <div id="progress"></div>
+        <!-- List + download sections (spec v7.1 §A): entirely hidden while
+             body.first-run — the two-button download pipeline and its
+             ids/checkbox-value contract only exist once real orders have
+             rendered here (sidepanel.view.js's displayOrderNumbers). -->
         <div id="orderNumbersContainer">
-            <!-- Placeholder shown before collection starts -->
+            <!-- Placeholder shown when a render pass finds zero orders
+                 (e.g. a filtered Walmart page with no matches) while the
+                 panel is otherwise in the "returning" macro state. -->
             <div id="collectionPlaceholder">
-                <p class="placeholder-status">Collection has not started. Total pages: 0</p>
-                <h3>Select orders to download (0) - Selected: 0</h3>
-                <div class="checkbox-container">
-                    <input type="checkbox" id="selectAllPlaceholder" disabled>
-                    <label for="selectAllPlaceholder">Select All</label>
-                </div>
-                <div class="order-list placeholder-list">
-                    <p class="no-orders-message">No orders collected yet.</p>
-                </div>
-                <button id="downloadButtonPlaceholder" class="btn btn-success" disabled>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="7 10 12 15 17 10"/>
-                        <line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                    Download as Single File
-                </button>
+                <p class="no-orders-message">No orders collected yet.</p>
             </div>
         </div>
 
-        <!-- Main View Footer -->
-        <footer class="footer main-footer">
-            <div class="footer-container">
-                <h3 class="footer-title">Like the extension?</h3>
+        <!-- Static (spec §5.1): survives every re-render of
+             #orderNumbersContainer above, so an in-progress download's
+             status/progress/cancel controls are never wiped out from under
+             the user by an unrelated order-list refresh. -->
+        <p class="action-caption">Single = one file with every order. Multiple = one file per order.</p>
+        <p class="action-hint" id="downloadDisabledReason">Select at least one order to download.</p>
+        <div id="downloadProgressArea" class="download-progress-area" hidden></div>
 
-                <p class="footer-description">
-                    Leave a review to help others find it.
-                </p>
-
-                <a href="https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe/reviews"
-                    target="_blank" class="rating-button">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polygon
-                            points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
-                        </polygon>
-                    </svg>
-                    Rate on Chrome Web Store
-                </a>
-
-                <p class="footer-note">
-                    Your reviews help me build new features.
-                    <br>
-                    <br>
-                    Made with <span class="heart">❤️</span> by <a href="https://github.com/hppanpaliya"
-                        target="_blank" style="color: var(--primary); text-decoration: none;">Harshal Panpaliya</a>
-                </p>
+        <!-- Format controls (spec §5.1/§5.3): always visible, directly below
+             the two download buttons — no longer a collapsed "Export
+             options" disclosure. -->
+        <div class="export-options-panel" id="exportOptionsPanel">
+            <div class="input-group" id="exportFormatGroup">
+                <label for="exportFormat">Export format</label>
+                <select id="exportFormat">
+                    <option value="xlsx">Excel (.xlsx)</option>
+                    <option value="csv">CSV (.csv)</option>
+                    <option value="json">JSON (.json)</option>
+                    <option value="receipt">Printable receipt (.html)</option>
+                    <option value="pdf">PDF receipt (.pdf)</option>
+                </select>
             </div>
+            <div class="input-group" id="csvPresetGroup" style="display:none">
+                <label for="csvPreset">CSV preset</label>
+                <select id="csvPreset">
+                    <option value="generic">Generic (orders + items)</option>
+                    <option value="quickbooks">QuickBooks (3-column bank)</option>
+                    <option value="xero">Xero (bank statement)</option>
+                </select>
+            </div>
+            <div class="toggle-group" id="thumbnailToggleGroup">
+                <input type="checkbox" id="includeThumbnails">
+                <label for="includeThumbnails" title="Embeds product images in Excel exports. Slower, and falls back to image links when images can't be fetched.">Include product thumbnails</label>
+            </div>
+            <div class="toggle-group toggle-group-minor" id="legacyExcelToggleGroup" style="display:none">
+                <input type="checkbox" id="legacyExcel">
+                <label for="legacyExcel" title="Single-sheet workbook like older versions (before the Orders/Items split).">Use legacy Excel layout</label>
+            </div>
+        </div>
+
+        <!-- Main View Footer (spec v7.1 §E): one small, muted line — the
+             old "Like the extension?" block moved to Settings' About
+             section (sidepanel.settings.js), matching how rating/version
+             info was consolidated there. The FAQ view keeps its own
+             full footer below, unchanged. -->
+        <footer class="footer main-footer main-footer-compact">
+            <p class="footer-line">
+                <svg class="footer-lock-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                <span>Stays on your device</span>
+                <span aria-hidden="true">·</span>
+                <a href="https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe/reviews" target="_blank">Rate</a>
+                <span aria-hidden="true">·</span>
+                <span>by <a href="https://github.com/hppanpaliya" target="_blank">Harshal Panpaliya</a></span>
+            </p>
         </footer>
     </div>
 
     <!-- FAQ View -->
     <div id="faqView" class="view">
         <div class="header">
-            <button id="backButton" class="back-button">
+            <button id="backButton" class="back-button" aria-label="Back to main view">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M19 12H5M12 19l-7-7 7-7"/>
                 </svg>
@@ -150,19 +222,18 @@
                     <p><strong>Single Order Download:</strong></p>
                     <ol>
                         <li>Navigate to a specific Walmart order page</li>
-                        <li>Click the extension icon</li>
-                        <li>Click "Download Invoice"</li>
+                        <li>Click the extension icon — the order appears automatically</li>
+                        <li>Check its box, then click "Single file"</li>
                     </ol>
 
                     <p style="margin-top: 16px;"><strong>Batch Download:</strong></p>
                     <ol>
                         <li>Go to your Walmart order history page (walmart.com/orders)</li>
                         <li>Click the extension icon</li>
-                        <li>Set the number of pages to crawl (0 = unlimited)</li>
-                        <li>Click "Start Collection"</li>
+                        <li>Click "Load my orders" (first time) or "Check for new orders" (after that) — page limit and "only new" are under Options</li>
                         <li>Wait for the order numbers to load</li>
                         <li>Select the orders you want to download</li>
-                        <li>Click "Download Selected Orders"</li>
+                        <li>Click "Single file" (one workbook) or "Multiple files" (one per order)</li>
                     </ol>
 
                     <div class="note">
@@ -222,19 +293,22 @@
 
             <div class="faq-item">
                 <div class="faq-question">
-                    Order Caching System
+                    Saved orders & your data
                     <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="6 9 12 15 18 9"></polyline>
                     </svg>
                 </div>
                 <div class="faq-answer">
-                    <p>This extension includes an intelligent caching system:</p>
+                    <p>Every order you download is saved on this device (in the browser's IndexedDB) — nothing expires and nothing is ever sent anywhere:</p>
                     <ul>
-                        <li><strong>Automatic Caching:</strong> Orders are stored locally after collection</li>
-                        <li><strong>Faster Access:</strong> Previously collected orders appear instantly</li>
-                        <li><strong>Cache Management:</strong> "Clear Cache" button refreshes data</li>
-                        <li><strong>Expiration:</strong> Cache refreshes after 24 hours</li>
+                        <li><strong>Saved automatically:</strong> Once an order is downloaded, its full details are stored locally</li>
+                        <li><strong>Instant re-export:</strong> Re-downloading a saved order (in any format) reuses the stored data instead of reopening the order page — and nothing is ever fabricated</li>
+                        <li><strong>Faster re-syncs:</strong> Because your orders are remembered, "Check for new orders" can skip ones it already knows — turn on "only new orders" under Options</li>
+                        <li><strong>Yours to delete:</strong> Settings → "Data on this device" → "Delete all saved data" wipes everything the extension has stored, in one step</li>
                     </ul>
+                    <div class="note">
+                        <strong>Note:</strong> There's no automatic expiration and no separate "cache" to manage — one control clears everything.
+                    </div>
                 </div>
             </div>
 
@@ -299,6 +373,28 @@
                 </div>
             </footer>
         </div>
+    </div>
+
+    <!-- Settings View (spec §5.4, P4 — SHELL ONLY this phase; the body is
+         filled in by a later phase). Reachable via the header gear and
+         view.switchView("settings", ...), same operation-in-progress guard
+         as the FAQ/Dashboard nav. -->
+    <div id="settingsView" class="view">
+        <div class="header">
+            <button id="settingsBackButton" class="back-button" aria-label="Back to main view">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+            </button>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            <h1>Settings</h1>
+        </div>
+        <!-- Filled in by the next phase (spec §5.4: Appearance, Collection,
+             Export defaults, Data on this device, About). -->
+        <div id="settingsContent"></div>
     </div>
 
     <!-- Confirmation Dialog -->

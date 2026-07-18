@@ -3,7 +3,7 @@ Transform your Walmart order management experience with the Walmart Invoice Expo
 ★ Key Features:
 
 • Batch Download: Select and download multiple orders at once, compatible with Walmart's built-in filters (date range, order status, returns, and search).
-• Order History Crawler: Automatically collect order numbers from your purchase history.
+• Order History Crawler: Click "Collect orders" to automatically gather order numbers from your purchase history (page limit and "only new orders" tucked under Options).
 • Order Description Tooltips: Hover over order numbers to see delivery date.
 • Comprehensive FAQ: Built-in help guide with troubleshooting tips and setup instructions
 • Detailed Excel Export: Get comprehensive order information including:
@@ -15,11 +15,12 @@ Transform your Walmart order management experience with the Walmart Invoice Expo
    - All charges (delivery, tax, tip - accurately parsed)
    - Order subtotal (before fees and taxes)
    - Order total (final amount)
-• Export Mode Selector: Choose between:
-   - Multiple Files: One XLSX per order
-   - Single Combined File: All selected orders in a single XLSX workbook for easier management
-• Caching: Invoice data is cached locally after the first download. Subsequent downloads automatically use cached data when available, speeding up repeat downloads.
-• Privacy-Focused: Runs only on Walmart order pages with minimal permissions.
+• Multiple Export Formats: Excel (default), CSV, JSON, or a printable HTML/PDF receipt
+• Legacy Excel Layout: an opt-in toggle restores the older single-sheet workbook if you prefer it
+• Two Download Buttons: "Single file" (every selected order in one file) or "Multiple files" (one file per order) — same pair, whichever format you pick
+• Instant Re-export: orders you've already downloaded are saved on this device and re-export instantly in any format — never fabricated
+• Dark Mode & Dedicated Settings: a gear icon opens Appearance (System/Light/Dark), Collection defaults, Export defaults, and your saved data
+• Privacy-Focused: Runs only on Walmart order pages with minimal permissions, no servers, no telemetry
 • Open Source: Available on GitHub for transparency and community contributions.
 
 
@@ -27,23 +28,20 @@ Transform your Walmart order management experience with the Walmart Invoice Expo
 
  ☆ Single Order Download
       1. Navigate to a specific Walmart order page
-      2. Click the extension icon
-      3. Check the box with order number
-      4. Click "Download Invoice"
+      2. Click the extension icon — the order appears automatically
+      3. Check the box with the order number
+      4. Click "Single file"
 
  ☆ Batch Download
       1. Go to your Walmart order history page (https://www.walmart.com/orders)
       2. Click the extension icon
-      3. Set the number of pages to crawl (0 = unlimited)
-      4. Click "Start Collection"
-      5. Wait for the order numbers to load (may take a few seconds)
-      6. Hover over order numbers to see their descriptions (delivery date, status) if needed
-      7. Select the orders you want to download
-      8. Choose your Export Mode in the side panel:
-           - Multiple Files: downloads one XLSX per order
-           - Single Combined File: downloads all selected orders in a single XLSX workbook
-      9. Click "Download Selected Orders"
-    10. Wait for the download to complete (may take a few minutes)
+      3. Click "Collect orders" (page limit and "only new orders" are under Options)
+      4. Wait for the order numbers to load (may take a few seconds)
+      5. Hover over order numbers to see their descriptions (delivery date, status) if needed
+      6. Select the orders you want to download
+      7. **(Optional)** Pick a format below the buttons: Excel, CSV, JSON, or a printable receipt
+      8. Click "Single file" (one file with every selected order) or "Multiple files" (one file per order)
+      9. Wait for the download to complete (may take a few minutes)
 
  ⚠️ IMPORTANT NOTE FOR BULK DOWNLOADING ⚠️
       Required Chrome Settings for Bulk Downloads:
@@ -75,9 +73,9 @@ Transform your Walmart order management experience with the Walmart Invoice Expo
    • No data collection
    • Local processing only
    • Minimal permissions required
-   • No external server communication
-   • Storage permission used only for temporary caching of your order numbers on your device
-   • Cached data automatically expires after 24 hours
+   • No external server communication, no telemetry
+   • Downloaded orders are stored on-device (IndexedDB), with no expiration
+   • One "Delete all saved data" control (Settings → Data on this device) wipes everything, anytime
 
 ★ Open Source:
    • This extension is open source and available on GitHub: https://github.com/hppanpaliya/Walmart-Invoice-Exporter
@@ -90,6 +88,24 @@ Transform your Walmart order management experience with the Walmart Invoice Expo
 
 
 ★ What's New:
+
+ ✦ Version 7.0 - July 17, 2026
+   • Two equal download buttons — "Single file" and "Multiple files" — replace the old Download + Quick Export buttons
+   • New "Use legacy Excel layout" opt-in restores the older single-sheet workbook
+   • New dedicated Settings view (gear icon): Appearance with dark mode, Collection defaults, Export defaults, and your saved data
+   • Storage unified on-device (IndexedDB) with a single "Delete all saved data" control — fixes the long-standing "cache won't clear" problem
+   • Already-downloaded orders re-export instantly in any format; nothing is ever fabricated
+   • Removed the 884 KB ExcelJS library from loading on every orders page — faster, lighter panel
+   • Added keyboard focus rings, reduced-motion support, and ARIA labeling
+
+ ✦ Version 6.3 - March 25, 2026
+   • Improved order-detail reliability with dual extraction (`__NEXT_DATA__` + DOM fallback)
+   • Removed duplicate/non-essential export fields: Order Number (Display), Barcode Data, Fee Breakdown, Charge History
+   • Cleaned payment output: Payment Method no longer repeats Payment Messages text
+
+ ✦ Version 6.0 - March 17, 2026
+   • Fixed extraction of all financial fields (tax, delivery, tip, subtotal, total, payment method) broken by Walmart's DOM update
+   • Improved image blocking stability and error handling during order collection
 
  ✦ Version 5.2 - February 3, 2026
    • Added shipping address and payment method to exported invoice details

@@ -1,5 +1,195 @@
 # Changelog
 
+## [7.0] - July 17, 2026
+
+### Changed
+- **Two-button download model:** the old "Download" and "Quick Export" buttons are replaced by an equal pair — "Single file" (one file with every selected order) and "Multiple files" (one file per selected order). The chosen format (Excel/CSV/JSON/receipt/PDF) shows right in the button label, e.g. "Single file (.xlsx)".
+- **Collection demoted to one primary action:** "Collect orders" is now the single button on the main card; page limit and "only collect new orders" moved under an "Options" disclosure.
+- **Removed the 884 KB ExcelJS injection from every walmart.com/orders page** — it now loads only when an Excel export actually runs, making the panel lighter on every other page.
+
+### Added
+- **Dedicated Settings view** (gear icon in the header): Appearance (System/Light/Dark theme — dark mode is new), Collection defaults, Export defaults, "Data on this device", and About.
+- **"Use legacy Excel layout" opt-in** restores the older single-sheet workbook (pre-6.18) for anyone who prefers it over the current Orders/Items two-sheet layout. Off by default.
+- **Unified on-device storage:** everything the extension stores now lives in one place (IndexedDB), with a single "Delete all saved data" control in Settings that truly wipes everything — no servers, no telemetry.
+- **Instant re-export:** orders you've already downloaded re-export immediately, in any format, from the stored data — nothing is ever fabricated.
+- Keyboard focus rings, reduced-motion support, and ARIA labeling throughout the panel.
+
+### Fixed
+- **The long-standing "cache won't clear" problem** is gone — the old three scattered clear controls (including the confusing "Clear Cache" button) are replaced by the one "Delete all saved data" control, which now actually removes everything.
+
+## [6.25] - July 10, 2026
+
+### Changed
+- **Quick Export never synthesizes data anymore.** It now does exactly one thing, instantly and always accurately: re-export orders you've already downloaded (any format, no pages opened). Selected orders that were never downloaded are skipped with a clear count; if none of the selection is downloaded, it refuses with guidance instead of producing partial rows.
+
+## [6.24] - July 10, 2026
+
+### Fixes
+- **Fix (root cause of duplicated \$0.00 items, verified live against a real order page):** Walmart's print view renders quantities as "Qty 2" and prices as "Discount price \$6.30\$7.72" (charged + strikethrough). The DOM scraper passed these through raw, so item quantities never matched the payload ("Qty 2" ≠ "2"), the duplicate-merge never matched, and prices parsed to \$0.00. The scraper now extracts the numeric quantity and the first (charged) currency token, and the merge normalizes quantities defensively. Regression tests encode the exact live DOM shapes.
+
+## [6.23] - July 10, 2026
+
+### Improvements
+- The panel header now shows the running build version (e.g. "v6.23") so it's always clear whether the loaded extension is current.
+
+## [6.22] - July 10, 2026
+
+### Fixes
+- **Fix:** Monthly spend no longer drops orders whose stored date is in human format (or lives only on the invoice) — every measured dollar now lands in a month bucket. Previously the bars could show a fraction of the real total (e.g. \$1.84 of \$27.49).
+- **Fix:** Saving an invoice now records the order's date even when the order was never summary-collected.
+- Clearer dashboard empty states explaining that repurchases/price history need items appearing across multiple downloaded invoices.
+
+## [6.21] - July 10, 2026
+
+### Changed
+- **Reverted 6.20's in-tab collection** (owner decision): collection always runs in its own background tab again and never touches the tab you're using.
+
+### Fixes (from a deep multi-agent code review)
+- **Fix:** A mid-collection hiccup (content-script error, unexpected redirect) is no longer mistaken for a successful final page — collection retries instead of silently truncating, and the background verifies the collection tab is still on the orders list before each page.
+- **Fix:** Incremental collection ("only new orders") now hydrates the order list from the local database when it stops early, so every stored order stays selectable and exportable even after the 24h cache expires.
+- **Fix:** When the 24h cache is empty but the database has your orders, the panel now lists them (with a "Loaded N orders from the local database" note) — Quick Export and Download work without a forced re-collection.
+- **Fix:** Genuinely distinct order lines with the same product and quantity (e.g. a re-priced substitution) both survive the item merge again; the payload absorbs at most one DOM copy per line, and a blank payload price is backfilled from the DOM.
+- **Fix:** Accounting CSV presets skip orders with unknown totals instead of writing fake $0 transactions.
+- **Fix:** Price history sorts correctly when order dates are in mixed formats.
+- **Fix:** Removed the over-aggressive price sanity guard that could blank legitimate prices on partially canceled orders.
+
+## [6.20] - July 10, 2026
+
+### Improvements
+- **Collection runs in your current tab** — Start Collection no longer launches a second tab when you're already on the orders page: it paginates right where you are (faster, no duplicate session). A background tab is only created when collection starts from elsewhere, and your own tab is never closed.
+
+## [6.19] - July 10, 2026
+
+### Fixes
+- **Fix: duplicated items with \$0.00 prices and garbage statuses** — the DOM scrape could return the same items as the page payload but with wrong prices ("\$0.00") and progress text as status ("12 shopped"); the merge kept both copies. Payload items now always win, deduped by name+quantity. Invoices stored by older versions are no longer trusted (schema v3) — re-download those orders once to replace them.
+- **Fix:** Raw numeric Walmart status codes (e.g. "3700.0031") no longer leak into the Delivery Status column — the human status text ("Delivered") is used.
+- **Fix:** The per-order report's summary block no longer prints \$0.00 for values that were never scanned — and now **omits unmeasured fields entirely**: a quick (summary-only) report is simply shorter, and a new "Data" field states "Full invoice" or "Summary only — not scanned yet".
+
+### Improvements
+- **Dashboard measures fully downloaded invoices ONLY** — no half-measurements from summary data. A coverage banner shows how many stored orders are actually measured, and a "Reset dashboard data" button clears the local database.
+- A "Data" column on the Orders sheet marks each order as Full invoice vs Summary only.
+- Item prices that exceed twice their order's own total are treated as extraction corruption: blanked in exports and flagged by the warning tripwire.
+
+## [6.18] - July 10, 2026
+
+### Improvements
+- **Redesigned Excel workbook** (Download and Quick Export both): an **Orders sheet** (one clean row per order — sum any money column safely) plus an **Items sheet** (one row per item: order, date, product, qty, price, status, type, link). No more 29-column rows with item fields buried behind repeated address/payment noise.
+- **Unknown values are now BLANK, never \$0.00** — a missing price or tax no longer masquerades as zero.
+- Frozen header rows, auto-filters, and Walmart-blue styled headers on every sheet.
+
+## [6.17] - July 10, 2026
+
+### Internal
+- **End-to-end test harness:** Playwright now launches Chromium with the packaged extension loaded and drives it like a real user — collection through the real background worker, Quick Export selection contract, format parity with Download, per-item price joining from stored invoices, and the dashboard — asserting on the actual generated Excel files. walmart.com is fully mocked at the network layer (local proxy + synthetic pages built from the sanitized fixtures), so tests can never touch the real site or any real data. Runs in CI on every push. No user-facing changes.
+
+## [6.16] - July 10, 2026
+
+### Improvements
+- **Improvement:** **Quick Export now uses the exact same format as Download Selected** — same columns, same single-file/multiple-files export modes, same format/preset/thumbnail options. Orders with a downloaded invoice export with full fidelity; the rest are built from list data with unknown fields left blank. Combined files are named `Walmart_Orders_Quick.*` so they never overwrite deep exports.
+- **Improvement:** When exported orders have no downloaded invoice, Quick Export now says so plainly: an amber warning lists how many orders have blank item prices/fees/address and tells you to run Download Selected once on those to fill them.
+
+## [6.15] - July 10, 2026
+
+### Improvements
+- **Improvement:** **Quick Export items sheet** — items are no longer crammed into a single "Item Names" cell. Excel exports gain an 'Items' worksheet (one row per item: order, date, item, qty, price, status), CSV exports a companion items file, and JSON nests a structured items array per order. Per-item prices aren't in Walmart's list data, so they join in automatically from any invoice you've downloaded — prices fill in as your database grows.
+
+## [6.14] - July 10, 2026
+
+### Fixes
+- **Fix:** Quick Export now requires a selection and exports ONLY the ticked orders — identical contract to the Download button. No selection → prompt, never a surprise full export.
+- **Fix:** Wrong/incomplete Quick Export rows: collection now waits up to 6 seconds for Walmart's rich page payload before ever falling back to DOM scraping; DOM-scraped rows can no longer overwrite payload-quality data (in the live collection or the local database); the DOM scraper only trusts dates found in the order card title (body dates are delivery estimates, not order dates); and Quick Export upgrades any degraded row from the best copy stored in the local database.
+
+## [6.13] - July 10, 2026
+
+### Improvements
+- **UI refresh:** Download and Quick Export now sit side by side as one compact action row; the export controls (mode, format, CSV preset, thumbnails) are tucked into a collapsible "Export options" section so the main panel is just collect → select → export. Cleaner card, order list, and hover states throughout.
+
+### Fixes
+- **Fix:** Collection now always gathers the data Quick Export needs — pages collected via the DOM fallback get best-effort summaries (date, total, item count, status scraped from the order cards), and starting a collection over an old summary-less cache automatically re-collects from scratch instead of leaving Quick Export degraded.
+
+## [6.12] - July 10, 2026
+
+### Features
+- **Feature:** **Microsoft Edge & Firefox packages** — every release now ships Edge and Firefox zips alongside Chrome. Firefox uses the browser sidebar (`sidebar_action`) instead of the side panel; the build derives its file list from the release workflow so packages never drift. Firefox build is validated structurally but not yet tested live.
+
+## [6.11] - July 10, 2026
+
+### Features
+- **Feature:** **True PDF receipts** — a new 'PDF receipt (.pdf)' export format generates real PDF files directly in the extension via a built-in, dependency-free PDF writer: per-order receipts (items table, totals, payment/shipping meta, multi-page with repeated headers) and a Quick Export summary table. No more print-to-PDF detour.
+
+## [6.10] - July 10, 2026
+
+### Features
+- **Feature:** **QuickBooks & Xero CSV presets** — a CSV preset selector (shown when CSV format is chosen) exports bank-import-ready files: QuickBooks 3-column (Date, Description, Amount) or Xero (Date, Amount, Payee, Description, Reference), with negative amounts for money spent and MM/DD/YYYY dates.
+
+## [6.9] - July 10, 2026
+
+### Features
+- **Feature:** **In-store purchases** — a new 'Order Type' column in every export (Excel, CSV, JSON, Quick Export) distinguishes in-store purchases from online orders, completing the full Walmart spending picture.
+
+## [6.8] - July 10, 2026
+
+### Features
+- **Feature:** **Price history on repurchases** — the dashboard now tracks items you've bought more than once (keyed by Walmart item id) and shows how their unit price moved, e.g. "you paid \$4.98, it was \$3.98 before". History deepens as you download invoices.
+
+## [6.7] - July 10, 2026
+
+### Features
+- **Feature:** **Spending Dashboard** — a new panel view computed entirely on-device from the local order database: total/average spend, monthly spend bars, tips, savings, tax, refunds, donations, and your most-repurchased items. No servers, no telemetry — your data never leaves the browser.
+
+## [6.6] - July 10, 2026
+
+### Features
+- **Feature:** **Local order database** — collected orders and downloaded invoices are now stored durably on-device (IndexedDB), surviving the 24-hour cache and browser restarts. A stats line in the panel shows what's stored, with a one-click clear.
+- **Feature:** **Incremental collection** — new "Only collect new orders" toggle stops pagination as soon as a whole page of already-stored orders is reached, making regular syncs fast instead of re-crawling the entire history.
+- **Feature:** Quick Export now falls back to the local database when the collection cache has expired — export without re-collecting.
+
+### Fixes
+- **Fix:** Quick Export respects the order selection — ticked orders export alone; nothing ticked exports everything collected.
+
+## [6.5] - July 9, 2026
+
+### Internal
+- **CI regression suite:** sanitized `__NEXT_DATA__` fixture files + unit tests for the payload extractors, Quick Export summaries, CSV escaping (formula injection, BOM, RFC-4180), receipt HTML escaping, and the extraction-warning tripwire — running on every push via GitHub Actions (`ci.yml`). Prevents the next silent-breakage incident like the one v6.3 fixed. No user-facing changes.
+
+## [6.4] - July 9, 2026
+
+### Fixes
+- **Fix:** Restored reliable extraction after Walmart removed the `w_*` CSS classes that v6.2 depended on — order data now comes from Walmart's page payload (`__NEXT_DATA__`) first, with network snapshots and the DOM as fallbacks. This resolves the "repeated blank entries" reports.
+- **Fix:** Pagination now verifies the order list actually changed before advancing, and duplicate "View details" buttons on multi-shipment orders no longer produce duplicate entries.
+- **Fix:** If Walmart changes their site again and fields come back empty, the extension now shows a warning banner instead of silently exporting blank data.
+
+### Features
+- **Feature:** **Quick Export** — one click builds a summary spreadsheet (order number, date, item count, item names, status, fulfillment, subtotal, tip, total) straight from the order list, without opening any order pages
+- **Feature:** **Export formats** — choose Excel (default), CSV (RFC-4180, accounting-friendly numbers, orders + items files), JSON (full structured data), or a printable HTML receipt (open in browser, print to PDF)
+- **Feature:** **New export columns** — marketplace seller(s), fulfillment type, delivered date, tracking numbers, refund, donations, per-card payment split, and a receipt barcode link
+- **Feature:** **Product thumbnails (opt-in)** — optionally embed product images in Excel exports; falls back to image links when images can't be fetched (default off)
+- **Feature:** **Filter awareness** — when your Walmart orders page has filters applied (date range, status, …), the panel now says so, since collection follows your filtered view
+
+## [6.3] - March 25, 2026
+
+### Improvements
+- **Enhancement:** Added dual order-detail extraction (`__NEXT_DATA__` + DOM fallback) for more reliable exports
+- **Enhancement:** Simplified Excel output by removing duplicate/non-essential fields: `Order Number (Display)`, `Barcode Data`, `Fee Breakdown`, and `Charge History`
+- **Fix:** `Payment Method` no longer repeats message text; message content stays in `Payment Messages`
+- **Refactor:** Removed fee-breakdown and charge-history keys from the scraped payload
+
+## [6.0] - March 17, 2026
+
+### Fixes
+- **Fix:** Corrected extraction of all financial fields — subtotal, order total, tax, delivery charges, and tip — which were broken due to Walmart updating their DOM from `w_*` CSS classes to `ld_*` classes
+- **Fix:** Tax amount now reliably extracted from the `.print-fees-item` price row instead of defunct class selectors
+- **Fix:** Tip (`Driver tip`) now correctly extracted using text-based lookup on flex rows
+- **Fix:** Order total now reads from `span` elements inside `.bill-order-total-payment` (Walmart changed from `h2` to `span`)
+- **Fix:** Subtotal now extracts just the dollar amount from the last span in the row instead of the entire div `innerText` (which included the "Subtotal" label)
+- **Fix:** Payment method extraction completely fixed — was returning empty due to defunct `.print-bill-payment-section` selector; now uses `[aria-labelledby^="card-description-"]` which matches the actual card spans
+
+### Refactor
+- **Refactor:** Modularized side panel logic into separate focused modules: `sidepanel.state.js`, `sidepanel.view.js`, `sidepanel.actions.js`, `sidepanel.download.js` — greatly improving maintainability
+- **Refactor:** Improved image blocking logic with better error handling and MutationObserver optimizations
+- **Enhancement:** Collection button and cache indicator handling improved for more reliable UI state management
+- **Enhancement:** `ORDER_SUBTOTAL` selector now also matches `span[aria-label^="Subtotal after savings"]` for discount scenarios
+
 ## [5.2] - February 3, 2026
 
 ### Features
