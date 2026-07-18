@@ -1,30 +1,35 @@
 # Walmart Invoice Exporter
 
-A Chrome extension that allows users to download their Walmart order history in XLSX format. Now with invoice caching, flexible export modes, and advanced performance optimizations!
+A Chrome extension that allows users to download their Walmart order history as Excel, CSV, JSON, or printable receipts. Now with a redesigned panel, dark mode, unified on-device storage, and instant re-export of orders you've already downloaded!
 
-<img src="./screenshot.webp" alt="Screenshot of extension" height="200">
+<img src="./screenshot.png" alt="Screenshot of extension" height="200">
 
 ## Features
 
-- **Invoice Caching**: Downloaded invoices are automatically cached locally for instant re-access without re-downloading
-- **Flexible Export Modes**: Choose between downloading individual files (one per order) or a combined single file with all items
+- **Two clear download buttons**: "Single file" (one workbook/file with every selected order) and "Multiple files" (one file per selected order) — the format you've chosen (Excel/CSV/JSON/receipt/PDF) is shown right in the button label, e.g. "Single file (.xlsx)"
+- **Multiple Export Formats**: Excel (default), accounting-friendly CSV, structured JSON, or a printable HTML receipt you can print to PDF
+- **Legacy Excel layout (opt-in)**: restores the older single-sheet workbook for anyone who prefers it; the modern Orders/Items two-sheet layout stays the default
+- **Instant re-export**: Orders you've already downloaded live on this device and re-export immediately in any format — nothing is ever fabricated or guessed
 - **Batch Download**: Select and download multiple order invoices at once
-- **Page Crawling**: Automatically collect order numbers from your order history with customizable page limits
-- **Smart Caching System**: Stores previously collected orders for faster repeat access or accidental closure (24-hour cache expiration)
+- **Page Crawling**: "Collect orders" automatically gathers order numbers from your order history, with page-limit and "only new orders" options tucked under a small Options disclosure
 - **Order Description Tooltips**: Hover over order numbers to see their delivery date or status
 - **Smart Image Blocking**: Automatically blocks images during processing to improve speed and reduce network usage
 - **Customizable Limits**: Set how many pages of order history to crawl (0 = unlimited)
-- **Cache Management**: Per-order invoice cache indicators and ability to clear individual order caches
+- **Dedicated Settings view**: a gear icon in the header opens Appearance (System/Light/Dark theme), Collection defaults, Export defaults, "Data on this device", and About
+- **Dark mode & accessibility**: light/dark/system theming, visible keyboard focus rings, reduced-motion support, and ARIA labeling throughout
+- **Unified on-device storage**: everything the extension stores lives in one place (IndexedDB) with a single "Delete all saved data" control in Settings — no more scattered cache buttons, and no more "cache won't clear"
 - **Detailed Excel Format**: Each invoice includes:
   - Product details (name, quantity, price)
   - Delivery status
   - Product links
   - Order information (number, date)
   - Shipping address 
-  - Payment method
+  - Payment method and per-card payment split
   - Order subtotal (before fees and taxes)
   - Order total (final amount)
-  - Additional charges (delivery, tax, tip)
+  - Additional charges (delivery, tax, tip) plus refunds and donations
+  - Marketplace seller(s), fulfillment type, delivered date, and tracking numbers
+  - Receipt barcode link, and optional embedded product thumbnails
 - **Secure & Efficient**: Runs only on Walmart's orders pages with minimal required permissions
 - **Centralized Configuration**: Maintains consistent selectors and styling throughout the extension using centralized constants
 
@@ -33,33 +38,34 @@ A Chrome extension that allows users to download their Walmart order history in 
 - **Manifest V3**: Uses Chrome's latest manifest version for security and reliability
 - **Permissions**:
   - `ActiveTabs` - Required for order page access and invoice downloads
-  - `Storage` - Used for local storage of invoice cache and preferences
+  - `Storage` - Used for local storage of preferences and settings
   - Host permissions for `https://www.walmart.com/*`
-- **Caching System**:
-  - Session storage for order numbers (24-hour auto-expiration)
-  - Local storage for downloaded invoice data with per-order cache management
-  - Page-level caching to avoid redundant API calls during collection
+- **Unified On-Device Storage**:
+  - Downloaded orders are saved in IndexedDB, with no expiration
+  - A single "Delete all saved data" control (Settings → Data on this device) clears everything at once
+  - Page-level caching within a collection run to avoid redundant requests
+  - No servers, no telemetry — all data stays on your device
 - **Order Format Support**:
   - Regular orders (13 or 15 digits)
   - In-store purchases (20+ digits)
   - Various order statuses (delivered, canceled, returned)
 - **Excel Generation**: Implements ExcelJS for robust XLSX file creation
-  - Support for single order exports with complete order summary (including subtotal and total)
+  - Default two-sheet workbook (Orders + Items) for clean, safely-summable rows; a "Use legacy Excel layout" opt-in restores the older single-sheet format
   - Multi-order consolidated exports combining all items into one sheet with subtotal and total columns
   - Proper formatting with headers, fonts, and hyperlinks
 - **Performance Optimizations**:
+  - ExcelJS (884 KB) is loaded only when actually needed for an Excel export — it's no longer injected into every walmart.com/orders page
   - Aggressive image blocking (CSS, HTML elements, background images)
   - Content Security Policy implementation
   - Throttling between downloads to prevent rate limiting
   - Automatic retry with configurable timeout
   - Memory cleanup after each operation
-- **Background Service Worker**: Efficient handling of collection and caching operations
+- **Background Service Worker**: Efficient handling of collection and storage operations
 - **Content Script Integration**: Direct DOM manipulation for order extraction with image blocking
 
 ## Performance Features
 
-- **Invoice Caching**: Once downloaded, invoices are stored in local storage for instant re-access without re-downloading
-- **Order Collection Caching**: Orders are cached for 24 hours with automatic expiration
+- **Instant Re-export**: Once downloaded, an order's full data is stored on-device and reused for any future export in any format — no re-visiting the order page
 - **Page Caching**: Already processed pages are skipped during collection to prevent redundant API calls
 - **Smart Image Blocking**: Aggressive blocking strategy targeting:
   - HTML `<img>` and `<picture>` elements
@@ -70,7 +76,7 @@ A Chrome extension that allows users to download their Walmart order history in 
 - **Memory Optimization**: Automatic cleanup of resources after each order download
 - **Background Processing**: Efficient handling of multiple downloads using browser background tabs
 - **Smart Retries**: Automatic retry attempts with exponential backoff for failed downloads
-- **Per-Order Cache Management**: Visual indicators show cached orders with ability to clear individual caches
+- **Saved-Order Indicators**: A "saved" badge marks orders that are already stored on-device
 
 ## Limitations
 
@@ -93,15 +99,73 @@ Install the Walmart Invoice Exporter directly from the [Chrome Web Store](https:
 4. Click "Load unpacked" and select the extension directory
 5. Pin the extension to your toolbar for easy access
 
+### Microsoft Edge
+
+Edge (Chromium) runs the Chrome package unmodified. Either download
+`Walmart-Invoice-Exporter-edge-<version>.zip` from the
+[GitHub Releases page](https://github.com/amruta-chaudhari/Walmart-Invoice-Exporter/releases)
+and unzip it, or build it locally:
+
+```bash
+bash scripts/build-edge.sh   # outputs dist/edge/ and dist/Walmart-Invoice-Exporter-edge-<version>.zip
+```
+
+Then open `edge://extensions`, enable "Developer mode" (left sidebar), click
+"Load unpacked", and select the unzipped folder (or `dist/edge/`). See
+[docs/PORTS.md](./docs/PORTS.md) for details and store-submission notes.
+
+### Firefox
+
+Download `Walmart-Invoice-Exporter-firefox-<version>.zip` from the
+[GitHub Releases page](https://github.com/amruta-chaudhari/Walmart-Invoice-Exporter/releases)
+and unzip it, or build it locally:
+
+```bash
+bash scripts/build-firefox.sh   # outputs dist/firefox/ and dist/Walmart-Invoice-Exporter-firefox-<version>.zip
+```
+
+To load it temporarily (removed on browser restart): open
+`about:debugging#/runtime/this-firefox`, click "Load Temporary Add-on…", and
+select the `manifest.json` inside the unzipped folder (or
+`dist/firefox/manifest.json`). Permanent installs require the zip to be
+signed by [addons.mozilla.org](https://addons.mozilla.org/developers/).
+
+Notes:
+
+- Firefox uses a browser **sidebar** (`sidebar_action`) instead of Chrome's
+  side panel — the UI opens in Firefox's global sidebar, which looks and
+  docks differently.
+- The Firefox build is produced and validated but **untested live** against
+  walmart.com.
+
+See [docs/PORTS.md](./docs/PORTS.md) for the full list of differences.
+
 ## What's New
 
-### Version 5.2 (February 3, 2026)
-- Added shipping address and payment method to exported invoices
-- Added Order Total to multiple files export mode
-- Improved clear cache button visibility logic
-- Fixed tax and tip parsing in multiple file exports
-- Enhanced cache system with better persistence
-- Updated to Chrome 120 minimum version
+### Version 7.0 (July 17, 2026)
+- **Redesigned download** — two buttons, **Single file** (one file with every selected order) and **Multiple files** (one file per order), replace the old Download + Quick Export. Already-downloaded orders re-export instantly.
+- **Legacy Excel layout** option restores the older single-sheet workbook
+- **Dark mode** plus a dedicated **Settings** view
+- **Unified on-device storage** with one "Delete all saved data" control — fixes the old "cache won't clear" issue
+- Stopped loading an 884 KB library on every Walmart orders page
+
+### Version 6.4 (July 9, 2026)
+- **Fixed the "repeated blank entries" issue** — Walmart removed the CSS classes v6.2 relied on; extraction now reads Walmart's page payload first with DOM fallback, and warns instead of exporting blanks
+- **Quick Export** — instant one-row-per-order summary spreadsheet, no order page visits
+- **New export formats** — CSV, JSON, and printable HTML receipts alongside Excel
+- **Richer columns** — seller, fulfillment, delivered date, tracking, refund, donations, payment split, receipt barcode
+- **Opt-in product thumbnails** in Excel exports
+
+### Version 6.3 (March 25, 2026)
+- **Improved reliability:** Added dual order-detail extraction (`__NEXT_DATA__` + DOM fallback)
+- **Cleaner exports:** Removed duplicate/non-essential fields (`Order Number (Display)`, `Barcode Data`, `Fee Breakdown`, `Charge History`)
+- **Better payment columns:** `Payment Method` no longer includes duplicated message text (kept in `Payment Messages`)
+
+### Version 6.0 (March 17, 2026)
+- **Fixed all financial field extraction** — subtotal, total, tax, delivery, and tip were broken due to Walmart's UI update changing CSS classes from `w_*` to `ld_*`
+- **Payment method** extraction completely rewritten — now shows card brand 
+- **Side panel** refactored into separate modules (`state`, `view`, `actions`, `download`) for easier future maintenance
+- **Image blocking** and error handling improved
 
 ### [Changelog](./CHANGELOG.md)
 
@@ -110,43 +174,38 @@ Install the Walmart Invoice Exporter directly from the [Chrome Web Store](https:
 ### Single Order Download
 
 1. Navigate to a specific Walmart order page
-2. Click the extension icon
-3. Click "Download Invoice"
+2. Click the extension icon — the order appears automatically
+3. Check its box, then click "Single file"
 
-### Batch Download with Export Modes
+### Batch Download
 
-The extension offers two export modes for batch downloads:
+The extension downloads with two equal buttons:
 
-#### Export Mode 1: Multiple Files (Default)
-Downloads one XLSX file per order, each containing the full order details and summary.
+#### Single file
+Downloads every selected order into one workbook/file.
 
-#### Export Mode 2: Single Combined File
-Downloads all selected orders into a single XLSX file with all items combined in one spreadsheet.
+#### Multiple files
+Downloads one file per selected order.
+
+Both buttons use whatever format is currently selected below them, and the button label always shows it — e.g. "Single file (.xlsx)".
 
 **To Use Batch Download:**
 
 1. Go to your Walmart order history page (https://www.walmart.com/orders)
 2. Click the extension icon
-3. **(Optional)** Select your preferred export mode from the "Export mode" dropdown:
-   - "Multiple files (one per order)" - Each order as a separate file
-   - "Single file (all items)" - All items combined into one file
-4. Set the number of pages to crawl (0 = unlimited)
-5. Click "Start Collection"
-6. Wait for the order numbers to load (may take a few seconds depending on page count)
-7. Hover over order numbers to see their descriptions (delivery date, status) if needed
-8. Look for the **cache icon** (📦) next to orders that have been previously downloaded - click to clear individual order caches if needed
-9. Select the orders you want to download
-10. Click the appropriate download button:
-    - "Download Selected Orders" (for multiple files mode)
-    - "Download as Single File" (for single file mode)
-11. Wait for the downloads to complete
+3. Click "Collect orders" (page limit and "only collect new orders" are under the "Options" disclosure if you need them)
+4. Wait for the order numbers to load (may take a few seconds depending on page count)
+5. Hover over order numbers to see their descriptions (delivery date, status) if needed
+6. Look for the **"saved" badge** next to orders you've already downloaded — those re-export instantly, no page revisit needed
+7. Select the orders you want to download
+8. **(Optional)** Pick a format from the "Export format" dropdown (Excel/CSV/JSON/printable receipt/PDF); toggle "Use legacy Excel layout" if you prefer the older single-sheet workbook
+9. Click "Single file" (one file with every selected order) or "Multiple files" (one file per order)
+10. Wait for the downloads to complete
 
-**Cache Management:**
+**Your Data:**
 
-- Downloaded invoices show a cache icon (📦) next to the order number
-- Click the cache icon to clear that specific order's cached invoice
-- Use the "Clear All Cache" button to clear all cached data at once
-- Cached data automatically expires after 24 hours
+- Downloaded orders are saved on this device (IndexedDB) — no expiration, and nothing is sent anywhere
+- Open Settings (gear icon) → "Data on this device" → "Delete all saved data" to wipe everything the extension has stored, in one step
 
 ## Troubleshooting
 
@@ -192,7 +251,7 @@ chrome://settings/content/automaticDownloads
 
 **Issue: Side panel appears but no orders are shown**
 - Solution: Refresh the Walmart orders page and try again
-- The cache is automatically loaded if available; otherwise, click "Start Collection"
+- Previously collected orders load automatically if available; otherwise, click "Collect orders"
 
 **Issue: Download takes too long**
 - Solution: Try downloading fewer orders at a time (5-10 orders initially)
@@ -204,13 +263,12 @@ chrome://settings/content/automaticDownloads
 - Try downloading those specific orders individually
 - Check the console (F12 > Console tab) for error details
 
-**Issue: Cache icon appears but files won't re-download**
-- Solution: Try clearing that specific order's cache by clicking the cache icon
-- If needed, clear all caches and re-download
+**Issue: A saved order won't re-export with fresh data**
+- Solution: Open Settings → "Data on this device" → "Delete all saved data", then re-download the order to store it fresh
 
-**Issue: Single file mode combines orders but items are not organized**
-- Solution: The single file mode intentionally combines all items in one sheet
-- If you need separate sheets per order, switch to "Multiple files" mode
+**Issue: "Single file" combines orders but items are not organized**
+- Solution: "Single file" intentionally combines all selected orders into one workbook/file
+- If you need one file per order, use "Multiple files" instead
 
 **Getting Help:**
 
@@ -242,16 +300,15 @@ For best results when using the extension:
 5. Allow the extension to complete its process without interruptions
 6. Keep the side panel open during downloads
 
-### Cache Management:
-1. Regularly check for cached orders (indicated by cache icons 📦)
-2. Clear individual order caches when you want fresh data
-3. Use "Clear All Cache" at the beginning of each month for a fresh start
-4. Cache is automatically cleared after 24 hours
+### Your Data:
+1. Orders you've downloaded are marked with a "saved" badge and re-export instantly, in any format
+2. Use Settings → "Data on this device" → "Delete all saved data" whenever you want a clean slate — it clears everything, in one step
+3. There's no expiration to worry about; data stays until you delete it
 
-### Export Mode Selection:
-1. Use **"Multiple files"** mode for easier organization and quick downloads
-2. Use **"Single file"** mode when you need all items consolidated for analysis
-3. You can switch between modes anytime - the preference is saved
+### Format & Button Selection:
+1. Use **"Multiple files"** for easier organization and quick per-order downloads
+2. Use **"Single file"** when you need everything consolidated for analysis
+3. Format and layout preferences (Excel/CSV/JSON/receipt, legacy layout) are saved between sessions
 
 ## Contributing
 
@@ -269,36 +326,38 @@ The extension is built with a modular design for maintainability:
 
 **Core Files:**
 - `manifest.json` - Extension configuration and permissions
-- `sidepanel.html/sidepanel.js/sidepanel.css` - User interface and main logic
+- `sidepanel.html` / `sidepanel.css` - Side panel UI structure and styles
+- `sidepanel.js` - Side panel entry point and orchestration
+- `sidepanel.state.js` - Shared UI state management
+- `sidepanel.view.js` - DOM rendering and view helpers
+- `sidepanel.actions.js` - User action handlers (collection, cache, etc.)
+- `sidepanel.download.js` - Download orchestration and progress tracking
 - `background.js` - Background service worker for collection and caching
-- `content.js` - Content script for DOM manipulation on Walmart pages
-- `utils.js` - Shared utility functions for Excel generation and styling
+- `content.js` - Content script for DOM extraction on Walmart order pages
+- `utils.js` - Shared constants, Excel generation, and UI utilities
 
 **Key Components:**
-1. **Cache System** - Manages order number caching and invoice storage
+1. **On-Device Storage (IndexedDB via `orderdb.js`)** - Stores downloaded orders with no expiration; one "Delete all saved data" control clears it
 2. **Collection Engine** - Crawls Walmart pages to extract order numbers
-3. **Export Engines** - Handles both single and multiple file export modes
-4. **UI Controller** - Manages popup interface and user interactions
-5. **Performance Optimizer** - Implements image blocking and throttling
+3. **Export Engines** - Handle both "Single file" and "Multiple files" downloads, across all export formats
+4. **UI Controller** - Modular side panel (state / view / actions / download / settings)
+5. **Spending Dashboard** - A full browser page (`dashboard.html`) with time-scoped stats, a clickable monthly chart, price watch, a searchable orders table, and the live side panel embedded for collection and export
+6. **Performance Optimizer** - Implements image blocking, throttling, and on-demand ExcelJS loading
 
 **Data Flow:**
-1. User initiates collection from the side panel
-2. Background worker opens collection tab and sends messages to content script
+1. User initiates collection from the side panel ("Collect orders")
+2. Background worker opens a collection tab and sends messages to the content script
 3. Content script extracts order numbers and sends them back
-4. Orders are cached locally and displayed in the side panel
-5. User selects orders and initiates download
-6. Background worker or side panel processes each order and creates Excel files
-7. Files are cached for future quick re-access
+4. Orders are displayed in the side panel; previously-saved orders load from IndexedDB instantly
+5. User selects orders and clicks "Single file" or "Multiple files"
+6. Background worker or side panel processes each order and creates the export files
+7. Full order data is saved on-device for instant re-export next time
 
 ## Version History
 
 For a complete list of changes, see [CHANGELOG.md](./CHANGELOG.md)
 
-**Latest Features (v5.2):**
-- Shipping address and payment method in exported invoices
-- Order Total in multiple files export mode
-- Enhanced cache system with local storage persistence
-- Dynamic clear cache button visibility
+**Latest (v7.0):** Redesigned download flow (Single file / Multiple files), dedicated Settings view, dark mode, unified on-device storage with a single "Delete all saved data" control, and a lighter-weight panel (ExcelJS no longer loads on every orders page).
 
 ## Support
 
@@ -313,10 +372,9 @@ For issues or feature requests, please:
 This extension prioritizes your privacy and security:
 
 **Data Storage:**
-- Order numbers are stored in Chrome's local storage (cached for up to 24 hours)
-- Invoice data is stored in Chrome's local storage (on your device only)
-- Order cache automatically expires after 24 hours
-- No data is sent to external servers
+- Downloaded order data is stored in IndexedDB, on your device only, with no expiration
+- Preferences and settings are stored in Chrome's local storage
+- No data is sent to external servers — no servers, no telemetry
 
 **Only Runs On:**
 - Walmart's order pages (`https://www.walmart.com/orders*`)
@@ -324,7 +382,7 @@ This extension prioritizes your privacy and security:
 
 **Permissions Explanation:**
 - `activeTab` - Allows the extension to access the current Walmart order page
-- `storage` - Allows local caching of invoices and preferences on your device
+- `storage` - Allows local storage of your saved orders and preferences on your device
 - `host_permissions` for `walmart.com` - Required to access Walmart order data
 
 **Data Processing:**
@@ -334,9 +392,9 @@ This extension prioritizes your privacy and security:
 - No cookies or external API calls
 
 **Your Control:**
-- You can clear all cached data anytime using the "Clear All Cache" button
-- You can delete individual order caches by clicking the cache icon
-- Cache is always under your control in your browser's storage
+- Settings → "Data on this device" → "Delete all saved data" wipes everything the extension has stored, in one step
+- There's no separate cache to manage — one control clears everything
+- Your data is always under your control in your browser's storage
 
 ## Acknowledgments
 
