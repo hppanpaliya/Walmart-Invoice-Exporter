@@ -24,6 +24,11 @@ if (chrome?.storage?.local?.get) {
   chrome.storage.local.get(["theme"], (result) => {
     applyTheme(result && result.theme);
   });
+  // The theme can now change from another live context (the full-page
+  // dashboard, or a second panel's Settings) — follow it without a reload.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.theme) applyTheme(changes.theme.newValue);
+  });
 } else {
   applyTheme("system");
 }
@@ -241,22 +246,26 @@ document.addEventListener("DOMContentLoaded", async function () {
     });
   }
 
-  // The dashboard is read-only (it only reads the local order database),
-  // so opening it never interrupts a running collection or download.
+  // The spending dashboard is a full extension page (dashboard.html) now,
+  // not a panel view. Opening it never interrupts a running collection or
+  // download; if a dashboard tab is already open, focus it instead of
+  // stacking duplicates.
   const dashboardButton = document.getElementById("dashboardButton");
   if (dashboardButton) {
     dashboardButton.addEventListener("click", function (e) {
       e.preventDefault();
-      view.switchView("dashboard");
-      Sidepanel.dashboard.renderDashboard();
-    });
-  }
-
-  const dashboardBackButton = document.getElementById("dashboardBackButton");
-  if (dashboardBackButton) {
-    dashboardBackButton.addEventListener("click", function (e) {
-      e.preventDefault();
-      view.switchView("main", actions.checkCurrentTab);
+      const dashboardUrl = chrome.runtime.getURL("dashboard.html");
+      chrome.tabs.query({ url: dashboardUrl }, function (tabs) {
+        const existing = tabs && tabs[0];
+        if (existing) {
+          chrome.tabs.update(existing.id, { active: true });
+          if (existing.windowId !== undefined) {
+            chrome.windows.update(existing.windowId, { focused: true });
+          }
+        } else {
+          chrome.tabs.create({ url: dashboardUrl });
+        }
+      });
     });
   }
 
@@ -301,6 +310,78 @@ document.addEventListener("DOMContentLoaded", async function () {
   const stopButton = document.getElementById("stopCollection");
   if (startButton) startButton.addEventListener("click", actions.handleStartCollection);
   if (stopButton) stopButton.addEventListener("click", actions.handleStopCollection);
+
+  // Embed bridge: the full-page dashboard (dashboard.html) embeds this
+  // panel in a same-origin iframe and drives a fixed set of actions via
+  // postMessage. Strictly gated — same-origin only, a required source tag,
+  // and a closed set of message types. Payload values are only ever
+  // validated against existing controls/handlers; nothing from the message
+  // is evaluated or reflected into the DOM.
+  window.addEventListener("message", (event) => {
+    if (event.origin !== location.origin) return;
+    const data = event.data;
+    if (!data || data.source !== "wie-dashboard") return;
+
+    switch (data.type) {
+      case "START_COLLECTION":
+        // Same handler as the collect button — keeps every existing guard
+        // (refuses during downloads, off-tab warning when not on orders).
+        actions.handleStartCollection();
+        break;
+
+      case "EXPORT_ORDERS": {
+        const modeMap = {
+          single: CONSTANTS.EXPORT_MODES.SINGLE,
+          multiple: CONSTANTS.EXPORT_MODES.MULTIPLE,
+        };
+        const exportMode = modeMap[data.mode];
+        const orderNumbers = Array.isArray(data.orderNumbers)
+          ? data.orderNumbers.filter((n) => typeof n === "string" && n.length > 0)
+          : [];
+        if (!exportMode || orderNumbers.length === 0) return;
+        // The same pipeline the Single file / Multiple files buttons run —
+        // it persists the mode and refuses while a download is in progress.
+        Sidepanel.download.downloadSelectedOrders(exportMode, orderNumbers);
+        break;
+      }
+
+      case "OPEN_SETTINGS":
+        // Mirrors the header gear, including the operation-in-progress
+        // confirm-dialog guard.
+        requestViewSwitch("settings", () => Sidepanel.settings && Sidepanel.settings.renderSettings());
+        break;
+
+      case "SET_EXPORT_FORMAT": {
+        if (!exportFormatSelect) return;
+        const isKnown = Array.from(exportFormatSelect.options).some(
+          (option) => option.value === data.format
+        );
+        if (!isKnown) return; // unknown formats are ignored
+        exportFormatSelect.value = data.format;
+        // Dispatch a real change event so every existing listener
+        // (persistence, dependent-control visibility, button labels) runs.
+        exportFormatSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        break;
+      }
+
+      case "SET_EXPORT_OPTION": {
+        if (typeof data.value !== "boolean") return;
+        const optionToggles = {
+          thumbnails: thumbnailToggle,
+          legacyExcel: legacyExcelToggle,
+        };
+        const toggle = optionToggles[data.option];
+        if (!toggle) return; // unknown options are ignored
+        toggle.checked = data.value;
+        toggle.dispatchEvent(new Event("change", { bubbles: true }));
+        break;
+      }
+
+      default:
+        // No other message types are handled.
+        break;
+    }
+  });
 
   // Visible build version — unpacked-dev testing needs to know which build
   // is actually loaded (chrome://extensions reload is easy to forget).

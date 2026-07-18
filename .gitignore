@@ -35,3 +35,4 @@ repomix-output.xmldesign.md
 .codex/
 # Browser automation artifacts
 .playwright-cli/
+.claude/

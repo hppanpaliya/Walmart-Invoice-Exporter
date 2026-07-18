@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Walmart Invoice Exporter — Dashboard</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="dashboard.css">
+    <!-- Same load order as sidepanel.html for the shared data layer:
+         utils.js defines CONSTANTS/escapeHtml/row-model helpers,
+         orderdb.js the IndexedDB store, sidepanel.dashboard.js the pure
+         aggregation functions (computeDashboardModel & friends). All page
+         behavior lives in dashboard.page.js — MV3 extension-page CSP
+         forbids inline scripts and inline event handlers here. -->
+    <script src="utils.js"></script>
+    <script src="orderdb.js"></script>
+    <script src="sidepanel.dashboard.js"></script>
+</head>
+
+<body>
+    <div class="topbar">
+        <div class="topbar-inner">
+            <span class="brand">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+                Walmart Invoice Exporter <span class="crumb">/ Dashboard</span>
+            </span>
+            <div class="topbar-actions">
+                <button id="checkNewOrdersBtn" class="btn btn-primary" type="button">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9"/><polyline points="21 3 21 9 15 9"/></svg>
+                    Check for new orders
+                </button>
+                <button id="settingsBtn" class="btn btn-quiet" type="button" title="Settings" aria-label="Settings">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="shell">
+        <div class="col-main">
+            <main class="page" id="page">
+                <div class="page-head">
+                    <h1 id="scopeTitle">Your spending</h1>
+                    <select class="scope-select" id="scopeSelect" aria-label="Date range">
+                        <option value="thisYear">This year</option>
+                        <option value="lastYear">Last year</option>
+                        <option value="last3">Last 3 months</option>
+                        <option value="last6">Last 6 months</option>
+                        <option value="all">All time</option>
+                    </select>
+                    <button class="back-chip" id="backChip" type="button">‹ Back</button>
+                </div>
+
+                <!-- Empty states (DB empty / nothing measured anywhere).
+                     Filled and shown by dashboard.page.js as needed. -->
+                <section class="card empty-card" id="emptyRegion" hidden></section>
+
+                <section class="stats" id="statsSection">
+                    <div class="card stat-hero">
+                        <h2>Total spent</h2>
+                        <div class="stat-value mono"><span id="statTotal">$0.00</span><span class="delta-up" id="statDelta" hidden></span></div>
+                        <div class="stat-note" id="statTotalNote"></div>
+                    </div>
+                    <div class="card"><h2>Orders</h2><div class="stat-value mono" id="statOrders">0</div><div class="stat-note">measured</div></div>
+                    <div class="card"><h2>Avg / month</h2><div class="stat-value mono" id="statAvgMonth">$0.00</div><div class="stat-note" id="statAvgMonthNote"></div></div>
+                    <div class="card"><h2>Avg order</h2><div class="stat-value mono" id="statAvgOrder">$0.00</div><div class="stat-note">per invoice</div></div>
+                    <div class="card"><h2>Saved</h2><div class="stat-value mono stat-saved" id="statSaved">$0.00</div><div class="stat-note">discounts &amp; rollbacks</div></div>
+                </section>
+
+                <section class="card" id="chartCard">
+                    <div class="chart-head">
+                        <div><h2>Spending by month</h2><div class="sub">Click a bar to scope the whole page to that month.</div></div>
+                    </div>
+                    <div class="chart" id="chart" role="group" aria-label="Monthly spend"></div>
+                    <div class="chart-foot" id="chartFoot">Hover a bar for its total · heights compare within the visible range.</div>
+                </section>
+
+                <section class="insights" id="insightsSection">
+                    <div class="card">
+                        <h2>Where it went · <span class="scope-echo"></span></h2>
+                        <div class="ledger" id="ledger"></div>
+                        <button class="btn cta" id="exportScopeBtn" type="button">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span id="exportScopeLabel">Export orders</span>
+                        </button>
+                    </div>
+                    <div class="card">
+                        <h2>Price watch · <span class="scope-echo"></span></h2>
+                        <ul class="plist" id="priceWatchList"></ul>
+                        <div class="hint">vs. your first purchase in this range.</div>
+                    </div>
+                    <div class="card">
+                        <h2>Most bought · <span class="scope-echo"></span></h2>
+                        <ul class="plist" id="mostBoughtList"></ul>
+                        <div class="hint">Count × what it cost you in total — frequency and weight.</div>
+                    </div>
+                </section>
+
+                <!-- Coverage banner / all-measured line, rendered by JS. -->
+                <div id="coverageRegion"></div>
+
+                <section class="card" id="ordersCard">
+                    <h2>Orders · <span class="scope-echo"></span></h2>
+                    <div class="orders-toolbar">
+                        <label class="search">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="search" id="searchInput" placeholder="Search items or order numbers — e.g. &quot;milk&quot;, &quot;…4931&quot;" aria-label="Search items or order numbers">
+                        </label>
+                        <div class="selbar">
+                            <span><strong id="selCount">0 selected</strong> · of <span id="tableCount">0 shown</span></span>
+                            <button class="btn" id="exportSingleBtn" type="button" disabled>Single file</button>
+                            <button class="btn btn-primary" id="exportMultipleBtn" type="button" disabled>Multiple files</button>
+                        </div>
+                    </div>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th aria-sort="descending"><button class="th-sort" id="sortDateBtn" type="button">Date <span class="sort-arrow" id="sortDateArrow">▾</span></button></th>
+                                    <th>Status</th>
+                                    <th>Items</th>
+                                    <th>Order #</th>
+                                    <th class="num"><button class="th-sort" id="sortTotalBtn" type="button">Total <span class="sort-arrow" id="sortTotalArrow"></span></button></th>
+                                    <th>Data</th>
+                                </tr>
+                            </thead>
+                            <tbody id="orderRows"></tbody>
+                        </table>
+                    </div>
+                    <div class="fmt-row">
+                        <span>Export format:</span>
+                        <select class="scope-select" id="pageExportFormat" aria-label="Export format">
+                            <option value="xlsx">Excel (.xlsx)</option>
+                            <option value="csv">CSV (.csv)</option>
+                            <option value="json">JSON (.json)</option>
+                            <option value="receipt">Printable receipt (.html)</option>
+                            <option value="pdf">PDF receipt (.pdf)</option>
+                        </select>
+                        <label><input type="checkbox" id="pageIncludeThumbnails"> Include product thumbnails</label>
+                        <label><input type="checkbox" id="pageLegacyExcel"> Use legacy Excel layout</label>
+                    </div>
+                </section>
+            </main>
+
+            <footer>
+                <span>🔒 All data stays on your device — nothing is uploaded anywhere.</span>
+                <span>·</span>
+                <span>Delete all saved data lives in <button class="btn-link" id="openSettingsLink" type="button">Settings</button>.</span>
+            </footer>
+        </div>
+
+        <aside class="rail" id="rail" aria-label="Collect and export panel">
+            <div class="rail-label">Collect &amp; export</div>
+            <iframe id="panelFrame" src="sidepanel.html" title="Order collection and export panel"></iframe>
+        </aside>
+    </div>
+
+    <script src="dashboard.page.js"></script>
+</body>
+
+</html>
