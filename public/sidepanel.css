@@ -1622,27 +1622,11 @@ body.first-run .hero-content {
   max-width: 32ch;
 }
 
-/* The button itself grows into a hero call-to-action only in first-run;
-   returning state keeps its normal inline size/position (spec §A). */
-body.first-run .button-group {
-  flex-direction: column;
-}
-
-body.first-run .button-group .btn-primary {
-  width: 100%;
-  justify-content: center;
-}
-
-/* First-run is ONE invitation (spec §A): no companion button, and reset the
-   row-mode flex-basis — in this column layout a 120px basis becomes a 120px
-   HEIGHT (the giant-button bug, 2026-07-19). */
-body.first-run #viewDashboardButton {
-  display: none;
-}
-
-body.first-run #buttonGroup .btn {
-  flex: 0 0 auto;
-}
+/* First-run keeps the hero copy above, but the button row is the SAME
+   side-by-side pair as the returning state (user request 2026-07-19:
+   "Load my orders" + "View dashboard" side by side everywhere in the
+   standalone panel). No column mode: a column turned the row flex-basis
+   into a 120px HEIGHT — the giant-button bug. */
 
 /* One invitation only: the entire list + download apparatus is hidden in
    first-run, not just visually collapsed — its ids/checkbox-value contract
