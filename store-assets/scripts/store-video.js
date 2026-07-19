@@ -255,25 +255,40 @@ const TOUR_RUNTIME = () => {
     await curTo(frame.locator('#singleFileDownload'), 500);
     await hold(1200);
 
-    /* ---------- Scene 7: dark mode ---------- */
-    await cap('Automatic <b>dark mode</b>');
-    await dash.evaluate(() => chrome.storage.local.set({ theme: 'dark' }));
-    await hold(1800);
+    /* ---------- Scene 7: settings deep-dive ---------- */
+    // Smooth-scroll a settings section title into view inside the panel iframe.
+    const frameScrollToSection = async (title, ms = 1200) => {
+      await frame.evaluate((wanted) => {
+        const el = [...document.querySelectorAll('.settings-section-title')]
+          .find((node) => node.textContent.trim().toLowerCase().startsWith(wanted.toLowerCase()));
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, title);
+      await hold(ms);
+    };
+    await cap('Make it yours — <b>every default is a setting</b>');
+    await click(frame.locator('#settingsButton'), 700);
+    await hold(1600);
+    await frameScrollToSection('Collection', 1500);
+    await frameScrollToSection('Export', 1500);
+
+    // Dark mode via the REAL control in Appearance — the whole app flips.
+    await frameScrollToSection('Appearance', 1100);
+    await cap('Light, dark, or follow your system — <b>one tap</b>');
+    await click(frame.locator('#themeControl [data-theme-choice="dark"]'), 700);
+    await hold(2000);
+
+    /* ---------- Scene 8: privacy (still in Settings, now dark) ---------- */
+    await cap('No accounts. No servers. <b>Your data never leaves your device.</b>');
+    await frameScrollToSection('Data on this device', 1300);
+    await curTo(frame.locator('#deleteAllDataButton'), 700); // point, never click
+    await hold(2600);
+
+    /* ---------- Scene 8b: year in review, in dark mode ---------- */
     await cap('Year in review — <b>your year at Walmart</b>');
     await click(dash.locator('[data-nav="review"]'));
-    await hold(2600);
+    await hold(2400);
     await scrollTo(380, 1000);
     await hold(1400);
-    await dash.evaluate(() => chrome.storage.local.set({ theme: 'system' }));
-    await hold(800);
-
-    /* ---------- Scene 8: privacy ---------- */
-    await cap('No accounts. No servers. <b>Your data never leaves your device.</b>');
-    await click(dash.locator('[data-nav="overview"]'));
-    await hold(400);
-    await scrollTo(0, 600);
-    await click(frame.locator('#settingsButton'), 700);
-    await hold(2800);
 
     /* ---------- Scene 9: outro card ---------- */
     await cap('');
@@ -284,6 +299,8 @@ const TOUR_RUNTIME = () => {
       sub: 'Free · Open source · <b>Private by design</b>',
       chips: ['Get it on the Chrome Web Store'],
     }), `chrome-extension://${extensionId}/images/icon128.png`);
+    // Reset the theme behind the opaque outro card (no visible flash).
+    await dash.evaluate(() => chrome.storage.local.set({ theme: 'system' }));
     await hold(3600);
 
     await dash.close(); // flush the recording
