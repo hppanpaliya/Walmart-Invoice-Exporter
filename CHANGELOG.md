@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [8.1] - July 19, 2026
 
 ### Added
 - **Optional local MCP access (off by default)**: a new Settings → "AI access (MCP)" toggle lets AI tools on your own computer (Claude Code, Claude Desktop, any MCP client) read your saved orders through the [`walmart-invoice-mcp`](https://github.com/hppanpaliya/walmart-invoice-mcp) helper (published [on npm](https://www.npmjs.com/package/walmart-invoice-mcp), runs via `npx walmart-invoice-mcp`). Read-only and localhost-only: the extension only ever connects out to `127.0.0.1` with a pairing token you generate in Settings; nothing is sent to the internet.
