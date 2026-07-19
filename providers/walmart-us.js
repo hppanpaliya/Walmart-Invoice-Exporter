@@ -225,9 +225,17 @@ const PurchaseHistoryDataSource = (() => {
       orderType: cleanText(order?.type || ""),
       isInStore: Boolean(order?.isInStore),
       itemCount: order?.itemCount ?? "",
+      // The purchase-history payload's priceDetails carries the whole money
+      // breakdown per order (same shape as the order-detail page), so capture
+      // savings/tax/tips/subtotal here too — the dashboard falls back to these
+      // when a fast (SSR-fetch) invoice didn't include its own price block.
       orderTotal: order?.priceDetails?.orderTotal?.displayValue || "",
       subTotal: order?.priceDetails?.subTotal?.displayValue || "",
       driverTip: order?.priceDetails?.driverTip?.displayValue || "",
+      savings: order?.priceDetails?.savings?.displayValue || "",
+      tax: order?.priceDetails?.taxTotal?.displayValue || "",
+      refund: order?.priceDetails?.refund?.displayValue || "",
+      donations: order?.priceDetails?.donations?.displayValue || "",
       status: statusTexts.join("; "),
       fulfillmentTypes: fulfillmentTypes.join(", "),
       items,

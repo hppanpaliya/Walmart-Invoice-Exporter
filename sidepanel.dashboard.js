@@ -77,20 +77,25 @@ function computeDashboardStats(records) {
     // after hydration) — so invoice.orderTotal is often empty even though the
     // order IS a full, measured invoice. The purchase-history summary always
     // has the order total, so use it rather than showing $0.
-    const total =
-      parseNumericValue(invoice.orderTotal) ||
-      parseNumericValue((record.summary && record.summary.orderTotal) || record.orderTotal || '');
+    // A fast (SSR-fetch) invoice often lacks its own price block, but the
+    // purchase-history summary carries the same money fields — fall back to it
+    // field-by-field so Total/Savings/Tax/Tips aren't stuck at $0.
+    const summary = record.summary || {};
+    const money = (invoiceValue, summaryValue) =>
+      parseNumericValue(invoiceValue) || parseNumericValue(summaryValue || '');
+
+    const total = money(invoice.orderTotal, summary.orderTotal || record.orderTotal);
     if (total) {
       totalSpend += total;
       totaledOrders += 1;
     }
 
-    totalTips += parseNumericValue(invoice.tip);
-    totalSavings += parseNumericValue(invoice.savings);
-    totalTax += parseNumericValue(invoice.tax);
-    totalRefunds += parseNumericValue(invoice.refund);
-    totalDonations += parseNumericValue(invoice.donations);
-    totalSubtotal += parseNumericValue(invoice.orderSubtotal);
+    totalTips += money(invoice.tip, summary.driverTip);
+    totalSavings += money(invoice.savings, summary.savings);
+    totalTax += money(invoice.tax, summary.tax);
+    totalRefunds += money(invoice.refund, summary.refund);
+    totalDonations += money(invoice.donations, summary.donations);
+    totalSubtotal += money(invoice.orderSubtotal, summary.subTotal);
     totalFees += parseNumericValue(invoice.deliveryCharges) + parseNumericValue(invoice.bagFee);
 
     // Month from any date format we may have stored (ISO or human).

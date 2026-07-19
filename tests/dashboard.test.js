@@ -112,13 +112,25 @@ test('computeDashboardStats falls back to the summary total when a measured invo
     {
       orderNumber: '555',
       orderDate: '2026-06-01T00:00:00.000Z',
-      summary: { orderDate: '2026-06-01T00:00:00.000Z', orderTotal: '$76.88' },
+      summary: {
+        orderDate: '2026-06-01T00:00:00.000Z',
+        orderTotal: '$76.88',
+        savings: '$5.00',
+        tax: '$4.20',
+        driverTip: '$3.00',
+        subTotal: '$64.68',
+      },
       invoice: { schemaVersion: 3, orderTotal: '', items: [{ productName: 'X', quantity: 1 }] },
     },
   ]);
   assert.equal(stats.invoiceCount, 1, 'still counts as a measured invoice');
   assert.equal(stats.totalSpend, 76.88, 'total comes from the summary, not $0');
   assert.equal(stats.monthly[0].total, 76.88, 'monthly bucket uses the fallback total too');
+  // Savings/tax/tips also fall back to the summary (the fast payload carries them).
+  assert.equal(stats.totalSavings, 5, 'savings falls back to the summary');
+  assert.equal(stats.totalTax, 4.2, 'tax falls back to the summary');
+  assert.equal(stats.totalTips, 3, 'tips fall back to the summary driverTip');
+  assert.equal(stats.totalSubtotal, 64.68, 'subtotal falls back to the summary');
 });
 
 test('computeDashboardStats groups monthly spend by ISO month, sorted ascending', () => {
