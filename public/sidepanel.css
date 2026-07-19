@@ -2189,3 +2189,48 @@ body.first-run .export-options-panel {
   font-weight: 400;
   color: var(--text-muted);
 }
+
+/* --- Compact collect card + Walmart filter controls (2026-07-19) --------- */
+
+/* The collect card was dominating the panel: tighter padding, tighter
+   button, quieter options summary. */
+.card:has(#buttonGroup) {
+  padding: 10px 12px;
+  margin-bottom: var(--space-3);
+}
+
+#buttonGroup .btn {
+  padding: 7px 12px;
+}
+
+.options-group summary {
+  padding: 2px 0;
+  font-size: var(--font-size-xs);
+}
+
+.options-group .input-group {
+  margin-bottom: var(--space-3);
+}
+
+/* Walmart date-range filter: two date inputs sharing the row. */
+.collect-date-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.collect-date-range input[type="date"] {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.collect-date-range span {
+  color: var(--text-muted);
+}

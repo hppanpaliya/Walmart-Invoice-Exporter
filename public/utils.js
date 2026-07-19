@@ -2348,6 +2348,46 @@ function accountUiVisible(summaries = []) {
 }
 
 /**
+ * Apply Walmart's own order-history filters to an orders-list URL, using the
+ * exact query grammar the site uses (2026-07, live-observed):
+ *   ?filterIds=online | in-store | in-progress | completed | returned
+ *   ?startDate=<epoch s>&endDate=<epoch s>&filterIds=date-range
+ * filterIds repeats for combinations (e.g. date-range + returned). Any
+ * pre-existing filter params on the base URL are replaced, not stacked.
+ * @param {string} baseUrl - an orders-list URL (walmart.com or .ca)
+ * @param {{typeFilter?: string, fromDate?: string, toDate?: string}} [opts]
+ *   typeFilter: 'all' (default) or one of the filterIds above;
+ *   fromDate/toDate: 'YYYY-MM-DD' (both required to apply the range —
+ *   inclusive local days: from 00:00:00 to 23:59:59).
+ * @returns {string} the filtered URL (baseUrl unchanged when nothing applies)
+ */
+function buildOrdersFilterUrl(baseUrl, { typeFilter = 'all', fromDate = '', toDate = '' } = {}) {
+  let url;
+  try {
+    url = new URL(baseUrl);
+  } catch (_) {
+    return baseUrl;
+  }
+  url.searchParams.delete('filterIds');
+  url.searchParams.delete('startDate');
+  url.searchParams.delete('endDate');
+
+  if (fromDate && toDate) {
+    const start = new Date(`${fromDate}T00:00:00`);
+    const end = new Date(`${toDate}T23:59:59`);
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && start <= end) {
+      url.searchParams.set('startDate', String(Math.floor(start.getTime() / 1000)));
+      url.searchParams.set('endDate', String(Math.floor(end.getTime() / 1000)));
+      url.searchParams.append('filterIds', 'date-range');
+    }
+  }
+  if (typeFilter && typeFilter !== 'all') {
+    url.searchParams.append('filterIds', typeFilter);
+  }
+  return url.toString();
+}
+
+/**
  * Assign stable "Account N" ordinals to any accounts that don't have one yet,
  * without ever renumbering the ones that do (so a new account never bumps an
  * existing account's number). The untagged bucket gets no ordinal — it's shown
