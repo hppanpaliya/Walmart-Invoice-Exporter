@@ -23,7 +23,7 @@
     "default_path": "sidepanel.html"
   },
   "options_ui": {
-    "page": "dashboard.html",
+    "page": "dashboard.html?view=settings",
     "open_in_tab": true
   },
   "content_scripts": [

@@ -271,21 +271,33 @@ document.addEventListener("DOMContentLoaded", async function () {
   // stacking duplicates.
   const dashboardButton = document.getElementById("dashboardButton");
   if (dashboardButton) {
-    dashboardButton.addEventListener("click", function (e) {
-      e.preventDefault();
-      const dashboardUrl = chrome.runtime.getURL("dashboard.html");
-      chrome.tabs.query({ url: dashboardUrl }, function (tabs) {
-        const existing = tabs && tabs[0];
-        if (existing) {
-          chrome.tabs.update(existing.id, { active: true });
-          if (existing.windowId !== undefined) {
-            chrome.windows.update(existing.windowId, { focused: true });
+    if (window.self !== window.top) {
+      // This panel is embedded in the dashboard's rail — you're already on the
+      // dashboard, so the button does nothing (and looks disabled).
+      dashboardButton.disabled = true;
+      dashboardButton.title = "You're already on the dashboard";
+    } else {
+      dashboardButton.addEventListener("click", function (e) {
+        e.preventDefault();
+        const dashboardUrl = chrome.runtime.getURL("dashboard.html");
+        chrome.tabs.query({ url: dashboardUrl }, function (tabs) {
+          const existing = tabs && tabs[0];
+          if (existing) {
+            chrome.tabs.update(existing.id, { active: true });
+            if (existing.windowId !== undefined) {
+              chrome.windows.update(existing.windowId, { focused: true });
+            }
+          } else {
+            chrome.tabs.create({ url: dashboardUrl });
           }
-        } else {
-          chrome.tabs.create({ url: dashboardUrl });
-        }
+          // The full-page dashboard embeds this same panel, so keep the side
+          // panel from lingering behind it — close it once the tab is up.
+          try {
+            window.close();
+          } catch (_) {}
+        });
       });
-    });
+    }
   }
 
   const settingsBackButton = document.getElementById("settingsBackButton");

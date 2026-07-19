@@ -33,6 +33,13 @@
     // from chrome.storage.local `currentAccountKey` and refreshed when a Walmart
     // orders tab reports its account.
     accountKey: null,
+    // Hashed key of the account actually SIGNED IN on the current Walmart tab
+    // (the one a crawl/fetch would hit). Distinct from accountKey (the account
+    // being VIEWED): they differ when you switch the switcher to a saved
+    // account that isn't the one open in Walmart. Used to (a) auto-follow the
+    // signed-in account when the tab changes and (b) warn before fetching a
+    // different account's orders. null = no Walmart tab seen yet.
+    tabAccountKey: null,
   };
 
   // Configurable timings (Settings → Advanced) default from the shared

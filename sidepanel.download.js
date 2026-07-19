@@ -18,6 +18,28 @@
     });
   }
 
+  /**
+   * Guard against fetching one account's orders while Walmart is signed into a
+   * different account — the fetch would hit the wrong session and return the
+   * wrong (or no) data. Returns true (and shows an error) when blocked. Only
+   * fires when we actually know both accounts and they're real and different;
+   * an unknown signed-in account or the untagged/legacy bucket never blocks.
+   */
+  function fetchAccountMismatchBlocked() {
+    const viewed = app && app.accountKey;
+    const signedIn = app && app.tabAccountKey;
+    const untagged = CONSTANTS.ACCOUNTS && CONSTANTS.ACCOUNTS.UNTAGGED;
+    if (!viewed || !signedIn || viewed === untagged || viewed === signedIn) return false;
+    view.renderStatusBanner("downloadGuardBanner", {
+      variant: "danger",
+      message:
+        "These orders belong to a different Walmart account than the one signed in. " +
+        "Open Walmart and sign into that account (or switch to the signed-in account), then try again.",
+      dismissible: true,
+    });
+    return true;
+  }
+
   const OrderDataFetcher = (() => {
     let downloadTab = null;
     // Whether the reused fast-invoice list tab has had a moment to initialize
@@ -693,6 +715,8 @@
         return;
       }
 
+      if (fetchAccountMismatchBlocked()) return;
+
       const pressedButtonId =
         activeMode === CONSTANTS.EXPORT_MODES.SINGLE ? "singleFileDownload" : "multiFileDownload";
       const otherButtonId =
@@ -864,6 +888,8 @@
         showGuardBanner("Select at least one order to save.");
         return;
       }
+
+      if (fetchAccountMismatchBlocked()) return;
 
       const button = document.getElementById("loadToLibrary");
       if (app) app.downloadInProgress = true;
