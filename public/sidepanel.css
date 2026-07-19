@@ -638,11 +638,21 @@ body {
    button spans the card, a one-line purpose caption sits under it, and
    the Options disclosure closes the card as a quiet footer. */
 #buttonGroup .btn {
-  flex: 1;
+  /* Small flex-basis (not content width): the button pair shares the row
+     equally and only wraps when the panel is genuinely narrower than two
+     buttons (~270px) — never just because the labels are long. */
+  flex: 1 1 120px;
+  min-width: 0;
   justify-content: center;
   /* Compact (user feedback 2026-07-19): the collect card was dominating the
      panel — smaller button, quieter presence. */
   padding: 8px 12px;
+}
+
+#buttonGroup .btn .btn-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .collect-caption {
