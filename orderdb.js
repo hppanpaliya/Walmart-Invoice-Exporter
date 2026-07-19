@@ -234,6 +234,66 @@ const OrderDb = (() => {
     });
   }
 
+  /**
+   * Delete every record last written (updatedAt) before `cutoffMs`, across ALL
+   * providers. Reads the whole store, clears it, and re-inserts the survivors
+   * (same environment-agnostic pattern as clearAll — no cursor/delete needed).
+   * A record with no numeric updatedAt is never purged (kept, to be safe).
+   * @param {number} cutoffMs - epoch ms; records older than this are removed
+   * @returns {Promise<number>} how many records were purged
+   */
+  function purgeOlderThan(cutoffMs) {
+    return withStore('readwrite', async (store) => {
+      const all = (await requestToPromise(store.getAll())) || [];
+      const survivors = [];
+      let purged = 0;
+      all.forEach((record) => {
+        const ts = record && typeof record.updatedAt === 'number' ? record.updatedAt : Infinity;
+        if (ts < cutoffMs) {
+          purged += 1;
+        } else {
+          survivors.push(record);
+        }
+      });
+      if (purged === 0) return 0; // nothing expired — don't rewrite the store
+      await requestToPromise(store.clear());
+      survivors.forEach((record) => store.put(record));
+      return purged;
+    });
+  }
+
+  /**
+   * Apply the user's data-retention setting (Settings → Advanced): when it is
+   * enabled, purge orders not collected/downloaded within the configured number
+   * of days. No-op (returns 0) when retention is off. Safe to call on startup,
+   * on panel open, and after a collection.
+   * @returns {Promise<number>} how many records were purged
+   */
+  async function applyRetention() {
+    let settings = {};
+    try {
+      settings = await new Promise((resolve) =>
+        chrome.storage.local.get(['dataRetentionEnabled', 'dataRetentionDays'], resolve)
+      );
+    } catch (error) {
+      return 0;
+    }
+    if (!settings || !settings.dataRetentionEnabled) return 0;
+
+    const spec = (typeof CONSTANTS !== 'undefined' && CONSTANTS.DATA_RETENTION) || {
+      defaultDays: 90,
+      minDays: 1,
+      maxDays: 3650,
+    };
+    const raw = Number(settings.dataRetentionDays);
+    const days = Number.isFinite(raw)
+      ? Math.min(spec.maxDays, Math.max(spec.minDays, Math.round(raw)))
+      : spec.defaultDays;
+
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    return purgeOlderThan(cutoff);
+  }
+
   return {
     putSummaries,
     putInvoice,
@@ -242,5 +302,7 @@ const OrderDb = (() => {
     getKnownOrderNumbers,
     getStats,
     clearAll,
+    purgeOlderThan,
+    applyRetention,
   };
 })();

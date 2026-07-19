@@ -1883,6 +1883,16 @@ const CONSTANTS = {
     },
   ],
 
+  // Optional on-device data retention (Settings → Advanced). OFF by default —
+  // data is kept until "Delete all saved data". When on, orders not collected
+  // or downloaded within `days` (each record's updatedAt) are auto-purged, so
+  // data doesn't pile up and a previous account's orders age out.
+  DATA_RETENTION: {
+    defaultDays: 90,
+    minDays: 1,
+    maxDays: 3650,
+  },
+
   // Timing Constants (in milliseconds)
   TIMING: {
     IMAGE_BLOCK_DELAY: 500,

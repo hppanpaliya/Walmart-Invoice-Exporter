@@ -39,6 +39,9 @@
   CONSTANTS.TIMING_SETTINGS.forEach((spec) => {
     SETTINGS_DEFAULTS[spec.key] = spec.defaultMs;
   });
+  // Data retention (off by default — keep everything until "Delete all").
+  SETTINGS_DEFAULTS.dataRetentionEnabled = false;
+  SETTINGS_DEFAULTS.dataRetentionDays = CONSTANTS.DATA_RETENTION.defaultDays;
 
   const THEME_OPTIONS = [
     { value: "system", label: "System" },
@@ -175,7 +178,7 @@
    * milliseconds; the UI shows seconds. Bounds and defaults come from
    * CONSTANTS.TIMING_SETTINGS.
    */
-  function advancedSectionHtml(timings) {
+  function advancedSectionHtml(timings, retention) {
     const rows = CONSTANTS.TIMING_SETTINGS.map((spec) => {
       const seconds = (timings[spec.key] ?? spec.defaultMs) / 1000;
       const defaultSeconds = spec.defaultMs / 1000;
@@ -190,13 +193,44 @@
           </div>
         </div>`;
     }).join("");
+
+    const rspec = CONSTANTS.DATA_RETENTION;
+    const retentionRow = `
+      <div class="toggle-group">
+        <input type="checkbox" id="dataRetentionEnabled" ${retention.enabled ? "checked" : ""}>
+        <label for="dataRetentionEnabled" title="Automatically delete saved orders you haven't collected or downloaded within the set number of days. Off = keep everything until you use 'Delete all saved data'. Nothing leaves this device.">Auto-delete old saved data</label>
+      </div>
+      <div class="input-group" id="dataRetentionDaysRow"${retention.enabled ? "" : " hidden"}>
+        <label for="dataRetentionDays">Delete data older than (days)</label>
+        <input type="number" id="dataRetentionDays" min="${rspec.minDays}" max="${rspec.maxDays}" step="1" value="${retention.days}">
+      </div>`;
+
     return `
       <div class="settings-section">
         <h3 class="settings-section-title">Advanced</h3>
         <p class="settings-stats-line">How long the extension waits on walmart.com. The defaults suit most connections.</p>
         ${rows}
+        ${retentionRow}
       </div>
     `;
+  }
+
+  /**
+   * Persist a retention change, purge immediately so the effect is visible, and
+   * refresh the panel list/stats. Runs OrderDb.applyRetention (a no-op when the
+   * toggle is off), then re-renders Settings' stats and the main view.
+   */
+  async function applyRetentionAndRefresh() {
+    let purged = 0;
+    try {
+      purged = await OrderDb.applyRetention();
+    } catch (error) {
+      console.warn("Data-retention purge failed:", error);
+    }
+    if (purged) {
+      renderSettings();
+      if (Sidepanel.actions && Sidepanel.actions.checkCurrentTab) Sidepanel.actions.checkCurrentTab();
+    }
   }
 
   function wireAdvancedControls(container) {
@@ -217,6 +251,30 @@
         });
       }
     });
+
+    // Data retention: toggle shows/hides the days row and purges immediately.
+    const retentionToggle = container.querySelector("#dataRetentionEnabled");
+    const daysRow = container.querySelector("#dataRetentionDaysRow");
+    const daysInput = container.querySelector("#dataRetentionDays");
+    if (retentionToggle) {
+      retentionToggle.addEventListener("change", () => {
+        if (daysRow) daysRow.hidden = !retentionToggle.checked;
+        chrome.storage.local.set({ dataRetentionEnabled: retentionToggle.checked });
+        applyRetentionAndRefresh();
+      });
+    }
+    if (daysInput) {
+      daysInput.addEventListener("change", () => {
+        const rspec = CONSTANTS.DATA_RETENTION;
+        const raw = Number(parseInt(daysInput.value, 10));
+        const days = Number.isFinite(raw)
+          ? Math.min(rspec.maxDays, Math.max(rspec.minDays, raw))
+          : rspec.defaultDays;
+        daysInput.value = String(days);
+        chrome.storage.local.set({ dataRetentionDays: days });
+        applyRetentionAndRefresh();
+      });
+    }
   }
 
   function dataSectionHtml(stats) {
@@ -520,6 +578,8 @@
       "includeThumbnails",
       CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL,
       ...CONSTANTS.TIMING_SETTINGS.map((spec) => spec.key),
+      "dataRetentionEnabled",
+      "dataRetentionDays",
     ];
     const stored = await new Promise((resolve) => chrome.storage.local.get(keys, resolve));
 
@@ -534,6 +594,14 @@
     CONSTANTS.TIMING_SETTINGS.forEach((spec) => {
       timings[spec.key] = resolveTimingSetting(spec, stored[spec.key]);
     });
+    const rspec = CONSTANTS.DATA_RETENTION;
+    const retentionDaysRaw = Number(stored.dataRetentionDays);
+    const retention = {
+      enabled: Boolean(stored.dataRetentionEnabled),
+      days: Number.isFinite(retentionDaysRaw)
+        ? Math.min(rspec.maxDays, Math.max(rspec.minDays, Math.round(retentionDaysRaw)))
+        : rspec.defaultDays,
+    };
 
     let stats = { orders: 0, invoices: 0 };
     try {
@@ -549,7 +617,7 @@
       collectionSectionHtml(pageLimit, incrementalCollect, fastFetch),
       exportDefaultsSectionHtml({ exportFormat, includeThumbnails, legacyExcel }),
       providersHtml,
-      advancedSectionHtml(timings),
+      advancedSectionHtml(timings, retention),
       dataSectionHtml(stats),
       aboutSectionHtml(),
     ].join("");

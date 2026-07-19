@@ -494,6 +494,12 @@ document.addEventListener("DOMContentLoaded", async function () {
     versionBadge.style.display = "none";
   }
 
+  // Enforce data retention (off by default) before the first render, so any
+  // expired orders never flash on screen; re-render once it's done.
+  OrderDb.applyRetention()
+    .then(() => actions.checkCurrentTab())
+    .catch(() => {});
+
   actions.checkCurrentTab();
 
   chrome.tabs.onActivated.addListener(actions.checkCurrentTab);

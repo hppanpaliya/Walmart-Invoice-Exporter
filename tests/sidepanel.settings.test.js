@@ -37,6 +37,8 @@ test('Sidepanel.settings exposes renderSettings/SETTINGS_DEFAULTS/deleteAllSaved
   assert.deepEqual(Object.keys(settings.SETTINGS_DEFAULTS).sort(), [
     'collectPageDelayMs',
     'csvPreset',
+    'dataRetentionDays',
+    'dataRetentionEnabled',
     'exportFormat',
     'exportMode',
     'fastFetch',
@@ -57,6 +59,9 @@ test('Sidepanel.settings exposes renderSettings/SETTINGS_DEFAULTS/deleteAllSaved
   assert.equal(settings.SETTINGS_DEFAULTS.collectPageDelayMs, 1000);
   assert.equal(settings.SETTINGS_DEFAULTS.orderTimeoutMs, 10000);
   assert.equal(settings.SETTINGS_DEFAULTS.orderSettleMs, 1000);
+  // Data retention is OFF by default (keep everything until "Delete all").
+  assert.equal(settings.SETTINGS_DEFAULTS.dataRetentionEnabled, false);
+  assert.equal(settings.SETTINGS_DEFAULTS.dataRetentionDays, 90);
 });
 
 test('resolveTimingSetting clamps into bounds and falls back to the default on garbage', () => {
