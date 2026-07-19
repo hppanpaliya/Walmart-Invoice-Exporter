@@ -10,7 +10,8 @@ no real orders, accounts, or names anywhere.
 
 | File | What it is | Where it goes in the dev dashboard |
 |---|---|---|
-| `video/tour-1080p.mp4` | ~60s scripted UI tour (1080p, silent) | Upload to YouTube → paste URL in Store listing → Video |
+| `video/tour-4k.mp4` | ~65s scripted ad-cut tour (4K upload master, silent) | Upload to YouTube → paste URL in Store listing → Video |
+| `video/tour-1080p.mp4` | Same cut, 1080p preview/embed copy | Local preview (`preview.html`) |
 | `screenshots/01-hero-dashboard-1280x800.png` | Dashboard + embedded panel, light | Store listing → Screenshots (slot 1) |
 | `screenshots/02-invoice-drilldown-1280x800.png` | Orders view, expanded inline invoice | Screenshots (slot 2) |
 | `screenshots/03-export-formats-1280x800.png` | Panel with formats pitch | Screenshots (slot 3) |
@@ -31,7 +32,7 @@ as the hero video hurts more than no video.
 1. Merge to `main` — the listing refresh describes v8 and must not go live
    before the build does.
 2. Bump the version past 8.0, `npm run zip`, upload, publish.
-3. Upload `video/tour-1080p.mp4` to the project's YouTube account (public or
+3. Upload `video/tour-4k.mp4` to the project's YouTube account (public or
    unlisted), then set it as the listing video — this replaces the old FAQ
    video.
 4. Replace all 5 screenshots + both tiles.
@@ -86,10 +87,17 @@ stays on this machine; only the rendered media is committed.
     bash store-assets/scripts/generate-store-video.sh
 
 `scripts/store-video.js` boots the same seeded harness and records a fully
-scripted ~60s tour at 1920×1080 — injected animated cursor, caption pills,
-and intro/outro cards, so the capture needs zero post-production. ffmpeg
-then encodes `video/tour-1080p.mp4` (H.264, silent, faststart). Scene order,
-captions, and pacing all live in store-video.js. Requirements: the e2e
-prerequisites plus `ffmpeg` on PATH.
+scripted ~65s ad cut at 1920×1080 — injected animated cursor, caption pills,
+and a CTA outro card, so the capture needs zero post-production. The cut
+opens on a LIVE collection (real progress against the mock walmart.com),
+then reveal → drill-down → Items/Trends montage → inline invoice → export
+formats → settings + dark mode → privacy → Year in review → "Add to Chrome".
+ffmpeg then encodes `video/tour-4k.mp4` (lanczos upscale upload master —
+4K uploads get YouTube's higher-bitrate encode ladder) and
+`video/tour-1080p.mp4` (preview copy). Scene order, captions, and pacing all
+live in store-video.js (see its DIRECTION block). Requirements: the e2e
+prerequisites plus `ffmpeg` on PATH. Note: recording resolution is capped at
+the CSS viewport by Chromium's screencast — don't raise recordVideo size
+hoping for native 4K; it just letterboxes.
 
 Preview everything (video + stills) locally: open `store-assets/preview.html`.
