@@ -42,7 +42,7 @@ const fs = require('node:fs');
 const { launch, seedOrderHistory } = require(path.join(__dirname, '..', '..', 'tests', 'e2e', 'helpers', 'harness'));
 
 const OUT = path.join(__dirname, 'video-raw'); // gitignored scratch output
-fs.rmSync(OUT, { recursive: true, force: true });
+fs.rmSync(OUT, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 fs.mkdirSync(OUT, { recursive: true });
 
 const W = 1920;   // CSS layout size — the UI is designed/readable at this width
@@ -68,18 +68,29 @@ async function startCapture(page, dir) {
     format: 'jpeg', quality: 100, maxWidth: W, maxHeight: H, everyNthFrame: 1,
   });
   return async function stop() {
+    // Screencast frames only arrive on paint, so a static ending (the outro
+    // card) stops producing frames seconds before the tour actually ends.
+    // Stamp the stop time and stretch the last frame to cover the gap —
+    // otherwise the video (and the narration mixed against its length) gets
+    // cut at the last paint.
+    const stopTs = Date.now() / 1000;
     await session.send('Page.stopScreencast').catch(() => {});
     if (frames.length < 2) throw new Error(`screencast captured only ${frames.length} frame(s)`);
+    const lastHold = Math.max(0.04, stopTs - frames[frames.length - 1].ts);
     const lines = ["ffconcat version 1.0"];
     for (let i = 0; i < frames.length; i += 1) {
       const next = frames[i + 1];
-      const duration = next ? Math.max(0.001, next.ts - frames[i].ts) : 0.04;
+      const duration = next ? Math.max(0.001, next.ts - frames[i].ts) : lastHold;
       lines.push(`file '${path.relative(dir, frames[i].file)}'`);
       lines.push(`duration ${duration.toFixed(4)}`);
     }
+    // ffmpeg's concat demuxer ignores the final duration directive unless the
+    // last file is listed once more — without this the closing hold is lost.
+    lines.push(`file '${path.relative(dir, frames[frames.length - 1].file)}'`);
     fs.writeFileSync(path.join(dir, 'concat.txt'), lines.join('\n') + '\n');
-    const span = frames[frames.length - 1].ts - frames[0].ts;
-    console.log(`captured ${frames.length} frames over ${span.toFixed(1)}s`);
+    const span = frames[frames.length - 1].ts - frames[0].ts + lastHold;
+    console.log(`captured ${frames.length} frames over ${span.toFixed(1)}s (last frame held ${lastHold.toFixed(2)}s)`);
+    return { firstTs: frames[0].ts, total: span };
   };
 }
 
@@ -220,6 +231,27 @@ const TOUR_RUNTIME = () => {
 
     const hold = (ms) => dash.waitForTimeout(ms);
     const cap = (html) => dash.evaluate((h) => window.__tour.caption(h), html);
+
+    // Voiceover sync: each `scene(id)` marks where that scene's narration
+    // clip starts (build-audio.js places clips at these offsets) and floors
+    // the PREVIOUS scene's length at its clip duration, so narration never
+    // spills into the next beat. Runs silent/no-op when no VO was generated.
+    const voFile = path.join(__dirname, 'audio-cache', 'vo-durations.json');
+    const voDur = fs.existsSync(voFile) ? JSON.parse(fs.readFileSync(voFile, 'utf8')) : {};
+    const sceneMarks = [];
+    let liveScene = null;
+    const settleScene = async () => {
+      if (!liveScene) return;
+      const need = (voDur[liveScene.id] || 0) * 1000 + 350; // small breath after each line
+      const elapsed = Date.now() - liveScene.t0;
+      if (elapsed < need) await hold(need - elapsed);
+      liveScene = null;
+    };
+    const scene = async (id) => {
+      await settleScene();
+      sceneMarks.push({ id, t: Date.now() / 1000 });
+      liveScene = { id, t0: Date.now() };
+    };
     const scrollTo = async (y, ms = 900) => {
       await dash.evaluate((top) => window.scrollTo({ top, behavior: 'smooth' }), y);
       await hold(ms);
@@ -251,6 +283,7 @@ const TOUR_RUNTIME = () => {
     };
 
     /* ---- 1. Cold open: the core verb, live. No title card. ---- */
+    await scene('cold-open');
     await cap('Your entire Walmart history — <b>one click</b>');
     await hold(500);
     await click(frame.locator('#startCollection'), 900);
@@ -263,12 +296,14 @@ const TOUR_RUNTIME = () => {
     await hold(2400);
 
     /* ---- 2. Reveal: the click becomes answers. ---- */
+    await scene('reveal');
     await cap('…turned into <b>answers</b>');
     await hold(2200);
     await scrollTo(430, 1100);      // chart in full view
     await hold(1600);
 
     /* ---- 3. Yours (early): settings walk, format cycle, dark flip. ---- */
+    await scene('settings');
     await cap('Make it yours — <b>every default is a setting</b>');
     await click(frame.locator('#settingsButton'), 700);
     await hold(1500);
@@ -292,6 +327,7 @@ const TOUR_RUNTIME = () => {
     await hold(700);
 
     /* ---- 4. Drill (dark): click a month, everything rescopes. ---- */
+    await scene('drill');
     await cap('Click any month — see <b>exactly where it went</b>');
     await scrollTo(430, 900);
     await click(dash.locator('.cbar').first(), 800);
@@ -303,10 +339,12 @@ const TOUR_RUNTIME = () => {
     await hold(800);
 
     /* ---- 5. Montage (dark): fast payoff beats. ---- */
+    await scene('items');
     await cap('Every price hike, <b>caught</b>');
     await click(dash.locator('[data-nav="items"]'));
     await hold(2900);
 
+    await scene('trends');
     await cap('Your habits, <b>charted</b>');
     await click(dash.locator('[data-nav="trends"]'));
     await hold(1600);
@@ -315,6 +353,7 @@ const TOUR_RUNTIME = () => {
     await scrollTo(0, 600);
 
     /* ---- 6. Receipts (dark): a row becomes a full invoice. ---- */
+    await scene('receipts');
     await cap('Every order, down to <b>the last cent</b>');
     await click(dash.locator('[data-nav="orders"]'));
     await hold(1500);
@@ -329,6 +368,7 @@ const TOUR_RUNTIME = () => {
     await hold(2500);
 
     /* ---- 7. Take it with you (dark): two clicks. ---- */
+    await scene('export');
     await cap('Tax season? <b>Two clicks.</b>');
     await click(dash.locator('[data-nav="overview"]'));
     await hold(800);
@@ -341,6 +381,7 @@ const TOUR_RUNTIME = () => {
     await hold(1500);
 
     /* ---- 8. Trust (dark): the objection killer, right before the ask. ---- */
+    await scene('trust');
     await cap('No accounts. No servers. <b>Nothing leaves your device.</b>');
     await click(frame.locator('#settingsButton'), 700);
     await hold(900);
@@ -349,6 +390,7 @@ const TOUR_RUNTIME = () => {
     await hold(2500);
 
     /* ---- 9. Kicker (dark): year in review. ---- */
+    await scene('kicker');
     await cap('Your year at Walmart — <b>yours to keep</b>');
     await click(dash.locator('[data-nav="review"]'));
     await hold(2300);
@@ -356,6 +398,7 @@ const TOUR_RUNTIME = () => {
     await hold(1300);
 
     /* ---- 10. CTA card. ---- */
+    await scene('cta');
     await cap('');
     await dash.evaluate(() => window.__tour.hideCursor(true));
     await dash.evaluate((icon) => window.__tour.card({
@@ -367,9 +410,15 @@ const TOUR_RUNTIME = () => {
     // Reset the theme behind the opaque outro card (no visible flash).
     await dash.evaluate(() => chrome.storage.local.set({ theme: 'system' }));
     await hold(3800);
+    await settleScene(); // let the CTA narration finish before cutting
+    await hold(800);     // breathing room so the end doesn't slam shut
 
-    await stopCapture();
-    console.log('raw frames + concat saved in', OUT);
+    const { firstTs, total } = await stopCapture();
+    fs.writeFileSync(path.join(OUT, 'timeline.json'), JSON.stringify({
+      total,
+      scenes: sceneMarks.map((m) => ({ id: m.id, start: Math.max(0, m.t - firstTs) })),
+    }, null, 2));
+    console.log('raw frames + concat + timeline saved in', OUT);
   } finally {
     await close();
   }
