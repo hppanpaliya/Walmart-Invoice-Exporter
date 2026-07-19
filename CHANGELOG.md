@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.0] - July 19, 2026
+
+### Added
+- **Full app dashboard**: click any order row to expand its complete invoice inline (items, prices, money breakdown, payment details); real interactive charts (Chart.js) with tooltips — click a bar to scope the page to that month; a new "More insights" analytics card (biggest order, savings rate, average items per order, busiest day, most-bought item); month group rows in the orders table with select-the-whole-month checkboxes.
+- **Walmart's own order filters as collection options**: order type (Online / In store / In progress / Completed / Returned) and a date range, applied with the site's exact filter grammar. Collections that match nothing now explain themselves instead of showing a silent empty list.
+- **Multi-account support**: saved data is scoped per Walmart account (detected privately — only a hash, never your name). A switcher appears in the panel and dashboard only when 2+ accounts have data; accounts auto-number and can be renamed; per-account delete in Settings; fetching another account's orders while the wrong account is signed in is blocked with a clear message.
+- **Fast mode is a first-class citizen**: request-based collection honors "only new orders" (stops at the first all-known page), works on filtered views, keeps your filters across every page, and fast-fetched invoices now count everywhere (Saved chip, dashboard totals, savings/tax/tips).
+
+### Changed
+- **Complete visual redesign** of the panel, settings, and dashboard: one design language in light and dark (deep slate surfaces, blue accent, card-based layout, iOS-style switches, sticky month headers, sticky bottom download bar).
+- **New build system (WXT/Vite)**: `npm run dev` for live development, `npm run zip` / `zip:firefox` for store packages (including the AMO sources zip). Load the unpacked extension from `dist/chrome-mv3`.
+
+### Fixed
+- Inline-script CSP violations spamming the console on walmart.com (dead legacy bridge removed; the MAIN-world capture script has owned this since 7.3).
+- Fast-fetched invoices were stored but invisible (missing schema stamp) — totals showed $0.
+- Filtered order views collected 0 orders (filtered pages render client-side; collection now waits for the page's own request and replays it faithfully, filters included).
+- The account switcher showed an empty shell for single-account users.
+
+
 ## [7.3] - July 18, 2026
 
 ### Added

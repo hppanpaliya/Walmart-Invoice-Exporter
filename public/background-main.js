@@ -86,6 +86,13 @@ const CollectionState = {
   // script reports it, and every record gets stamped with it.
   accountKey: null,
 
+  // Mutual mode fallback (2026-07-19): each collection mode rescues the
+  // other exactly once. fastAttempted = Fast Collect ran (or was the entry
+  // mode); classicExhausted = the classic crawl burned all its retries. The
+  // pair prevents ping-ponging between modes.
+  fastAttempted: false,
+  classicExhausted: false,
+
   // Reset state for new collection
   reset() {
     this.currentPage = 1;
@@ -93,6 +100,8 @@ const CollectionState = {
     this.initialPageLoaded = false;
     this.emptyPageStreak = 0;
     this.accountKey = null;
+    this.fastAttempted = false;
+    this.classicExhausted = false;
   },
 
   // Clear all collected data
@@ -497,11 +506,21 @@ function collectAllFast() {
     finishCollection();
     return;
   }
+  CollectionState.fastAttempted = true;
 
   const runClassicInstead = (why) => {
+    // When the classic crawl already exhausted itself and Fast Collect was
+    // its rescue, there is no third option — finish with what we have.
+    if (CollectionState.classicExhausted) {
+      console.warn(`[collect] Fast Collect rescue also unavailable (${why}); finishing.`);
+      finishCollection();
+      return;
+    }
     console.warn(`[collect] Fast Collect unavailable (${why}); using the classic loop.`);
     CollectionState.fastFetch = false;
     CollectionState.reset();
+    // Classic must not bounce back into fast within the same run.
+    CollectionState.fastAttempted = true;
     CollectionState.initialPageLoaded = true;
     collectOrderNumbers();
   };
@@ -792,10 +811,24 @@ function retryCollection() {
     CollectionState.retryCount++;
     console.log(`Retrying collection. Attempt ${CollectionState.retryCount} of ${CollectionState.maxRetries}`);
     setTimeout(() => collectOrderNumbers(), CollectionState.pageLoadDelay);
-  } else {
-    console.log("Max retries reached. Finishing collection.");
-    finishCollection();
+    return;
   }
+
+  // Classic crawl is out of retries. Before giving up, try the OTHER mode
+  // once: Fast Collect can succeed where the DOM crawl fails (e.g. filtered
+  // views with no server-rendered payload) — the mirror of Fast Collect's own
+  // fallbackToClassic. fastAttempted guards against ping-ponging.
+  const adapter = typeof ProviderRegistry !== "undefined" ? ProviderRegistry.getById(CollectionState.provider) : null;
+  if (adapter && adapter.supportsFastFetch && !CollectionState.fastAttempted) {
+    console.warn("[collect] Classic crawl exhausted its retries — attempting Fast Collect as a rescue.");
+    CollectionState.classicExhausted = true;
+    CollectionState.fastFetch = true;
+    collectAllFast();
+    return;
+  }
+
+  console.log("Max retries reached. Finishing collection.");
+  finishCollection();
 }
 
 /**

@@ -316,14 +316,14 @@
     const dataChip = row.hasInvoice
       ? '<span class="saved-chip">✓ full invoice</span>'
       : '<span class="pending-chip">summary only</span>';
-    return `<tr>
+    return `<tr class="order-row" data-onum="${escapeHtml(orderNumber)}" aria-expanded="false">
       <td><input type="checkbox" data-order="${escapeHtml(orderNumber)}" aria-label="Select order ending ${escapeHtml(last8)}"${checked}></td>
       <td class="date-cell">${escapeHtml(rowDateLabel(row, now))}</td>
       <td>${row.status ? `<span class="status-chip">${escapeHtml(row.status)}</span>` : ''}</td>
       <td class="items-cell">${escapeHtml(rowItemsLabel(row))}</td>
       <td class="onum mono">…${escapeHtml(orderNumber.slice(-8))}</td>
       <td class="num mono">${escapeHtml(total)}</td>
-      <td>${dataChip}</td>
+      <td class="data-cell">${dataChip}<span class="row-chevron" aria-hidden="true">›</span></td>
     </tr>`;
   }
 
@@ -391,6 +391,186 @@
     updateSelectionUi();
     updateMonthRowStates();
   }
+
+  /* ------------------------------------------------------------------ *
+   * Expandable per-order invoice details (inline detail rows)
+   * ------------------------------------------------------------------ */
+
+  /** Whether a record carries a measured (schema-current) invoice. */
+  function recordIsMeasured(record) {
+    const invoice = record && record.invoice;
+    return Boolean(invoice) && Number(invoice.schemaVersion || 0) >= CONSTANTS.ORDER_SCHEMA_VERSION;
+  }
+
+  /** Invoice→summary money fallback, both fields optional. */
+  function moneyOf(invoiceValue, summaryValue) {
+    return parseNumericValue(invoiceValue) || parseNumericValue(summaryValue);
+  }
+
+  /** "Jul 12, 2025" for a 'YYYY-MM-DD' date, else ''. */
+  function detailDateLabel(iso) {
+    const short = formatRowDateShort(iso);
+    return short ? `${short}, ${String(iso).slice(0, 4)}` : '';
+  }
+
+  /**
+   * Best available detail items for a record: measured-or-not invoice items
+   * (name/qty/price), else summary items (name/qty, no price). Every field
+   * is optional in stored data, so everything is defensively stringified.
+   */
+  function detailItemsOf(record) {
+    const invoice = record && record.invoice;
+    if (invoice && Array.isArray(invoice.items) && invoice.items.length) {
+      return invoice.items.map((item) => ({
+        name: String((item && item.productName) || '').trim(),
+        quantity: item && item.quantity !== null && item.quantity !== undefined && item.quantity !== ''
+          ? String(item.quantity) : '',
+        price: item && item.price !== null && item.price !== undefined && item.price !== ''
+          ? formatMoney(item.price) : '',
+      }));
+    }
+    const summary = record && record.summary;
+    if (summary && Array.isArray(summary.items) && summary.items.length) {
+      return summary.items.map((item) => ({
+        name: String((item && item.name) || '').trim(),
+        quantity: item && item.quantity !== null && item.quantity !== undefined && item.quantity !== ''
+          ? String(item.quantity) : '',
+        price: '',
+      }));
+    }
+    return [];
+  }
+
+  /**
+   * Money breakdown lines for one order, invoice fields first with summary
+   * fallbacks (same pairing computeDashboardStats uses). Empty lines are
+   * omitted; the total renders whenever any source has one.
+   * @returns {Array<[string, number, string]>} [label, value, ''|'neg'|'total']
+   */
+  function detailMoneyLines(record) {
+    const invoice = (record && record.invoice) || {};
+    const summary = (record && record.summary) || {};
+    const lines = [
+      ['Subtotal', moneyOf(invoice.orderSubtotal, summary.subTotal), ''],
+      ['Savings', -moneyOf(invoice.savings, summary.savings), 'neg'],
+      ['Tax', moneyOf(invoice.tax, summary.tax), ''],
+      ['Tip', moneyOf(invoice.tip, summary.driverTip), ''],
+      ['Delivery fees', parseNumericValue(invoice.deliveryCharges), ''],
+      ['Bag fee', parseNumericValue(invoice.bagFee), ''],
+      ['Donations', moneyOf(invoice.donations, summary.donations), ''],
+      ['Refund', -moneyOf(invoice.refund, summary.refund), 'neg'],
+    ].filter(([, value]) => Math.abs(value) >= 0.005);
+    const total = moneyOf(invoice.orderTotal, summary.orderTotal || (record && record.orderTotal));
+    if (total) lines.push(['Total', total, 'total']);
+    return lines;
+  }
+
+  /** Meta line parts (order date, delivered, type, payment) — present-only. */
+  function detailMetaParts(record) {
+    const invoice = (record && record.invoice) || {};
+    const summary = (record && record.summary) || {};
+    const parts = [];
+    const orderDate = dashboardRecordDate(record);
+    if (orderDate) parts.push(['Ordered', detailDateLabel(orderDate) || orderDate]);
+    const deliveredRaw = String(summary.deliveredDate || invoice.deliveredDate || '').split(';')[0].trim();
+    if (deliveredRaw) {
+      const deliveredIso = normalizeDashboardDate(deliveredRaw);
+      parts.push(['Delivered', (deliveredIso && detailDateLabel(deliveredIso)) || deliveredRaw]);
+    }
+    const orderType = invoice.isInStore ? 'In-store' : String(invoice.orderType || '').trim();
+    if (orderType) parts.push(['Type', orderType]);
+    const payment = String(invoice.paymentMethods || '').trim();
+    if (payment) parts.push(['Payment', payment]);
+    return parts;
+  }
+
+  /** The inner HTML of one expanded detail row. Every string is escaped. */
+  function detailHtml(record) {
+    const items = detailItemsOf(record);
+    const itemsHtml = items.length
+      ? `<table class="detail-items">
+          <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th></tr></thead>
+          <tbody>${items
+            .map((item) => `<tr>
+              <td class="detail-item-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name || '—')}</td>
+              <td class="num mono">${escapeHtml(item.quantity || '—')}</td>
+              <td class="num mono">${escapeHtml(item.price || '—')}</td>
+            </tr>`)
+            .join('')}</tbody>
+        </table>`
+      : '<div class="detail-muted">No item details stored for this order.</div>';
+
+    const moneyHtml = detailMoneyLines(record)
+      .map(([label, value, cls]) => {
+        const display = value < 0 ? `−${formatMoney(Math.abs(value))}` : formatMoney(value);
+        return `<div class="lrow${cls === 'total' ? ' lrow-total' : ''}"><span>${escapeHtml(label)}</span><span class="mono${cls === 'neg' ? ' neg' : ''}">${escapeHtml(display)}</span></div>`;
+      })
+      .join('');
+
+    const metaHtml = detailMetaParts(record)
+      .map(([label, value]) => `<span><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</span>`)
+      .join('');
+
+    const note = recordIsMeasured(record)
+      ? ''
+      : '<div class="detail-muted">Full invoice not fetched yet — select this order and use Fetch data.</div>';
+
+    return `<div class="detail-wrap">
+      ${metaHtml ? `<div class="detail-meta">${metaHtml}</div>` : ''}
+      <div class="detail-cols">
+        <div class="detail-items-col">${itemsHtml}</div>
+        ${moneyHtml ? `<div class="detail-money">${moneyHtml}</div>` : ''}
+      </div>
+      ${note}
+    </div>`;
+  }
+
+  /**
+   * Toggle the inline detail row under one order row. Detail content is
+   * built lazily on expand (and rebuilt on re-expand — the table re-renders
+   * often, so open state intentionally does not persist across renders).
+   */
+  function toggleDetailRow(row) {
+    const next = row.nextElementSibling;
+    if (next && next.classList && next.classList.contains('detail-row')) {
+      next.remove();
+      row.classList.remove('expanded');
+      row.setAttribute('aria-expanded', 'false');
+      return;
+    }
+    const orderNumber = (row.dataset && row.dataset.onum) || '';
+    const record = state.records.find(
+      (candidate) => String((candidate && candidate.orderNumber) || '') === orderNumber
+    );
+    const detail = document.createElement('tr');
+    detail.className = 'detail-row';
+    const cell = document.createElement('td');
+    cell.colSpan = 7;
+    try {
+      cell.innerHTML = record
+        ? detailHtml(record)
+        : '<div class="detail-muted">Order details unavailable.</div>';
+    } catch (error) {
+      console.warn('Dashboard page: could not build order details:', error);
+      cell.innerHTML = '<div class="detail-muted">Order details unavailable.</div>';
+    }
+    detail.appendChild(cell);
+    row.insertAdjacentElement('afterend', detail);
+    row.classList.add('expanded');
+    row.setAttribute('aria-expanded', 'true');
+  }
+
+  // Row click → expand/collapse (delegated — rows re-render often). Clicks
+  // on interactive elements (row checkboxes, month-header labels, buttons)
+  // keep their existing behavior and never toggle expansion.
+  $('orderRows').addEventListener('click', (event) => {
+    const target = event.target;
+    if (!target || typeof target.closest !== 'function') return;
+    if (target.closest('input, label, button, a, select')) return;
+    const row = target.closest('tr.order-row');
+    if (!row) return;
+    toggleDetailRow(row);
+  });
 
   /** Reflect sort state in the header arrows + aria-sort. */
   function updateSortHeaders() {
@@ -470,12 +650,160 @@
     $('statSaved').textContent = formatMoney(Math.max(0, Number(stats.totalSavings) || 0));
   }
 
+  /** Live Chart.js instance for the by-month chart (null while the CSS fallback renders). */
+  let chartJsInstance = null;
+
+  /** Destroy the current Chart.js instance, if any (safe to call always). */
+  function destroyChartJs() {
+    if (chartJsInstance) {
+      try { chartJsInstance.destroy(); } catch (_) { /* already torn down */ }
+      chartJsInstance = null;
+    }
+  }
+
+  /** Resolve a CSS custom property off :root, with a hard fallback. */
+  function cssVar(name, fallback) {
+    try {
+      const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return value || fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  /**
+   * Drive Chart.js hover + tooltip state from the accessible month hotspots
+   * (canvas charts have no per-bar DOM, so hover/focus is forwarded).
+   * @param {number|null} index - active month index, or null to clear
+   */
+  function setChartActiveIndex(index) {
+    const instance = chartJsInstance;
+    if (!instance) return;
+    try {
+      const active = index === null ? [] : [{ datasetIndex: 0, index }];
+      instance.setActiveElements(active);
+      if (instance.tooltip && typeof instance.tooltip.setActiveElements === 'function') {
+        instance.tooltip.setActiveElements(active, { x: 0, y: 0 });
+      }
+      instance.update();
+    } catch (_) { /* hover affordance only — never fatal */ }
+  }
+
+  /**
+   * Chart.js (v4, vendored as window.Chart) rendering of the by-month spend
+   * chart: bar per month, tooltip with formatted total + order count, click
+   * selects/deselects the month — the same contract as the CSS bars.
+   *
+   * The canvas draws the visuals; on top of it sits one invisible-but-real
+   * `.cbar` hotspot button per month (the same class/data/aria contract as
+   * the CSS bars), because a canvas alone is a black box to keyboards,
+   * screen readers, and anything else that expects clickable month bars.
+   * The hotspots forward hover/focus into Chart.js so its tooltip follows.
+   */
+  function renderChartJs(chart, months, spansYears) {
+    destroyChartJs();
+    chart.classList.add('chart-canvas');
+    chart.innerHTML = '';
+    const canvas = document.createElement('canvas');
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', chart.getAttribute('aria-label') || 'Monthly spend');
+    chart.appendChild(canvas);
+
+    const accent = cssVar('--accent', '#3b82f6');
+    const barColor = cssVar('--bar', '#c7d7f2');
+    const borderColor = cssVar('--border', '#e5e7eb');
+    const mutedColor = cssVar('--text-muted', '#6b7280');
+    // No month selected → every bar in accent; month selected → that bar in
+    // accent, the rest in the quiet bar token (mirrors .cbar.selected).
+    const anySelected = Boolean(state.selectedMonth);
+    const colors = months.map((entry) =>
+      !anySelected || entry.month === state.selectedMonth ? accent : barColor
+    );
+
+    chartJsInstance = new window.Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: months.map((entry) => barLabel(entry.month, spansYears)),
+        datasets: [{
+          data: months.map((entry) => entry.total),
+          backgroundColor: colors,
+          hoverBackgroundColor: colors,
+          borderRadius: 4,
+          maxBarThickness: 46,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        onClick: (_event, elements) => {
+          if (!elements || !elements.length) return;
+          const entry = months[elements[0].index];
+          if (!entry) return;
+          // Clicking the selected bar again deselects (back to the range).
+          state.selectedMonth = state.selectedMonth === entry.month ? null : entry.month;
+          renderAll();
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                const entry = months[context.dataIndex] || { total: 0, orders: 0 };
+                return `${formatMoney(entry.total)} · ${entry.orders} order${entry.orders === 1 ? '' : 's'}`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: mutedColor } },
+          y: {
+            beginAtZero: true,
+            grid: { color: borderColor },
+            ticks: { color: mutedColor, callback: (value) => formatMoney(value) },
+          },
+        },
+      },
+    });
+
+    // Accessible month hotspots over the canvas (see doc comment above).
+    const overlay = document.createElement('div');
+    overlay.className = 'chart-hotspots';
+    months.forEach((entry, index) => {
+      const selected = entry.month === state.selectedMonth;
+      const hotspot = document.createElement('button');
+      hotspot.type = 'button';
+      hotspot.className = `cbar${selected ? ' selected' : ''}`;
+      hotspot.dataset.month = entry.month;
+      hotspot.setAttribute('aria-pressed', String(selected));
+      hotspot.setAttribute(
+        'aria-label',
+        `${monthLabel(entry.month)}: ${formatMoney(entry.total)}, ${entry.orders} order${entry.orders === 1 ? '' : 's'}`
+      );
+      hotspot.style.left = `${(index / months.length) * 100}%`;
+      hotspot.style.width = `${100 / months.length}%`;
+      hotspot.addEventListener('click', () => {
+        // Clicking the selected bar again deselects (back to the range).
+        state.selectedMonth = state.selectedMonth === entry.month ? null : entry.month;
+        renderAll();
+      });
+      hotspot.addEventListener('mouseenter', () => setChartActiveIndex(index));
+      hotspot.addEventListener('focus', () => setChartActiveIndex(index));
+      hotspot.addEventListener('mouseleave', () => setChartActiveIndex(null));
+      hotspot.addEventListener('blur', () => setChartActiveIndex(null));
+      overlay.appendChild(hotspot);
+    });
+    chart.appendChild(overlay);
+  }
+
   /** Render the by-month bar chart for the current RANGE (months stay visible while month-scoped). */
   function renderChart(model) {
     const months = model.chartMonths;
     const chart = $('chart');
     $('chartCard').hidden = months.length === 0;
     if (!months.length) {
+      destroyChartJs();
+      chart.classList.remove('chart-canvas');
       chart.innerHTML = '';
       return;
     }
@@ -492,6 +820,21 @@
       `Monthly spend, ${monthLabel(months[0].month)} to ${monthLabel(months[months.length - 1].month)}`
     );
 
+    // Prefer the vendored Chart.js when its module has loaded; any failure
+    // falls straight through to the CSS bars so the chart always renders.
+    if (typeof window !== 'undefined' && typeof window.Chart === 'function') {
+      try {
+        renderChartJs(chart, months, spansYears);
+        return;
+      } catch (error) {
+        console.warn('Dashboard page: Chart.js render failed, using fallback bars:', error);
+        destroyChartJs();
+      }
+    }
+
+    // Fallback path: the original CSS-bar chart, unchanged.
+    destroyChartJs();
+    chart.classList.remove('chart-canvas');
     chart.innerHTML = months
       .map((entry, index) => {
         const percent = maxTotal > 0 ? Math.round((entry.total / maxTotal) * 100) : 0;
@@ -608,6 +951,159 @@
   }
 
   /* ------------------------------------------------------------------ *
+   * "More insights" card — created from JS after the chart card
+   * (dashboard.html stays untouched; MV3 CSP forbids inline scripts there)
+   * ------------------------------------------------------------------ */
+
+  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  /** Create (once) and return the JS-inserted "More insights" card. */
+  function ensureMoreInsightsCard() {
+    let card = $('moreInsightsCard');
+    if (card) return card;
+    card = document.createElement('section');
+    card.className = 'card more-insights';
+    card.id = 'moreInsightsCard';
+    card.hidden = true;
+    card.innerHTML =
+      '<h2>More insights · <span class="scope-echo"></span></h2>' +
+      '<div class="mi-grid" id="moreInsightsGrid"></div>';
+    const chartCard = $('chartCard');
+    const ordersCard = $('ordersCard');
+    if (chartCard && chartCard.insertAdjacentElement) {
+      chartCard.insertAdjacentElement('afterend', card);
+    } else if (ordersCard && ordersCard.parentNode) {
+      ordersCard.parentNode.insertBefore(card, ordersCard);
+    } else {
+      ($('page') || document.body).appendChild(card);
+    }
+    return card;
+  }
+
+  /**
+   * Extra analytics over the SCOPED records (measured invoices only — the
+   * same rule every other stat follows), with invoice→summary money fallback.
+   */
+  function computeMoreInsights(scopedRecords, scopedStats) {
+    const measured = (Array.isArray(scopedRecords) ? scopedRecords : []).filter(recordIsMeasured);
+
+    let biggest = null;
+    const dayCounts = [0, 0, 0, 0, 0, 0, 0];
+    let itemSum = 0;
+    let itemOrders = 0;
+
+    measured.forEach((record) => {
+      const invoice = record.invoice || {};
+      const summary = record.summary || {};
+      const total = moneyOf(invoice.orderTotal, summary.orderTotal || record.orderTotal);
+      const date = dashboardRecordDate(record);
+      if (total && (!biggest || total > biggest.total)) biggest = { total, date };
+      if (date) {
+        const day = new Date(`${date}T00:00:00`).getDay();
+        if (day >= 0 && day <= 6) dayCounts[day] += 1;
+      }
+      let count = null;
+      if (summary.itemCount !== '' && summary.itemCount !== null && summary.itemCount !== undefined) {
+        count = parseNumericValue(summary.itemCount);
+      } else if (Array.isArray(invoice.items)) {
+        count = invoice.items.length;
+      } else if (Array.isArray(summary.items)) {
+        count = summary.items.length;
+      }
+      if (count !== null && count > 0) {
+        itemSum += count;
+        itemOrders += 1;
+      }
+    });
+
+    const totalSpend = Number(scopedStats.totalSpend) || 0;
+    const totalSavings = Math.max(0, Number(scopedStats.totalSavings) || 0);
+    const maxDay = Math.max.apply(null, dayCounts);
+    const topItems = Array.isArray(scopedStats.topItems) ? scopedStats.topItems : [];
+
+    return {
+      measuredCount: measured.length,
+      biggest,
+      savingsRate: totalSpend > 0 ? (totalSavings / totalSpend) * 100 : null,
+      totalSavings,
+      avgItems: itemOrders > 0 ? itemSum / itemOrders : null,
+      avgItemOrders: itemOrders,
+      busiestDay: maxDay > 0 ? { name: DAY_NAMES[dayCounts.indexOf(maxDay)] || '', orders: maxDay } : null,
+      topItem: topItems.length ? topItems[0] : null,
+    };
+  }
+
+  /** Render (or hide) the "More insights" tiles for the current scope. */
+  function renderMoreInsights(scopedRecords, scopedStats, now) {
+    const card = ensureMoreInsightsCard();
+    let insights;
+    try {
+      insights = computeMoreInsights(scopedRecords, scopedStats);
+    } catch (error) {
+      console.warn('Dashboard page: more-insights computation failed:', error);
+      card.hidden = true;
+      return;
+    }
+    if (!insights.measuredCount) {
+      card.hidden = true;
+      return;
+    }
+
+    const tiles = [];
+    if (insights.biggest) {
+      tiles.push({
+        label: 'Biggest order',
+        value: formatMoney(insights.biggest.total),
+        sub: detailDateLabel(insights.biggest.date) || 'date unknown',
+      });
+    }
+    if (insights.savingsRate !== null) {
+      const rate = insights.savingsRate;
+      tiles.push({
+        label: 'Savings rate',
+        value: `${rate >= 10 ? Math.round(rate) : rate.toFixed(1)}%`,
+        sub: `${formatMoney(insights.totalSavings)} saved`,
+      });
+    }
+    if (insights.avgItems !== null) {
+      tiles.push({
+        label: 'Avg items / order',
+        value: insights.avgItems >= 10 ? String(Math.round(insights.avgItems)) : insights.avgItems.toFixed(1),
+        sub: `across ${insights.avgItemOrders} measured order${insights.avgItemOrders === 1 ? '' : 's'}`,
+      });
+    }
+    if (insights.busiestDay) {
+      tiles.push({
+        label: 'Busiest day',
+        value: insights.busiestDay.name,
+        sub: `${insights.busiestDay.orders} order${insights.busiestDay.orders === 1 ? '' : 's'} placed`,
+      });
+    }
+    if (insights.topItem) {
+      tiles.push({
+        label: 'Most bought',
+        value: String(insights.topItem.name || ''),
+        sub: `×${insights.topItem.quantity} · ${formatMoney(insights.topItem.spend)} total`,
+      });
+    }
+
+    if (!tiles.length) {
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    const echoEl = card.querySelector('.scope-echo');
+    if (echoEl) echoEl.textContent = scopeEchoLabel(now);
+    $('moreInsightsGrid').innerHTML = tiles
+      .map((tile) => `<div class="mi-tile">
+        <div class="mi-label">${escapeHtml(tile.label)}</div>
+        <div class="mi-value" title="${escapeHtml(tile.value)}">${escapeHtml(tile.value)}</div>
+        <div class="mi-sub">${escapeHtml(tile.sub)}</div>
+      </div>`)
+      .join('');
+  }
+
+  /* ------------------------------------------------------------------ *
    * Top-level render
    * ------------------------------------------------------------------ */
 
@@ -617,6 +1113,10 @@
     $('statsSection').hidden = !stats;
     $('chartCard').hidden = !chart;
     $('insightsSection').hidden = !insights;
+    // The JS-inserted "More insights" card follows the insight sections'
+    // visibility; renderMoreInsights re-hides it when nothing is measured.
+    const moreInsights = $('moreInsightsCard');
+    if (moreInsights) moreInsights.hidden = !insights;
     $('coverageRegion').hidden = !coverage;
     $('ordersCard').hidden = !orders;
     $('combinedSection').hidden = !combined;
@@ -716,6 +1216,7 @@
 
     renderStats(model, scopedStats, now);
     renderChart(model);
+    renderMoreInsights(scopedRecords, scopedStats, now);
     renderLedger(scopedStats, now);
     renderPriceWatch(scopedRecords);
     renderMostBought(scopedStats);
@@ -1317,6 +1818,15 @@
   $('pageLegacyExcel').addEventListener('change', () => {
     sendToPanel('SET_EXPORT_OPTION', { option: 'legacyExcel', value: $('pageLegacyExcel').checked });
   });
+
+  // The Chart.js vendor module may load after first paint — when it
+  // announces itself, re-render once so the chart upgrades from the CSS
+  // bars to the canvas. Guarded on signature: before the first refresh
+  // completes there is nothing to re-render (refresh will use window.Chart
+  // itself once it runs).
+  window.addEventListener('wie-chart-ready', () => {
+    if (state.signature !== null) renderAll();
+  }, { once: true });
 
   // First paint: provider options first, then the initial render.
   populateProviderSelect().then(() => refresh(true));

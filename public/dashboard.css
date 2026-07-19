@@ -463,3 +463,89 @@ footer {
   cursor: pointer;
   margin: 0;
 }
+
+/* ---------- expandable order detail rows (dashboard.page.js) ---------- */
+/* Clicking an order row (not its checkbox) toggles an inline detail row
+   beneath it; the chevron in the Data cell rotates while expanded. */
+.order-row { cursor: pointer; }
+.data-cell { white-space: nowrap; }
+.row-chevron {
+  display: inline-block; margin-left: 8px; color: var(--text-muted);
+  font-size: 14px; line-height: 1; vertical-align: middle;
+  transition: transform .12s;
+}
+.order-row.expanded .row-chevron { transform: rotate(90deg); color: var(--accent); }
+.order-row.expanded td { background: var(--surface-2); }
+.detail-row td {
+  background: var(--surface-2); cursor: default;
+  padding: 14px 16px 16px 42px;
+}
+tr.detail-row:hover td { background: var(--surface-2); }
+.detail-wrap { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.detail-meta {
+  display: flex; flex-wrap: wrap; gap: 4px 18px;
+  font-size: 12.5px; color: var(--text-secondary);
+}
+.detail-meta strong { font-weight: 600; color: var(--text); }
+.detail-cols {
+  display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(220px, 1fr);
+  gap: 8px 28px; align-items: start;
+}
+@media (max-width: 900px) { .detail-cols { grid-template-columns: minmax(0, 1fr); } }
+/* Inner items table: undo the outer table's row hover + spacing. */
+.detail-items { width: 100%; border-collapse: collapse; margin: 0; font-size: 13px; }
+.detail-items th {
+  padding: 5px 8px 5px 0; font-size: 11px;
+  border-bottom: 1px solid var(--border-strong);
+}
+.detail-items td { padding: 5px 8px 5px 0; border-bottom: 1px dashed var(--border); }
+.detail-items tbody tr:last-child td { border-bottom: none; }
+.detail-items tr:hover td, .detail-row:hover .detail-items td { background: none; }
+.detail-item-name {
+  width: 100%; max-width: 0; min-width: 160px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.detail-money { font-size: 13px; }
+.detail-money .lrow { padding: 5px 0; }
+.detail-muted { color: var(--text-muted); font-size: 12.5px; }
+
+/* ---------- Chart.js canvas mode (dashboard.page.js renderChartJs) ---------- */
+/* #chart flips from the flex CSS-bar row to a positioned block box so the
+   responsive canvas can fill the same 190px footprint; the CSS-bar styles
+   above stay untouched for the no-vendor fallback path. */
+.chart.chart-canvas {
+  display: block; position: relative; padding: 0; border-bottom: none;
+}
+.chart.chart-canvas canvas { width: 100% !important; height: 100% !important; }
+/* Accessible month hotspots over the canvas: one real (transparent) .cbar
+   button per month — keyboard/AT/click affordances for a canvas that has no
+   per-bar DOM of its own. Overrides the flex CSS-bar styling above. */
+.chart.chart-canvas .chart-hotspots { position: absolute; inset: 0; }
+.chart.chart-canvas .cbar {
+  position: absolute; top: 0; bottom: 0; display: block;
+  height: auto; min-width: 0; background: none; border: none;
+  padding: 0; margin: 0; border-radius: 4px;
+}
+.chart.chart-canvas .cbar:focus-visible {
+  outline: 3px solid var(--focus-ring); outline-offset: -3px;
+}
+
+/* ---------- "More insights" card (JS-inserted by dashboard.page.js) ---------- */
+.mi-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px; margin-top: 12px;
+}
+.mi-tile {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px 14px; min-width: 0;
+}
+.mi-label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--text-secondary);
+}
+.mi-value {
+  font-size: 17px; font-weight: 650; margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mi-sub { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
