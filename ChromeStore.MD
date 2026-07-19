@@ -1,27 +1,28 @@
-Transform your Walmart order management experience with the Walmart Invoice Exporter, a powerful Chrome extension that now allows you to download multiple orders at once in Excel format. Perfect for expense tracking, business records, and personal finance management.
+See your entire Walmart spending on a private, built-in dashboard — and export every order to Excel, CSV, JSON, or PDF in a couple of clicks. Walmart Invoice Exporter collects your order history straight from walmart.com, saves it privately on your device, and turns it into clean files and real insights. Perfect for expense tracking, tax season, business accounting, and personal finance.
 
 ★ Key Features:
 
-• Batch Download: Select and download multiple orders at once, compatible with Walmart's built-in filters (date range, order status, returns, and search).
-• Order History Crawler: Click "Collect orders" to automatically gather order numbers from your purchase history (page limit and "only new orders" tucked under Options).
-• Order Description Tooltips: Hover over order numbers to see delivery date.
-• Comprehensive FAQ: Built-in help guide with troubleshooting tips and setup instructions
-• Detailed Excel Export: Get comprehensive order information including:
-   - Product details (name, quantity, price)
-   - Delivery status tracking
-   - Product links for easy reference
-   - Complete order information (number, date)
-   - Shipping address and payment method
-   - All charges (delivery, tax, tip - accurately parsed)
-   - Order subtotal (before fees and taxes)
-   - Order total (final amount)
-• Multiple Export Formats: Excel (default), CSV, JSON, or a printable HTML/PDF receipt
-• Legacy Excel Layout: an opt-in toggle restores the older single-sheet workbook if you prefer it
-• Two Download Buttons: "Single file" (every selected order in one file) or "Multiple files" (one file per order) — same pair, whichever format you pick
-• Instant Re-export: orders you've already downloaded are saved on this device and re-export instantly in any format — never fabricated
-• Dark Mode & Dedicated Settings: a gear icon opens Appearance (System/Light/Dark), Collection defaults, Export defaults, and your saved data
-• Privacy-Focused: Runs only on Walmart order pages with minimal permissions, no servers, no telemetry
-• Open Source: Available on GitHub for transparency and community contributions.
+• Spending Dashboard (full browser page): see totals, monthly spend, and where the money went — computed entirely on your device
+   - Click any order row to expand its complete invoice inline: items, prices, the full money breakdown, and payment methods
+   - Interactive monthly spend chart — click a bar to scope the whole page to that month, then export just that month
+   - Stat cards with vs-previous-period deltas, plus a "More insights" card: biggest order, savings rate, average items per order, busiest day, and most-bought item
+   - Price watch on items you rebuy, and a most-bought items list
+   - Searchable, sortable orders table grouped by month, with select-the-whole-month checkboxes and scoped export
+   - The live side panel is embedded right beside the dashboard, so you can collect and export without leaving the page
+• One-Click Collection: "Load my orders" gathers your order history the first time; "Check for new orders" tops it up in seconds after that
+• Fast Collection (optional, in Settings): request-based collection that reuses your own logged-in session instead of clicking through every page — honors "only new orders", and fast and classic modes automatically fall back to each other if one can't proceed
+• Walmart's Own Filters as Collection Options: pick an order type (Online / In store / In progress / Completed / Returned) and an optional date range under Options — collection uses Walmart's exact filter grammar
+• Multi-Account Support: saved data is scoped per Walmart account (detected privately — only a hash, never your name). The account switcher appears only when 2+ accounts have data; accounts can be renamed, deleted individually in Settings, and fetching while the wrong account is signed in is blocked with a clear message
+• Batch Download: select and download many order invoices at once
+• Three Ways to Save: "Single file" (every selected order in one file), "Multiple files" (one file per order), or "Save details to library (no file)" to store invoices locally without downloading anything
+• Multiple Export Formats: Excel (default), CSV (including QuickBooks and Xero bank-import presets), JSON, a printable HTML receipt, or a true PDF receipt
+• Detailed Exports: product details (name, quantity, price, links), delivery status, shipping address, payment method and per-card split, subtotal, total, delivery charges, tax, tip, refunds, donations, seller, fulfillment type, tracking numbers, and order type (online vs in-store)
+• Instant Re-export: orders saved to your local library re-export immediately in any format — nothing is ever fabricated
+• Complete Visual Redesign: one clean design language across the panel, settings, and dashboard, in both light and dark
+• Automatic Housekeeping (configurable): by default, saved data is wiped only if you don't use the extension for 180 days — change the number of days or turn it off entirely in Settings
+• Walmart.ca Support (optional): enable Canada support in Settings to collect and export walmart.ca orders too
+• Privacy-Focused: runs only on Walmart order pages with minimal permissions — no servers, no telemetry
+• Open Source: available on GitHub for transparency and community contributions
 
 
 ★ Usage Instructions:
@@ -35,13 +36,19 @@ Transform your Walmart order management experience with the Walmart Invoice Expo
  ☆ Batch Download
       1. Go to your Walmart order history page (https://www.walmart.com/orders)
       2. Click the extension icon
-      3. Click "Collect orders" (page limit and "only new orders" are under Options)
+      3. Click "Load my orders" (first time) or "Check for new orders" (after that) — the Options disclosure holds the page limit, "only new orders", order type, and date range
       4. Wait for the order numbers to load (may take a few seconds)
-      5. Hover over order numbers to see their descriptions (delivery date, status) if needed
-      6. Select the orders you want to download
-      7. **(Optional)** Pick a format below the buttons: Excel, CSV, JSON, or a printable receipt
-      8. Click "Single file" (one file with every selected order) or "Multiple files" (one file per order)
-      9. Wait for the download to complete (may take a few minutes)
+      5. Select the orders you want to download
+      6. (Optional) Pick a format below the buttons: Excel, CSV, JSON, printable receipt, or PDF
+      7. Click "Single file" (one file with every selected order), "Multiple files" (one file per order), or "Save details to library (no file)" to store them without downloading
+      8. Wait for the download to complete (may take a few minutes)
+
+ ☆ Spending Dashboard
+      1. Click "View dashboard" in the panel to open the full-page dashboard
+      2. Click a bar in the monthly chart to scope the whole page to that month — click again to zoom back out
+      3. Click any order row to expand its full invoice inline (items, prices, money breakdown, payment methods)
+      4. If a row says its full invoice hasn't been fetched yet, select it and click "Fetch data"
+      5. Export exactly what's in view with the scoped export button
 
  ⚠️ IMPORTANT NOTE FOR BULK DOWNLOADING ⚠️
       Required Chrome Settings for Bulk Downloads:
@@ -66,16 +73,17 @@ Transform your Walmart order management experience with the Walmart Invoice Expo
 
 ☆ Need to merge multiple Excel files? Visit: https://hppanpaliya.github.io/excel-merger
 
-☆ Pro Tip: When batch downloading, use Walmart's order page filters (search, date range, order status, returns) before clicking "Start Collection" to download exactly the orders you need!
+☆ Pro Tip: Use the Options disclosure (order type + date range) before collecting, or click a month bar on the dashboard, to export exactly the orders you need!
 
 
 ★ Privacy & Security:
    • No data collection
-   • Local processing only
-   • Minimal permissions required
+   • Local processing only — every chart, stat, and file is computed on your device
+   • Minimal permissions required; runs only on Walmart order pages
    • No external server communication, no telemetry
-   • Downloaded orders are stored on-device (IndexedDB), with no expiration
-   • One "Delete all saved data" control (Settings → Data on this device) wipes everything, anytime
+   • Multi-account detection uses only a privacy-preserving hash — never your name or email
+   • Saved orders are stored on-device (IndexedDB); by default they're wiped only after 180 days of not using the extension (configurable, or turn it off)
+   • One "Delete all saved data" control (Settings → Data on this device) wipes everything, anytime — plus per-account delete
 
 ★ Open Source:
    • This extension is open source and available on GitHub: https://github.com/hppanpaliya/Walmart-Invoice-Exporter
@@ -84,10 +92,24 @@ Transform your Walmart order management experience with the Walmart Invoice Expo
    • Expense tracking
    • Business accounting
    • Budget management
+   • Tax season and reimbursements
    • Purchase history organization
 
 
 ★ What's New:
+
+ ✦ Version 8.0 - July 19, 2026
+   • Full-app Spending Dashboard: click any order row to expand its complete invoice inline; interactive monthly chart (click a bar to scope the page); "More insights" card (biggest order, savings rate, average items per order, busiest day, most-bought item); month group rows with select-the-whole-month checkboxes
+   • Fast collection is now first-class: request-based, honors "only new orders", works on filtered views, and fast and classic modes fall back to each other automatically
+   • Walmart's own order filters as collection options: order type (Online / In store / In progress / Completed / Returned) and a date range
+   • Multi-account support: per-account data, renamable accounts, per-account delete, and a wrong-account fetch guard — detected privately (hash only), shown only when 2+ accounts have data
+   • Complete visual redesign of the panel, settings, and dashboard — one design language in light and dark
+   • New inactivity housekeeping: saved data is wiped only after 180 days of not using the extension (configurable or off)
+
+ ✦ Version 7.3 - July 18, 2026
+   • Spending Dashboard became a full browser page with the live side panel embedded beside it
+   • Receipt-style order list grouped by month, with a "Showing" range filter
+   • Product links now survive Walmart's data-shape changes
 
  ✦ Version 7.0 - July 17, 2026
    • Two equal download buttons — "Single file" and "Multiple files" — replace the old Download + Quick Export buttons
@@ -99,7 +121,7 @@ Transform your Walmart order management experience with the Walmart Invoice Expo
    • Added keyboard focus rings, reduced-motion support, and ARIA labeling
 
  ✦ Version 6.3 - March 25, 2026
-   • Improved order-detail reliability with dual extraction (`__NEXT_DATA__` + DOM fallback)
+   • Improved order-detail reliability with dual extraction (page payload + DOM fallback)
    • Removed duplicate/non-essential export fields: Order Number (Display), Barcode Data, Fee Breakdown, Charge History
    • Cleaned payment output: Payment Method no longer repeats Payment Messages text
 
@@ -194,6 +216,6 @@ Streamline your Walmart purchase tracking today with this powerful, user-friendl
 
 
 
-Note: This extension works only on walmart.com.
+Note: This extension works only on walmart.com order pages (and, if you enable it in Settings, walmart.ca order pages).
 
 Disclaimer: This extension is NOT created by or affiliated with Walmart Inc. Walmart Invoice Exporter is an independent tool developed by a third party. Walmart™ and all related trademarks are property of Walmart Inc. All rights reserved.
