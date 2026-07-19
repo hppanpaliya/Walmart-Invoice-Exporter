@@ -28,6 +28,14 @@ migrateLegacyStorage().catch((error) =>
   console.warn('Legacy storage migration failed:', error)
 );
 
+// Enforce the optional data-retention setting on worker start (off by default;
+// see CONSTANTS.DATA_RETENTION). No new permissions — just one indexed scan.
+OrderDb.applyRetention()
+  .then((purged) => {
+    if (purged) console.log(`[retention] purged ${purged} order(s) past the retention period.`);
+  })
+  .catch((error) => console.warn('Data-retention purge failed:', error));
+
 // Encapsulate state to reduce global namespace pollution.
 //
 // CollectionState.isCollecting reflects only THIS worker instance — Chrome
