@@ -347,140 +347,14 @@ const PurchaseHistoryDataSource = (() => {
     messageListenerAttached = true;
   }
 
-  function injectNetworkBridgeScript() {
-    if (!document.documentElement || document.documentElement.dataset.wiePhBridgeInjected === "true") {
-      return;
-    }
-    document.documentElement.dataset.wiePhBridgeInjected = "true";
-
-    const bridgeScript = document.createElement("script");
-    bridgeScript.setAttribute("data-wie-bridge", "purchase-history");
-    bridgeScript.textContent = `(() => {
-      const SOURCE = ${JSON.stringify(MESSAGE_SOURCE)};
-      const TYPE = ${JSON.stringify(MESSAGE_TYPE)};
-      const hasOwn = Object.prototype.hasOwnProperty;
-
-      if (window.__wiePurchaseHistoryBridgeInstalled) return;
-      window.__wiePurchaseHistoryBridgeInstalled = true;
-
-      const extractPurchaseHistoryNode = (payload) => {
-        if (!payload || typeof payload !== "object") return null;
-        return (
-          payload.purchaseHistory ||
-          (payload.data && payload.data.purchaseHistory) ||
-          (payload.props && payload.props.pageProps && payload.props.pageProps.phRedesignInitialData && payload.props.pageProps.phRedesignInitialData.data && payload.props.pageProps.phRedesignInitialData.data.purchaseHistory) ||
-          (payload.pageProps && payload.pageProps.phRedesignInitialData && payload.pageProps.phRedesignInitialData.data && payload.pageProps.phRedesignInitialData.data.purchaseHistory) ||
-          null
-        );
-      };
-
-      const emit = (purchaseHistory) => {
-        if (!purchaseHistory || !Array.isArray(purchaseHistory.orders) || purchaseHistory.orders.length === 0) {
-          return;
-        }
-
-        window.postMessage(
-          {
-            source: SOURCE,
-            type: TYPE,
-            payload: {
-              purchaseHistory: {
-                orders: purchaseHistory.orders,
-                pageInfo: purchaseHistory.pageInfo || null,
-              },
-            },
-          },
-          "*"
-        );
-      };
-
-      const handlePayload = (payload) => {
-        const purchaseHistory = extractPurchaseHistoryNode(payload);
-        if (purchaseHistory) {
-          emit(purchaseHistory);
-        }
-      };
-
-      const maybeParseJsonText = (text) => {
-        if (!text || typeof text !== "string") return;
-        if (text.indexOf("purchaseHistory") === -1) return;
-
-        try {
-          const parsed = JSON.parse(text);
-          handlePayload(parsed);
-        } catch (_) {
-          // Not a JSON payload we care about
-        }
-      };
-
-      const patchFetch = () => {
-        if (typeof window.fetch !== "function" || window.fetch.__wiePurchaseHistoryWrapped) {
-          return;
-        }
-
-        const originalFetch = window.fetch.bind(window);
-        const wrappedFetch = (...args) =>
-          originalFetch(...args).then((response) => {
-            try {
-              const cloned = response.clone();
-              cloned.text().then(maybeParseJsonText).catch(() => {});
-            } catch (_) {
-              // Ignore clone/read errors
-            }
-            return response;
-          });
-
-        wrappedFetch.__wiePurchaseHistoryWrapped = true;
-        window.fetch = wrappedFetch;
-      };
-
-      const patchXHR = () => {
-        if (XMLHttpRequest.prototype.__wiePurchaseHistoryWrapped) {
-          return;
-        }
-
-        const originalSend = XMLHttpRequest.prototype.send;
-
-        XMLHttpRequest.prototype.send = function(...args) {
-          this.addEventListener(
-            "load",
-            function () {
-              try {
-                if (this.responseType && this.responseType !== "" && this.responseType !== "text") {
-                  return;
-                }
-                maybeParseJsonText(this.responseText);
-              } catch (_) {
-                // Ignore XHR read errors
-              }
-            },
-            { once: true }
-          );
-
-          return originalSend.apply(this, args);
-        };
-
-        XMLHttpRequest.prototype.__wiePurchaseHistoryWrapped = true;
-      };
-
-      const captureInitialNextData = () => {
-        const script = document.getElementById("__NEXT_DATA__");
-        if (!script || !script.textContent) return;
-        maybeParseJsonText(script.textContent);
-      };
-
-      patchFetch();
-      patchXHR();
-      captureInitialNextData();
-    })();`;
-
-    (document.head || document.documentElement).appendChild(bridgeScript);
-    bridgeScript.remove();
-  }
+  // The old inline <script> bridge injector lived here. It is GONE on
+  // purpose: walmart-mainworld.js (a "world": "MAIN" content script) now
+  // installs the fetch/XHR capture bridge before any page script runs —
+  // and Walmart's CSP blocks inline scripts anyway, so the injector could
+  // never execute and only spammed CSP violations in the console.
 
   function initialize() {
     attachBridgeMessageListener();
-    injectNetworkBridgeScript();
 
     // Prime the snapshot cache from initial HTML payload when available.
     updateLatestSnapshot(parseSnapshotFromNextData());
