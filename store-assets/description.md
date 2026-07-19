@@ -1,7 +1,7 @@
 # Chrome Web Store description (copy–paste)
 
-> Publish this together with v8.0 — it describes the new UI. The short
-> "summary" field and the detailed description are below.
+> Publish this together with v8.1 — it describes the new UI and the MCP
+> feature. The short "summary" field and the detailed description are below.
 
 ## Summary (132-char field)
 
@@ -40,7 +40,7 @@ Walmart Invoice Exporter collects every order from walmart.com/orders, saves it 
 • Optional housekeeping: saved data is wiped only after 180 days of not using the extension (adjust or turn off)
 • One honest "Delete all saved data" button — plus per-account delete
 • Open source on GitHub for full transparency
-• Optional AI access (off by default): let Claude or any MCP tool on your own computer read your saved orders — read-only, local-only, token-protected
+• Optional AI access (off by default): let Claude or any MCP tool on your own computer read your saved orders via the walmart-invoice-mcp helper (on npm) — read-only, local-only, token-protected
 
 ★ PERFECT FOR
 • Tax reporting and reconciliation
@@ -55,7 +55,7 @@ Walmart Invoice Exporter collects every order from walmart.com/orders, saves it 
 
 Bulk downloads work best with Chrome's "Ask where to save each file" setting off — the in-app Help & FAQ walks you through it.
 
-★ WHAT'S NEW IN 8.0
+★ WHAT'S NEW IN 8.1
 • Full-app dashboard: expandable inline invoices, interactive monthly chart, and a new insights card
 • Fast collection with "only new orders" support and automatic classic fallback
 • Walmart's own order filters (type + date range) as collection options
@@ -67,4 +67,5 @@ Note: This extension works only on walmart.com (and, optionally, walmart.ca).
 
 Disclaimer: This extension is NOT created by or affiliated with Walmart Inc. Walmart Invoice Exporter is an independent tool developed by a third party. Walmart™ and all related trademarks are property of Walmart Inc. All rights reserved.
 
+Website (guides, FAQ, privacy policy): https://github.harsh.al/Walmart-Invoice-Exporter/
 Open source: https://github.com/hppanpaliya/Walmart-Invoice-Exporter

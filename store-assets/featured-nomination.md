@@ -12,7 +12,7 @@
 |---|---|
 | Publisher email address | `panpaliyah@gmail.com` |
 | Extension ID | `bndkihecbbkoligeekekdgommmdllfpe` |
-| Do you own a domain related to this extension? If yes, provide the site URL. | Leave blank unless a site is verified in the CWS developer dashboard (GitHub repo/Pages URL). Not required for the Featured badge — only gates the separate Established Publisher badge. |
+| Do you own a domain related to this extension? If yes, provide the site URL. | `https://github.harsh.al/Walmart-Invoice-Exporter/` (live project site) — provide once the domain is verified in the CWS developer dashboard; otherwise leave blank. Not required for the Featured badge — only gates the separate Established Publisher badge. |
 | Confirm that your extension is published to all public users. | Yes |
 | Confirm that your extension is relevant to a broad set of users. | Yes |
 | Is this publisher account clear from any active violations on the Chrome Web Store or other Google services? | Yes |
