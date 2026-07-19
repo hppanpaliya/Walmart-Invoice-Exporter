@@ -359,15 +359,62 @@
                     </svg>
                 </div>
                 <div class="faq-answer">
-                    <p>Every order you download is saved on this device (in the browser's IndexedDB) — nothing expires and nothing is ever sent anywhere:</p>
+                    <p>Every order you download is saved on this device (in the browser's IndexedDB) — nothing is ever sent anywhere:</p>
                     <ul>
                         <li><strong>Saved automatically:</strong> Once an order is downloaded, its full details are stored locally</li>
                         <li><strong>Instant re-export:</strong> Re-downloading a saved order (in any format) reuses the stored data instead of reopening the order page — and nothing is ever fabricated</li>
                         <li><strong>Faster re-syncs:</strong> Because your orders are remembered, "Check for new orders" can skip ones it already knows — turn on "only new orders" under Options</li>
+                        <li><strong>Per-account:</strong> If you use more than one Walmart login, each account's data is kept separate — a switcher appears automatically, and Settings lets you delete just one account's data</li>
                         <li><strong>Yours to delete:</strong> Settings → "Data on this device" → "Delete all saved data" wipes everything the extension has stored, in one step</li>
                     </ul>
                     <div class="note">
-                        <strong>Note:</strong> There's no automatic expiration and no separate "cache" to manage — one control clears everything.
+                        <strong>Note:</strong> Data is kept as long as you keep using the extension. If you don't open it at all for 180 days, it's deleted automatically for your privacy — you can change the window or turn this off in Settings → Advanced.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    Spending Dashboard
+                    <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="faq-answer">
+                    <p>Click the chart icon in the panel header to open the dashboard — a full browser page built from your saved orders:</p>
+                    <ul>
+                        <li><strong>Overview:</strong> monthly spend chart, stat cards, monthly budget with an on-pace projection, and a searchable orders table — click any row for the full inline invoice</li>
+                        <li><strong>Items:</strong> every product you've bought, with price history and your Personal Inflation Rate</li>
+                        <li><strong>Trends:</strong> year-over-year lines, a shopping-days heatmap, delivery/pickup split, and more</li>
+                        <li><strong>Year in review:</strong> a Wrapped-style annual summary with superlatives</li>
+                    </ul>
+                    <div class="note">
+                        <strong>Note:</strong> Everything is computed on this device from your saved orders — collect orders first and the dashboard fills in.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">
+                    AI access (MCP) — using your orders with Claude
+                    <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="faq-answer">
+                    <p>Optionally, AI tools on your own computer (Claude Code, Claude Desktop, or any MCP client) can read your saved orders — so you can ask things like "how much did I spend on groceries in March?"</p>
+                    <ol>
+                        <li>Open Settings → <strong>AI access (MCP)</strong> and turn the toggle on</li>
+                        <li>Copy the pairing token it generates</li>
+                        <li>Add the helper to your MCP client, e.g. <code>npx walmart-invoice-mcp --token &lt;token&gt;</code></li>
+                    </ol>
+                    <ul>
+                        <li><strong>Off by default</strong> — nothing happens unless you enable it</li>
+                        <li><strong>Read-only</strong> — AI tools can list and read saved orders, never change or delete them</li>
+                        <li><strong>Local-only</strong> — the extension only ever talks to 127.0.0.1 on your machine; nothing goes to the internet</li>
+                    </ul>
+                    <div class="note">
+                        <strong>Tip:</strong> If your AI tool says the extension isn't connected, open this side panel once — that wakes the extension so it can connect.
                     </div>
                 </div>
             </div>

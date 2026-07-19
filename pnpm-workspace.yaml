@@ -1,0 +1,16 @@
+# Postinstall build scripts are blocked by default (pnpm 10+); allow only
+# esbuild's (installs its platform binary — the WXT build needs it).
+allowBuilds:
+  esbuild: true
+  spawn-sync: false
+# pnpm settings (pnpm 10.16+ reads settings from this file).
+#
+# Supply-chain cooldown: refuse to install any dependency version published
+# less than 14 days ago (20160 minutes). Newly compromised releases are
+# usually yanked well within that window, so waiting out the cooldown is the
+# cheapest protection against npm supply-chain attacks. If a critical hotfix
+# must land sooner, exempt that one version via minimumReleaseAgeExclude:
+#
+#   minimumReleaseAgeExclude:
+#     - some-package@1.2.3
+minimumReleaseAge: 20160

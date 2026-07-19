@@ -25,13 +25,17 @@ jobs:
         # under a path — flatten them to dashes (v8.0-feature-wxt).
         run: echo "branch=${GITHUB_REF_NAME//\//-}" >> $GITHUB_ENV
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: pnpm
 
       - name: Install dev dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       # WXT builds + packages every target from wxt.config.ts — the manifest,
       # file list, and Firefox transforms all live there now (the old
@@ -39,8 +43,8 @@ jobs:
       # the Chrome package unmodified, as before.
       - name: Build store packages
         run: |
-          npx wxt zip
-          npx wxt zip -b firefox --mv3
+          pnpm exec wxt zip
+          pnpm exec wxt zip -b firefox --mv3
 
       - name: Get version from the built manifest
         id: version

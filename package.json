@@ -1,7 +1,8 @@
 {
   "name": "walmart-invoice-exporter",
   "private": true,
-  "description": "Export your Walmart order history to Excel, CSV, or PDF — and see where the money went on a built-in spending dashboard.",
+  "packageManager": "pnpm@11.14.0",
+  "description": "Export your Walmart order history to Excel, CSV, or PDF \u2014 and see where the money went on a built-in spending dashboard.",
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
@@ -11,17 +12,17 @@
     "test": "node --test tests/*.test.js",
     "test:vitest": "vitest run",
     "test:e2e": "node --test --test-concurrency=1 tests/e2e/*.e2e.js",
-    "test:all": "npm test && npm run test:e2e",
+    "test:all": "pnpm test && pnpm run test:e2e",
     "postinstall": "wxt prepare"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.3.3",
+    "@tailwindcss/vite": "^4.3.2",
     "chart.js": "^4.5.1",
     "exceljs": "^4.4.0",
-    "lucide": "^1.25.0",
+    "lucide": "^1.23.0",
     "playwright": "^1.49.0",
-    "tailwindcss": "^4.3.3",
-    "vitest": "^4.1.10",
+    "tailwindcss": "^4.3.2",
+    "vitest": "^4.1.9",
     "wxt": "^0.20.27"
   }
 }

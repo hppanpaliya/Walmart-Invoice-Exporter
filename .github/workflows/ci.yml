@@ -16,15 +16,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: pnpm
 
       # The unit tests parse real generated .xlsx output via the exceljs
       # devDependency, so the test job needs node_modules too.
       - name: Install dev dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Syntax check every extension script
         run: |
@@ -36,10 +40,10 @@ jobs:
       # Validates wxt.config.ts and produces the loadable extension — the
       # same output `wxt zip` packages for the stores.
       - name: Build (Chrome MV3)
-        run: npx wxt build
+        run: pnpm exec wxt build
 
       - name: Build (Firefox MV3)
-        run: npx wxt build -b firefox --mv3
+        run: pnpm exec wxt build -b firefox --mv3
 
       - name: Unit tests (extractors, export writers, fixtures)
         run: node --test tests/*.test.js
@@ -47,7 +51,7 @@ jobs:
       # The same 212 tests, ported to Vitest (tests-vitest/) — both run until
       # the node:test originals are retired.
       - name: Unit tests (Vitest port)
-        run: npx vitest run
+        run: pnpm exec vitest run
 
   e2e:
     runs-on: ubuntu-latest
@@ -55,18 +59,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: pnpm
 
       - name: Install dev dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
 
       # The e2e harness runs `npx wxt build` itself and loads
       # .output/chrome-mv3 into a real Chromium.
       - name: End-to-end tests (real extension, mocked walmart.com)
-        run: npm run test:e2e
+        run: pnpm run test:e2e

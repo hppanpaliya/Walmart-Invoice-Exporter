@@ -13,7 +13,8 @@ importScripts(
   'providers/walmart-us.js',
   'providers/walmart-ca.js',
   'flags.js',
-  'orderdb.js'
+  'orderdb.js',
+  'mcp-bridge.js'
 );
 
 // Default provider for a collection when the panel does not name one — keeps

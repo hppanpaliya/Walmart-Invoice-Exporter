@@ -363,6 +363,9 @@ function loadSandbox({
     storage: {
       local: createFakeStorageArea(),
       session: createFakeStorageArea(),
+      // Change events are not simulated — listeners register and never fire
+      // (enough for mcp-bridge.js's config watcher to load).
+      onChanged: { addListener() {}, removeListener() {} },
     },
     tabs: createTabsStub(),
     action: { onClicked: { addListener() {} } },

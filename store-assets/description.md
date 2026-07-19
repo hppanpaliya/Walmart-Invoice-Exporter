@@ -40,6 +40,7 @@ Walmart Invoice Exporter collects every order from walmart.com/orders, saves it 
 • Optional housekeeping: saved data is wiped only after 180 days of not using the extension (adjust or turn off)
 • One honest "Delete all saved data" button — plus per-account delete
 • Open source on GitHub for full transparency
+• Optional AI access (off by default): let Claude or any MCP tool on your own computer read your saved orders — read-only, local-only, token-protected
 
 ★ PERFECT FOR
 • Tax reporting and reconciliation
@@ -59,6 +60,7 @@ Bulk downloads work best with Chrome's "Ask where to save each file" setting off
 • Fast collection with "only new orders" support and automatic classic fallback
 • Walmart's own order filters (type + date range) as collection options
 • Multi-account support with per-account data and delete
+• Optional AI access (MCP): ask Claude about your spending — off by default, read-only, never leaves your device
 • Complete visual redesign — light and dark — across panel, settings, and dashboard
 
 Note: This extension works only on walmart.com (and, optionally, walmart.ca).

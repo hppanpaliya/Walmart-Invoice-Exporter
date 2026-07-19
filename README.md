@@ -6,6 +6,8 @@ A Chrome extension that turns your Walmart order history into a private spending
 
 More screenshots live in [store-assets/screenshots/](./store-assets/screenshots/): the [inline invoice drill-down](./store-assets/screenshots/02-invoice-drilldown-1280x800.png), [export formats](./store-assets/screenshots/03-export-formats-1280x800.png), [month drill-down in dark mode](./store-assets/screenshots/04-month-drilldown-dark-1280x800.png), and the [privacy view](./store-assets/screenshots/05-privacy-1280x800.png).
 
+**Website:** [hppanpaliya.github.io/Walmart-Invoice-Exporter](https://hppanpaliya.github.io/Walmart-Invoice-Exporter/) — landing page, Help & FAQ, and privacy policy, deployed from this repo (see [Website](#website-github-pages) below).
+
 ## Features
 
 - **Spending Dashboard (full browser page)**: opened with "View dashboard", computed entirely on-device
@@ -27,6 +29,7 @@ More screenshots live in [store-assets/screenshots/](./store-assets/screenshots/
 - **Legacy Excel layout (opt-in)**: restores the older single-sheet workbook; the modern Orders/Items two-sheet layout stays the default
 - **Inactivity housekeeping (configurable)**: by default, saved data is wiped only if the extension goes unused for 180 days — adjust the number of days or turn it off in Settings
 - **Walmart.ca support (optional)**: enable Canada support in Settings to collect and export walmart.ca orders too
+- **AI access via MCP (optional, off by default)**: let AI tools on your own computer (Claude Code, Claude Desktop, any MCP client) read your saved orders through the [walmart-invoice-mcp](https://github.com/hppanpaliya/walmart-invoice-mcp) helper — read-only, localhost-only, protected by a pairing token you generate in Settings → "AI access (MCP)"
 - **Dedicated Settings view**: Appearance (System/Light/Dark), Collection defaults (including fast collection), Export defaults, "Data on this device", and About
 - **Detailed exports**: each invoice includes:
   - Product details (name, quantity, price)
@@ -92,14 +95,14 @@ Install the Walmart Invoice Exporter directly from the [Chrome Web Store](https:
 The extension is built with [WXT](https://wxt.dev):
 
 ```bash
-npm install        # installs dependencies (postinstall runs `wxt prepare`)
-npm run dev        # live-reload development build — WXT opens a browser with the extension loaded
-npm run build      # production build into dist/chrome-mv3
+pnpm install       # installs dependencies (postinstall runs `wxt prepare`)
+pnpm run dev        # live-reload development build — WXT opens a browser with the extension loaded
+pnpm run build      # production build into dist/chrome-mv3
 ```
 
 To load the production build manually:
 
-1. Run `npm run build`
+1. Run `pnpm run build`
 2. Open Chrome and go to `chrome://extensions/`
 3. Enable "Developer mode" in the top-right corner
 4. Click "Load unpacked" and select the `dist/chrome-mv3` folder
@@ -108,30 +111,41 @@ To load the production build manually:
 ### Tests
 
 ```bash
-npm test              # unit tests (node:test)
-npm run test:vitest   # Vitest suite
-npm run test:e2e      # Playwright end-to-end suite driving the packaged extension
-npm run test:all      # unit + e2e
+pnpm test             # unit tests (node:test)
+pnpm run test:vitest   # Vitest suite
+pnpm run test:e2e      # Playwright end-to-end suite driving the packaged extension
+pnpm run test:all      # unit + e2e
 ```
 
 ### Store packages
 
 ```bash
-npm run zip           # Chrome/Edge store zip
-npm run zip:firefox   # Firefox (MV3) zip, including the AMO sources zip
+pnpm run zip           # Chrome/Edge store zip
+pnpm run zip:firefox   # Firefox (MV3) zip, including the AMO sources zip
 ```
+
+### Website (GitHub Pages)
+
+The project website (landing page, Help & FAQ, privacy policy) lives in [site/](./site/) and deploys to GitHub Pages automatically via [.github/workflows/pages.yml](./.github/workflows/pages.yml) on every push to `main` that touches it. Images aren't duplicated: [scripts/build-site.sh](./scripts/build-site.sh) assembles `_site/` at build time, pulling screenshots from `store-assets/screenshots/` and the icon from `public/images/`, so the store listing and the website can never drift apart.
+
+```bash
+bash scripts/build-site.sh    # assemble into _site/
+npx serve _site               # preview locally
+```
+
+One-time repo setup: **Settings → Pages → Build and deployment → Source → "GitHub Actions"**. (This replaces the old branch-based Pages source; the FAQ formerly served from `docs/` now lives at `/faq.html`.)
 
 ### Microsoft Edge
 
-Edge (Chromium) runs the Chrome package unmodified: build with `npm run build` and load `dist/chrome-mv3` from `edge://extensions` ("Developer mode" → "Load unpacked"), or use the zip from `npm run zip`. See [docs/PORTS.md](./docs/PORTS.md) for store-submission notes.
+Edge (Chromium) runs the Chrome package unmodified: build with `pnpm run build` and load `dist/chrome-mv3` from `edge://extensions` ("Developer mode" → "Load unpacked"), or use the zip from `pnpm run zip`. See [docs/PORTS.md](./docs/PORTS.md) for store-submission notes.
 
 ### Firefox
 
 Build the Firefox package with:
 
 ```bash
-npm run build:firefox   # unpacked build
-npm run zip:firefox     # store zip + AMO sources zip
+pnpm run build:firefox   # unpacked build
+pnpm run zip:firefox     # store zip + AMO sources zip
 ```
 
 To load it temporarily (removed on browser restart): open `about:debugging#/runtime/this-firefox`, click "Load Temporary Add-on…", and select the `manifest.json` inside the Firefox build output. Permanent installs require the zip to be signed by [addons.mozilla.org](https://addons.mozilla.org/developers/).
@@ -145,13 +159,17 @@ See [docs/PORTS.md](./docs/PORTS.md) for the full list of differences.
 
 ## What's New
 
+### Unreleased
+- **Optional AI access (MCP)**: a new off-by-default Settings toggle lets local AI tools (Claude Code, Claude Desktop, any MCP client) read your saved orders through the [walmart-invoice-mcp](https://github.com/hppanpaliya/walmart-invoice-mcp) helper — read-only, localhost-only, token-paired
+- **Tooling moved to pnpm** with a 14-day supply-chain cooldown (`minimumReleaseAge`) on dependency updates
+
 ### Version 8.0 (July 19, 2026)
 - **Full-app dashboard**: click any order row to expand its complete invoice inline (items, prices, money breakdown, payment details); real interactive charts with click-to-scope months; a "More insights" card (biggest order, savings rate, average items per order, busiest day, most-bought item); month group rows with select-the-whole-month checkboxes
 - **Fast collection is first-class**: request-based, honors "only new orders", works on filtered views, with automatic mutual fallback between fast and classic modes
 - **Walmart's own order filters as collection options**: order type (Online / In store / In progress / Completed / Returned) and a date range
 - **Multi-account support**: per-account data scoping (privacy-preserving hash only), renamable accounts, per-account delete, and a wrong-account fetch guard — shown only when 2+ accounts have data
 - **Complete visual redesign** of the panel, settings, and dashboard in light and dark
-- **New build system (WXT/Vite)**: `npm run dev` for live development, `npm run zip` / `zip:firefox` for store packages
+- **New build system (WXT/Vite)**: `pnpm run dev` for live development, `pnpm run zip` / `zip:firefox` for store packages
 
 ### Version 7.3 (July 18, 2026)
 - **Full-page Spending Dashboard** with the live panel embedded beside it — scope by period, click a month to drill in, watch prices on items you rebuy, and export exactly what's on screen
@@ -413,6 +431,7 @@ This extension prioritizes your privacy and security:
 - Images are blocked during collection for performance (not accessed or stored)
 - No tracking or analytics implemented
 - No cookies or external API calls
+- Optional AI access (MCP) is off by default; when enabled, the extension only connects to `127.0.0.1` on your own machine (token-paired, read-only) — nothing goes to the internet
 
 **Your Control:**
 - Settings → "Data on this device" → "Delete all saved data" wipes everything the extension has stored, in one step — per-account delete is also available

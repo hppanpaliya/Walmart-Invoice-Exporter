@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Help &amp; FAQ — Walmart Invoice Exporter</title>
+  <meta name="description"
+    content="Frequently asked questions for the Walmart Invoice Exporter browser extension: setup, bulk-download Chrome settings, saved data, the spending dashboard, and AI access (MCP).">
+  <link rel="icon" href="assets/icon128.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <header class="site-header">
+    <div class="wrap nav">
+      <a class="brand" href="./"><img src="assets/icon128.png" alt="" width="28" height="28">Walmart Invoice Exporter</a>
+      <a class="navlink" href="./#features">Features</a>
+      <a class="navlink" href="./#dashboard">Dashboard</a>
+      <a class="navlink" href="./#privacy">Privacy</a>
+      <a class="navlink" href="./#ai">AI access</a>
+      <a class="navlink" href="faq.html">FAQ</a>
+      <a class="navlink" href="https://github.com/hppanpaliya/Walmart-Invoice-Exporter" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </header>
+
+  <main>
+    <div class="wrap page-head">
+      <h1>Help &amp; FAQ</h1>
+      <p>Everything you need to get collecting and exporting. Still stuck? <a
+          href="mailto:harshal.hpp@gmail.com">Email me</a> or <a
+          href="https://github.com/hppanpaliya/Walmart-Invoice-Exporter/issues" target="_blank" rel="noopener">open an
+          issue</a>.</p>
+    </div>
+
+    <div class="wrap page-body faq">
+
+      <details open>
+        <summary>How to use the extension</summary>
+        <div class="answer">
+          <p><strong>Single order download:</strong></p>
+          <ol>
+            <li>Navigate to a specific Walmart order page</li>
+            <li>Click the extension icon — the order appears automatically</li>
+            <li>Check its box, then click "Single file"</li>
+          </ol>
+          <p><strong>Batch download:</strong></p>
+          <ol>
+            <li>Go to your Walmart order history page (walmart.com/orders)</li>
+            <li>Click the extension icon</li>
+            <li>Click "Load my orders" (first time) or "Check for new orders" (after that) — page limit, "only new
+              orders", order type, and date range live under Options</li>
+            <li>Wait for the order numbers to load</li>
+            <li>Select the orders you want and click "Single file" (one workbook) or "Multiple files" (one per order)</li>
+          </ol>
+          <div class="note"><strong>Note:</strong> Don't close the side panel while downloading — it can stay open
+            while you browse other tabs. Configure the Chrome settings below before your first bulk download.</div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Required Chrome settings for bulk downloads</summary>
+        <div class="answer">
+          <p><strong>1. Configure download settings:</strong></p>
+          <ol>
+            <li>Open <code class="copy-link" data-link="chrome://settings/downloads">chrome://settings/downloads</code>
+              (click to copy, then paste into a new tab)</li>
+            <li>Turn OFF "Ask where to save each file before downloading"</li>
+            <li>Turn OFF "Show downloads when they're done"</li>
+          </ol>
+          <p><strong>2. Enable automatic downloads:</strong></p>
+          <ol>
+            <li>Open <code class="copy-link"
+                data-link="chrome://settings/content/automaticDownloads">chrome://settings/content/automaticDownloads</code></li>
+            <li>Under "Allowed to automatically download multiple files", click Add</li>
+            <li>Enter <code>[*.]walmart.com</code> and click Add</li>
+          </ol>
+          <div class="note"><strong>Important:</strong> make sure walmart.com lands under "Allowed", not "Not allowed".
+            Chrome blocks direct clicks on <code>chrome://</code> links, so copy and paste them manually.</div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Download issues &amp; tips</summary>
+        <div class="answer">
+          <p>Most download problems are fixed by the Chrome settings above. If you're still having trouble:</p>
+          <ul>
+            <li>Slow internet — try downloading fewer orders at once</li>
+            <li>Very old orders — they can take longer to load</li>
+            <li>Browser resources — close other tabs and windows</li>
+          </ul>
+          <div class="tip"><strong>Recommendation:</strong> for best reliability, download 5–10 orders at a time.</div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Saved orders &amp; your data</summary>
+        <div class="answer">
+          <p>Every order you download is saved on your device (in the browser's IndexedDB) — nothing is ever sent
+            anywhere:</p>
+          <ul>
+            <li><strong>Saved automatically:</strong> once an order is downloaded, its full details are stored locally</li>
+            <li><strong>Instant re-export:</strong> re-downloading a saved order, in any format, reuses the stored data
+              — nothing is ever fabricated</li>
+            <li><strong>Faster re-syncs:</strong> "Check for new orders" can skip orders it already knows — turn on
+              "only new orders" under Options</li>
+            <li><strong>Per-account:</strong> multiple Walmart logins stay separate; a switcher appears automatically
+              and Settings lets you delete just one account's data</li>
+            <li><strong>Yours to delete:</strong> Settings → "Data on this device" → "Delete all saved data" wipes
+              everything in one step</li>
+          </ul>
+          <div class="note"><strong>Retention:</strong> data never expires while you keep using the extension. If you
+            don't open it at all for 180 days, it's deleted automatically for your privacy — adjust the window or turn
+            this off in Settings → Advanced.</div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Spending Dashboard</summary>
+        <div class="answer">
+          <p>Click the chart icon in the panel header to open the dashboard — a full browser page built entirely from
+            the orders saved on your device:</p>
+          <ul>
+            <li><strong>Overview:</strong> monthly spend chart, stat cards, an optional monthly budget with an on-pace
+              projection, and a searchable orders table — click any row for the full inline invoice</li>
+            <li><strong>Items:</strong> every product you've ever bought, with price-history sparklines and your
+              Personal Inflation Rate</li>
+            <li><strong>Trends:</strong> cumulative and year-over-year spend, a shopping-days heatmap, delivery/pickup
+              split, and where each dollar went</li>
+            <li><strong>Year in review:</strong> a Wrapped-style annual summary with superlatives</li>
+          </ul>
+          <div class="tip"><strong>Note:</strong> everything is computed on your device — collect orders first and the
+            dashboard fills in.</div>
+        </div>
+      </details>
+
+      <details>
+        <summary>AI access (MCP) — using your orders with Claude</summary>
+        <div class="answer">
+          <p>Optionally, AI tools running on your own computer — Claude Code, Claude Desktop, or any
+            <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener">MCP</a> client — can read your
+            saved orders, so you can ask things like <em>"how much did I spend on groceries in March?"</em></p>
+          <p><strong>Setup:</strong></p>
+          <ol>
+            <li>In the extension: Settings → <strong>AI access (MCP)</strong> → turn the toggle on</li>
+            <li>Copy the pairing token it generates</li>
+            <li>Add the <a href="https://github.com/hppanpaliya/walmart-invoice-mcp" target="_blank"
+                rel="noopener">walmart-invoice-mcp</a> helper to your MCP client's config:</li>
+          </ol>
+<pre><code>{
+  "mcpServers": {
+    "walmart-invoices": {
+      "command": "npx",
+      "args": ["-y", "walmart-invoice-mcp", "--token", "&lt;paste token here&gt;"]
+    }
+  }
+}</code></pre>
+          <p><strong>Privacy &amp; safety:</strong></p>
+          <ul>
+            <li><strong>Off by default</strong> — nothing happens unless you enable the toggle</li>
+            <li><strong>Read-only</strong> — AI tools can list and read saved orders, never change, collect, or delete
+              anything</li>
+            <li><strong>Local-only</strong> — the extension only ever connects to 127.0.0.1 on your own machine,
+              protected by the pairing token; nothing goes to the internet</li>
+          </ul>
+          <div class="tip"><strong>Tip:</strong> if your AI tool reports the extension isn't connected, open the
+            extension's side panel once — that wakes it up so it can connect.</div>
+        </div>
+      </details>
+
+      <details>
+        <summary>How to merge multiple Excel files</summary>
+        <div class="answer">
+          <ol>
+            <li>Visit <a href="https://hppanpaliya.github.io/excel-merger/" target="_blank"
+                rel="noopener">hppanpaliya.github.io/excel-merger</a></li>
+            <li>Upload your exported Excel files</li>
+            <li>Download the merged file</li>
+          </ol>
+          <div class="tip"><strong>Note:</strong> this tool is designed to work with Excel files exported from this
+            extension.</div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Need help?</summary>
+        <div class="answer">
+          <p>If you're still experiencing issues or have questions, reach out any time:</p>
+          <ul>
+            <li>Email: <a href="mailto:harshal.hpp@gmail.com">harshal.hpp@gmail.com</a></li>
+            <li>GitHub: <a href="https://github.com/hppanpaliya/Walmart-Invoice-Exporter/issues" target="_blank"
+                rel="noopener">open an issue</a></li>
+          </ul>
+        </div>
+      </details>
+
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap cols">
+      <div>
+        <strong style="color: var(--text);">Walmart Invoice Exporter</strong><br>
+        Made with <span class="heart">❤️</span> by <a href="https://github.com/hppanpaliya" target="_blank"
+          rel="noopener">Harshal Panpaliya</a><br>
+        Not affiliated with or endorsed by Walmart Inc.
+      </div>
+      <nav>
+        <a href="./">Home</a>
+        <a href="privacy.html">Privacy policy</a>
+        <a href="https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe/reviews"
+          target="_blank" rel="noopener">Rate on Chrome Web Store</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="site.js"></script>
+</body>
+
+</html>
