@@ -11,7 +11,7 @@
   section { padding: 14px 28px 6px; }
   h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: #47586d; margin: 12px 0 10px; }
   figure { margin: 0 0 26px; }
-  figure img { width: 100%; max-width: 980px; display: block; border-radius: 10px; box-shadow: 0 8px 30px rgba(10,30,60,.15); }
+  figure img, figure video { width: 100%; max-width: 980px; display: block; border-radius: 10px; box-shadow: 0 8px 30px rgba(10,30,60,.15); }
   figcaption { font-size: 13px; color: #47586d; margin-top: 8px; }
   .tiles { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
   .tiles figure img { max-width: 700px; }
@@ -21,14 +21,21 @@
 <body>
 <header>
   <h1>Chrome Web Store listing kit — all generated assets</h1>
-  <p class="note">Everything lives in <code>store-assets/</code> (untracked, not committed, not published). Sizes are exact CWS specs.</p>
+  <p class="note">Everything lives in <code>store-assets/</code>. Sizes are exact CWS specs; all media is captured from the real build with synthetic seeded data.</p>
 </header>
+<section>
+  <h2>Tour video (1080p, ~60s)</h2>
+  <figure>
+    <video src="video/tour-1080p.mp4" controls muted playsinline></video>
+    <figcaption>Scripted UI tour — upload to YouTube, then link it in the listing's video field</figcaption>
+  </figure>
+</section>
 <section>
   <h2>Screenshots (1280×800)</h2>
   <figure><img src="screenshots/01-hero-dashboard-1280x800.png"><figcaption>01 — Hero: dashboard + embedded live panel</figcaption></figure>
-  <figure><img src="screenshots/02-export-formats-1280x800.png"><figcaption>02 — Export formats (panel close-up)</figcaption></figure>
-  <figure><img src="screenshots/03-month-drilldown-1280x800.png"><figcaption>03 — Month drill-down (January selected)</figcaption></figure>
-  <figure><img src="screenshots/04-dark-mode-1280x800.png"><figcaption>04 — Dark mode</figcaption></figure>
+  <figure><img src="screenshots/02-invoice-drilldown-1280x800.png"><figcaption>02 — Orders view: expanded inline invoice</figcaption></figure>
+  <figure><img src="screenshots/03-export-formats-1280x800.png"><figcaption>03 — Export formats (panel close-up)</figcaption></figure>
+  <figure><img src="screenshots/04-month-drilldown-dark-1280x800.png"><figcaption>04 — Month drill-down, dark mode</figcaption></figure>
   <figure><img src="screenshots/05-privacy-1280x800.png"><figcaption>05 — Privacy / Settings</figcaption></figure>
 </section>
 <section>
