@@ -142,6 +142,10 @@ const PurchaseHistoryDataSource = (() => {
   // traffic (and cache it) — self-healing, no hardcoded value ever gets stuck.
   const DEFAULT_HASH = "e229f4ac329ebafc737315bb65e303d5ea43d21a415750dcc72b572cd2f19094";
   let capturedHash = null;
+  // The page's own request `variables` (parsed from its captured URL). Replays
+  // clone this and swap ONLY the cursor, so a filtered view's filterIds /
+  // date range carry into every replayed page instead of being dropped.
+  let capturedVariables = null;
 
   // Cursor needed to fetch each page: page 1 needs none; page N's cursor is the
   // previous page's nextPageCursor. Lets the request path re-fetch (and date)
@@ -371,6 +375,15 @@ const PurchaseHistoryDataSource = (() => {
     // Learn the persisted-query hash from the page's own request URL, so Fast
     // Collect can replay it. Cache it for future sessions (self-heals across
     // Walmart front-end deploys the next time the page paginates for real).
+    // Remember the page's own request variables for faithful replays.
+    try {
+      const capturedUrl = new URL(message.requestUrl, window.location.origin);
+      const rawVariables = capturedUrl.searchParams.get("variables");
+      if (rawVariables) capturedVariables = JSON.parse(rawVariables);
+    } catch (_) {
+      // Unparseable/absent — the synthesized default still works unfiltered.
+    }
+
     const hashFromUrl = extractHashFromUrl(message.requestUrl);
     if (hashFromUrl && hashFromUrl !== capturedHash) {
       capturedHash = hashFromUrl;
@@ -394,160 +407,14 @@ const PurchaseHistoryDataSource = (() => {
     messageListenerAttached = true;
   }
 
-  function injectNetworkBridgeScript() {
-    if (!document.documentElement || document.documentElement.dataset.wiePhBridgeInjected === "true") {
-      return;
-    }
-    document.documentElement.dataset.wiePhBridgeInjected = "true";
-
-    const bridgeScript = document.createElement("script");
-    bridgeScript.setAttribute("data-wie-bridge", "purchase-history");
-    bridgeScript.textContent = `(() => {
-      const SOURCE = ${JSON.stringify(MESSAGE_SOURCE)};
-      const TYPE = ${JSON.stringify(MESSAGE_TYPE)};
-      const hasOwn = Object.prototype.hasOwnProperty;
-
-      if (window.__wiePurchaseHistoryBridgeInstalled) return;
-      window.__wiePurchaseHistoryBridgeInstalled = true;
-
-      const extractPurchaseHistoryNode = (payload) => {
-        if (!payload || typeof payload !== "object") return null;
-        return (
-          payload.purchaseHistory ||
-          (payload.data && payload.data.purchaseHistory) ||
-          (payload.props && payload.props.pageProps && payload.props.pageProps.phRedesignInitialData && payload.props.pageProps.phRedesignInitialData.data && payload.props.pageProps.phRedesignInitialData.data.purchaseHistory) ||
-          (payload.pageProps && payload.pageProps.phRedesignInitialData && payload.pageProps.phRedesignInitialData.data && payload.pageProps.phRedesignInitialData.data.purchaseHistory) ||
-          null
-        );
-      };
-
-      // requestUrl (when known) rides along so the content script can learn the
-      // PurchaseHistoryV3 persisted-query hash from the page's OWN request —
-      // the one piece Fast Collect needs and cannot synthesize. Nothing else
-      // about the passive snapshot flow changes.
-      const emit = (purchaseHistory, requestUrl) => {
-        if (!purchaseHistory || !Array.isArray(purchaseHistory.orders) || purchaseHistory.orders.length === 0) {
-          return;
-        }
-
-        window.postMessage(
-          {
-            source: SOURCE,
-            type: TYPE,
-            requestUrl: requestUrl || "",
-            payload: {
-              purchaseHistory: {
-                orders: purchaseHistory.orders,
-                pageInfo: purchaseHistory.pageInfo || null,
-              },
-            },
-          },
-          "*"
-        );
-      };
-
-      const handlePayload = (payload, requestUrl) => {
-        const purchaseHistory = extractPurchaseHistoryNode(payload);
-        if (purchaseHistory) {
-          emit(purchaseHistory, requestUrl);
-        }
-      };
-
-      const maybeParseJsonText = (text, requestUrl) => {
-        if (!text || typeof text !== "string") return;
-        if (text.indexOf("purchaseHistory") === -1) return;
-
-        try {
-          const parsed = JSON.parse(text);
-          handlePayload(parsed, requestUrl);
-        } catch (_) {
-          // Not a JSON payload we care about
-        }
-      };
-
-      const urlOf = (input) => {
-        try {
-          if (typeof input === "string") return input;
-          if (input && typeof input.url === "string") return input.url;
-        } catch (_) {}
-        return "";
-      };
-
-      const patchFetch = () => {
-        if (typeof window.fetch !== "function" || window.fetch.__wiePurchaseHistoryWrapped) {
-          return;
-        }
-
-        const originalFetch = window.fetch.bind(window);
-        const wrappedFetch = (...args) => {
-          const requestUrl = urlOf(args[0]);
-          return originalFetch(...args).then((response) => {
-            try {
-              const cloned = response.clone();
-              cloned.text().then((t) => maybeParseJsonText(t, requestUrl)).catch(() => {});
-            } catch (_) {
-              // Ignore clone/read errors
-            }
-            return response;
-          });
-        };
-
-        wrappedFetch.__wiePurchaseHistoryWrapped = true;
-        window.fetch = wrappedFetch;
-      };
-
-      const patchXHR = () => {
-        if (XMLHttpRequest.prototype.__wiePurchaseHistoryWrapped) {
-          return;
-        }
-
-        const originalOpen = XMLHttpRequest.prototype.open;
-        XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-          try { this.__wieRequestUrl = url; } catch (_) {}
-          return originalOpen.call(this, method, url, ...rest);
-        };
-
-        const originalSend = XMLHttpRequest.prototype.send;
-        XMLHttpRequest.prototype.send = function(...args) {
-          const self = this;
-          this.addEventListener(
-            "load",
-            function () {
-              try {
-                if (self.responseType && self.responseType !== "" && self.responseType !== "text") {
-                  return;
-                }
-                maybeParseJsonText(self.responseText, self.__wieRequestUrl || "");
-              } catch (_) {
-                // Ignore XHR read errors
-              }
-            },
-            { once: true }
-          );
-
-          return originalSend.apply(this, args);
-        };
-
-        XMLHttpRequest.prototype.__wiePurchaseHistoryWrapped = true;
-      };
-
-      // NOTE: we deliberately do NOT seed from __NEXT_DATA__ here. Page 1 is
-      // read directly from __NEXT_DATA__ by the content script; emitting it
-      // through the bridge as a "network" snapshot used to let page 2's
-      // collection pick up a STALE page-1 payload (so page 2 re-collected
-      // page 1 and contributed no new orders). Only real fetch/XHR responses
-      // — i.e. actual pagination requests — become network snapshots now.
-      patchFetch();
-      patchXHR();
-    })();`;
-
-    (document.head || document.documentElement).appendChild(bridgeScript);
-    bridgeScript.remove();
-  }
+  // The old inline <script> bridge injector lived here. It is GONE on
+  // purpose: walmart-mainworld.js (a "world": "MAIN" content script) now
+  // installs the fetch/XHR capture bridge before any page script runs —
+  // and Walmart's CSP blocks inline scripts anyway, so the injector could
+  // never execute and only spammed CSP violations in the console.
 
   function initialize() {
     attachBridgeMessageListener();
-    injectNetworkBridgeScript();
 
     // Prime the snapshot cache from initial HTML payload when available.
     updateLatestSnapshot(parseSnapshotFromNextData());
@@ -648,6 +515,13 @@ const PurchaseHistoryDataSource = (() => {
 
   /** The `variables` payload shape Walmart's own request uses. */
   function buildFetchVariables(cursor, limit) {
+    // Prefer the page's OWN captured variables (keeps filterIds/date range and
+    // any future fields Walmart adds) — only the cursor changes per page.
+    if (capturedVariables && capturedVariables.input) {
+      const cloned = JSON.parse(JSON.stringify(capturedVariables));
+      cloned.input.cursor = cursor || null;
+      return cloned;
+    }
     return {
       input: {
         cursor: cursor || null,
@@ -874,8 +748,21 @@ const PurchaseHistoryDataSource = (() => {
       };
     };
 
-    // Page 1: the server-rendered payload — always present and fully dated.
-    const firstSnapshot = parseSnapshotFromNextData();
+    // Page 1: the server-rendered payload — present on the unfiltered list.
+    let firstSnapshot = parseSnapshotFromNextData();
+
+    // Filtered views (?filterIds=…) render page 1 CLIENT-side: __NEXT_DATA__
+    // has no purchase history, the page fetches its own PurchaseHistoryV3
+    // instead. Wait briefly for the bridge to capture that request — it IS
+    // page 1 here (and it carries the real headers replay needs).
+    if (!firstSnapshot && !isTest) {
+      const deadline = Date.now() + 10000;
+      while (!firstSnapshot && Date.now() < deadline) {
+        firstSnapshot = getFreshUnconsumedNetworkSnapshot();
+        if (!firstSnapshot) await delay(300);
+      }
+    }
+
     let cursor = firstSnapshot ? absorb(firstSnapshot) : null;
     if (firstSnapshot && cursor === null) {
       return finalize(); // single page, nothing more to fetch
