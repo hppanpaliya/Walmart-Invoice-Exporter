@@ -162,6 +162,10 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 /* Reuses .scope-select for the box and .btn.btn-quiet for the pencil, so it
    tracks the existing top-bar controls in both themes. The rename input is a
    .scope-select too, so swapping it in for the select doesn't shift layout. */
+/* [hidden] must still win over display:inline-flex below (author styles beat
+   the UA's [hidden]{display:none}) — without this the empty switcher shell
+   shows even for single-account users. */
+.account-switcher[hidden] { display: none; }
 .account-switcher { display: inline-flex; align-items: center; gap: 6px; }
 .account-select { max-width: 220px; }
 .account-rename-input { max-width: 200px; }
