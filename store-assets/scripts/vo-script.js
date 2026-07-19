@@ -15,10 +15,11 @@
 'use strict';
 
 module.exports = {
-  // Kokoro voice + pacing; override via env. am_michael is the calm,
-  // professional US-male narrator closest to the original voice pick.
-  VOICE: process.env.KOKORO_VOICE || 'am_michael',
-  SPEED: Number(process.env.KOKORO_SPEED || 1.0),
+  // Kokoro voice + pacing; override via env. am_fenrir is the punchier,
+  // more assertive US-male narrator (previously am_michael at 1.0 — traded
+  // up for a faster, more confident ad read).
+  VOICE: process.env.KOKORO_VOICE || 'am_fenrir',
+  SPEED: Number(process.env.KOKORO_SPEED || 1.1),
 
   SCENES: [
     { id: 'cold-open', line: 'Your entire Walmart order history — collected with one click.' },
@@ -32,6 +33,7 @@ module.exports = {
     { id: 'trends', line: 'And your habits, charted.' },
     { id: 'receipts', line: 'Every order expands into a full invoice — down to the last cent.' },
     { id: 'export', line: 'Tax season? Select your orders, and export. Two clicks.' },
+    { id: 'mcp', line: 'And your A I can use it too. One toggle connects Claude — or any M C P tool — straight to your data. Ask a question, get the answer. All on your machine.' },
     { id: 'trust', line: 'No accounts. No servers. Nothing ever leaves your device — and you can erase everything with one button.' },
     { id: 'kicker', line: 'Your year at Walmart — yours to keep.' },
     { id: 'cta', line: 'Walmart Invoice Exporter. Free, open source, and private by design. Add it to Chrome today.' },

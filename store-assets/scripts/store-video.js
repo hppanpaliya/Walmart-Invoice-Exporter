@@ -28,9 +28,12 @@
  *   5. Montage     — Items (personal inflation), Trends (habits) — fast beats.
  *   6. Receipts    — Orders view, a row expands into a full invoice.
  *   7. Take it     — select orders, "tax season in two clicks".
- *   8. Trust       — privacy beat on the "Delete all saved data" button.
- *   9. Kicker      — Year in review.
- *  10. CTA card    — "Add to Chrome — it's free".
+ *   8. MCP         — Settings → AI access: one toggle connects Claude (and
+ *                    the separate opt-in collection toggle gets a beat).
+ *   9. Trust       — privacy beat on the "Delete all saved data" button
+ *                    (same settings visit as the MCP beat).
+ *  10. Kicker      — Year in review.
+ *  11. CTA card    — "Add to Chrome — it's free".
  *
  * The tour is fully in-page (injected cursor, caption pills, outro card), so
  * the recording needs no post-production editing.
@@ -380,11 +383,26 @@ const TOUR_RUNTIME = () => {
     await curTo(frame.locator('#singleFileDownload'), 500);
     await hold(1500);
 
-    /* ---- 8. Trust (dark): the objection killer, right before the ask. ---- */
-    await scene('trust');
-    await cap('No accounts. No servers. <b>Nothing leaves your device.</b>');
+    /* ---- 8. MCP (dark): one toggle connects Claude. ---- */
+    await scene('mcp');
+    await cap('Ask <b>Claude</b> about your orders — MCP built in');
     await click(frame.locator('#settingsButton'), 700);
     await hold(900);
+    await frameScrollToSection('AI access', 1300);
+    // Flip the toggle on camera: the pairing token appears live.
+    await click(frame.locator('#settingsMcpEnabled'), 700);
+    await hold(1400);
+    await curTo(frame.locator('#settingsMcpToken'), 600);
+    await hold(1100);
+    // A beat on the separate opt-in for AI-started collection.
+    await curTo(frame.locator('#settingsMcpAllowActions'), 600);
+    await hold(1400);
+    // Leave the demo profile as it started (the toggle write is real).
+    await frame.evaluate(() => chrome.storage.local.set({ mcpBridgeEnabled: false }));
+
+    /* ---- 9. Trust (dark): the objection killer, right before the ask. ---- */
+    await scene('trust');
+    await cap('No accounts. No servers. <b>Nothing leaves your device.</b>');
     await frameScrollToSection('Data on this device', 1300);
     await curTo(frame.locator('#deleteAllDataButton'), 700); // point, never click
     await hold(2500);
