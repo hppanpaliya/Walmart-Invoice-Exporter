@@ -3,7 +3,9 @@ name: CI
 on:
   push:
     branches:
-      - "*"
+      # "**" (not "*"): single-star patterns don't match "/" in GitHub
+      # Actions, so branches like feature/wxt would silently never build.
+      - "**"
   pull_request:
   workflow_dispatch:
 
