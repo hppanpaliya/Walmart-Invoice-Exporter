@@ -2267,7 +2267,12 @@ function getRangeLabelSuffix(rangeValue, now = new Date()) {
 /**
  * Sidepanel UI helpers
  */
-const CACHE_INDICATOR_STYLE = 'margin-left: 6px; color: var(--primary); display: inline-flex; align-items: center; gap: 2px; font-size: 10px;';
+// "Saved" chip (2026-07 redesign): a soft accent pill — blue text on a
+// translucent blue fill with a hairline accent border, matching the mock.
+const CACHE_INDICATOR_STYLE =
+  'margin-left: 6px; display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 500;' +
+  ' color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent);' +
+  ' border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); border-radius: 999px; padding: 1px 7px;';
 const CACHE_INDICATOR_SELECTOR = '[data-cache-indicator="true"]';
 
 /**

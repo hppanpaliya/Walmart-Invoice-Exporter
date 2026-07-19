@@ -45,22 +45,26 @@
   /* Focus ring geometry (color is themed below) */
   --focus-ring-width: 3px;
 
-  /* ---- Color roles — LIGHT (default) ---- */
-  --bg: #ffffff;
-  --surface: #f8f9fa;
-  --surface-2: #ffffff;
+  /* ---- Color roles — LIGHT (default) ----
+     Light mirror of the 2026-07 redesign mock: soft gray page, white
+     elevated cards, inset controls on the page tone, blue-600 accent
+     (family match to dark's blue-500). */
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #f6f7f9;
+  --surface-raised: #f3f4f6;
   --border: #e5e7eb;
-  --border-strong: #c7ccd1;
+  --border-strong: #d1d5db;
 
-  --text: #1a1a1a;
-  --text-secondary: #666666;
-  --text-muted: #707070;
+  --text: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
 
-  --accent: #0071dc;
-  --accent-hover: #005bb0;
-  --accent-weak: #e6f2fd;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-weak: #dbeafe;
   --on-accent: #ffffff; /* text/icon color placed ON TOP of an --accent fill */
-  --focus-ring: #0071dc;
+  --focus-ring: #3b82f6;
 
   --success-fg: #146c2e;
   --success-bg: #eafbf0;
@@ -105,31 +109,35 @@
    data-theme="light" (the :not() below is what makes that override win). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #14181d;
-    --surface: #1c2127;
-    --surface-2: #262c34;
-    --border: #333a44;
-    --border-strong: #4a5361;
+    /* Dark palette = the 2026-07 redesign mock: page #0f1115, cards #1a1d24,
+       inset controls back to the page color, gray-800/700 borders, blue-500
+       accent. Keep in sync with :root[data-theme="dark"] below. */
+    --bg: #0f1115;
+    --surface: #1a1d24;
+    --surface-2: #0f1115;
+    --surface-raised: #16181d;
+    --border: #1f2937;
+    --border-strong: #374151;
 
-    --text: #eef1f4;
-    --text-secondary: #b6bfca;
-    --text-muted: #8b95a3;
+    --text: #f3f4f6;
+    --text-secondary: #9ca3af;
+    --text-muted: #6b7280;
 
-    --accent: #4da3ff;
-    --accent-hover: #7cbcff;
-    --accent-weak: #1c3352;
-    --on-accent: var(--bg);
-    --focus-ring: #6db2ff;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --accent-weak: #1b2c4d;
+    --on-accent: #ffffff;
+    --focus-ring: #60a5fa;
 
-    --success-fg: #5fd88a;
-    --success-bg: #153322;
-    --success-border: #348a5c;
+    --success-fg: #4ade80;
+    --success-bg: #12291c;
+    --success-border: #2f8a56;
 
-    --danger-fg: #ff8a80;
-    --danger-bg: #3a1917;
+    --danger-fg: #f87171;
+    --danger-bg: #2c1615;
     --danger-border: #b84e43;
-    --danger-hover: #ffab9f;
-    --on-danger: var(--bg);
+    --danger-hover: #fca5a1;
+    --on-danger: #ffffff;
 
     --warning-fg: #f0c14b;
     --warning-bg: #3a2f0f;
@@ -151,31 +159,32 @@
    on <html> to win over system preference in both directions. Values must
    match the @media block above. */
 :root[data-theme="dark"] {
-  --bg: #14181d;
-  --surface: #1c2127;
-  --surface-2: #262c34;
-  --border: #333a44;
-  --border-strong: #4a5361;
+  --bg: #0f1115;
+  --surface: #1a1d24;
+  --surface-2: #0f1115;
+  --surface-raised: #16181d;
+  --border: #1f2937;
+  --border-strong: #374151;
 
-  --text: #eef1f4;
-  --text-secondary: #b6bfca;
-  --text-muted: #8b95a3;
+  --text: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
 
-  --accent: #4da3ff;
-  --accent-hover: #7cbcff;
-  --accent-weak: #1c3352;
-  --on-accent: var(--bg);
-  --focus-ring: #6db2ff;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-weak: #1b2c4d;
+  --on-accent: #ffffff;
+  --focus-ring: #60a5fa;
 
-  --success-fg: #5fd88a;
-  --success-bg: #153322;
-  --success-border: #348a5c;
+  --success-fg: #4ade80;
+  --success-bg: #12291c;
+  --success-border: #2f8a56;
 
-  --danger-fg: #ff8a80;
-  --danger-bg: #3a1917;
+  --danger-fg: #f87171;
+  --danger-bg: #2c1615;
   --danger-border: #b84e43;
-  --danger-hover: #ffab9f;
-  --on-danger: var(--bg);
+  --danger-hover: #fca5a1;
+  --on-danger: #ffffff;
 
   --warning-fg: #f0c14b;
   --warning-bg: #3a2f0f;
@@ -196,21 +205,22 @@
    the base :root light values explicitly so the intent is unambiguous and
    this rule reliably wins over prefers-color-scheme. */
 :root[data-theme="light"] {
-  --bg: #ffffff;
-  --surface: #f8f9fa;
-  --surface-2: #ffffff;
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #f6f7f9;
+  --surface-raised: #f3f4f6;
   --border: #e5e7eb;
-  --border-strong: #c7ccd1;
+  --border-strong: #d1d5db;
 
-  --text: #1a1a1a;
-  --text-secondary: #666666;
-  --text-muted: #707070;
+  --text: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
 
-  --accent: #0071dc;
-  --accent-hover: #005bb0;
-  --accent-weak: #e6f2fd;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-weak: #dbeafe;
   --on-accent: #ffffff;
-  --focus-ring: #0071dc;
+  --focus-ring: #3b82f6;
 
   --success-fg: #146c2e;
   --success-bg: #eafbf0;
@@ -257,7 +267,17 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-3);
+  /* Fixed-feel header (2026-07 redesign): sticks to the top, bleeds to the
+     panel edges past body padding, and blurs content scrolling beneath. */
+  position: sticky;
+  top: calc(var(--space-3) * -1);
+  z-index: 30;
+  margin: calc(var(--space-3) * -1) calc(var(--space-3) * -1) var(--space-3);
+  padding: 10px var(--space-3);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
   /* Never wraps (spec v7.1 §F): the icon-button group must never drop to a
      second line at narrow widths — the title ellipsizes instead (below). */
   flex-wrap: nowrap;
@@ -302,9 +322,9 @@ body {
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  padding: 14px;
-  margin-bottom: var(--space-3);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
   box-shadow: var(--shadow-sm);
 }
 
@@ -370,34 +390,43 @@ body {
 }
 
 .btn {
-  padding: 8px 16px;
+  padding: 9px 16px;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
 .btn-primary {
   background: var(--accent);
   color: var(--on-accent);
+  /* The mock's shadow-lg shadow-blue-500/20 glow under primary actions. */
+  box-shadow: 0 8px 20px -6px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .btn-primary:hover {
   background: var(--accent-hover);
 }
 
+/* Red-tinted destructive style (mock: red-500/10 fill, red text, red/20
+   border) — reads dangerous without shouting. */
 .btn-danger {
-  background: var(--danger);
-  color: var(--on-danger);
+  background: color-mix(in srgb, var(--danger-fg) 10%, transparent);
+  color: var(--danger-fg);
+  border: 1px solid color-mix(in srgb, var(--danger-fg) 25%, transparent);
 }
 
 .btn-danger:hover {
-  background: var(--danger-hover);
+  background: color-mix(in srgb, var(--danger-fg) 18%, transparent);
 }
 
 .toggle-group {
@@ -411,6 +440,61 @@ body {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   cursor: pointer;
+}
+
+/* iOS-style switch (2026-07 redesign) — the SAME checkbox inputs every
+   handler and test already binds to, restyled with appearance:none. */
+.toggle-group input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--border-strong);
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.2s ease;
+}
+
+.toggle-group input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease;
+}
+
+.toggle-group input[type="checkbox"]:checked {
+  background: var(--accent);
+}
+
+.toggle-group input[type="checkbox"]:checked::after {
+  transform: translateX(16px);
+}
+
+.toggle-group input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Settings rows read label-left / switch-right (mock): flip the flex order
+   without touching the input-then-label markup contract. */
+.settings-section .toggle-group {
+  justify-content: space-between;
+}
+
+.settings-section .toggle-group label {
+  order: -1;
+  flex: 1;
+  padding-right: var(--space-2);
 }
 
 /* Minor/secondary styling for the legacy Excel toggle (spec §5.3: "rendered
@@ -633,14 +717,19 @@ body {
 }
 
 /* Order list - scrollable area for orders */
+/* The list is a card (mock): raised surface, larger radius, month bars and
+   rows bleeding edge-to-edge inside it. Height stays viewport-driven via the
+   page scroll — the panel body scrolls, with the month bars pinning under
+   the sticky header. */
 .order-list {
-  max-height: 400px;
-  overflow-y: auto;
   margin-bottom: var(--space-1);
-  padding: 2px 4px 2px 2px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface-2);
+  border-radius: var(--radius-2xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  /* clip (NOT hidden): rounds the corners without creating a scroll box,
+     which would stop the month bars from sticking to the page scroll. */
+  overflow: clip;
 }
 
 .order-list .checkbox-container {
@@ -1389,9 +1478,10 @@ summary:focus-visible,
 .settings-section {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  padding: 14px;
-  margin-bottom: var(--space-3);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  box-shadow: var(--shadow-sm);
 }
 
 .settings-section-title {
@@ -1406,38 +1496,39 @@ summary:focus-visible,
   margin-bottom: 0;
 }
 
-/* Theme System/Light/Dark segmented control. */
+/* Theme System/Light/Dark segmented control — inset track with a filled
+   active pill (2026-07 redesign mock). */
 .segmented-control {
   display: flex;
+  gap: 2px;
+  padding: 3px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
 }
 
 .segmented-option {
   flex: 1;
-  padding: 7px 4px;
+  padding: 6px 4px;
   border: none;
-  border-left: 1px solid var(--border);
-  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  background: transparent;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.segmented-option:first-child {
-  border-left: none;
-}
-
 .segmented-option:hover:not(.active) {
   background: var(--hover-overlay);
+  color: var(--text);
 }
 
 .segmented-option.active {
   background: var(--accent);
   color: var(--on-accent);
-  font-weight: 500;
+  box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 .settings-stats-line {
@@ -1665,19 +1756,29 @@ body.first-run .export-options-panel {
   flex-shrink: 0;
 }
 
+/* Month group header (2026-07 redesign): a raised sticky bar that pins just
+   below the panel header while its month's rows scroll under it. */
 .order-month-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  padding: var(--space-2) 8px 4px;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding: 9px 10px;
+  background: var(--surface-raised);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  /* Sits below the sticky .header (~46px tall at the panel's base metrics). */
+  top: 34px;
+  z-index: 10;
 }
 
 .order-month-label:first-child {
-  padding-top: 6px;
+  border-top: none;
 }
 
 /* Select-every-order-in-this-month toggle sitting in the group header;
@@ -1706,11 +1807,10 @@ body.first-run .export-options-panel {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  /* Indent the row's checkbox to sit under the month-header label text (8px
-     pad + 14px month checkbox + 8px gap), so each order reads as a child of
+  /* Indent the row's checkbox to sit under the month-header label text (10px
+     pad + 14px month checkbox + 10px gap), so each order reads as a child of
      its month group rather than lining up with the group's own checkbox. */
-  padding: 10px 8px 10px 30px;
-  border-radius: var(--radius-md);
+  padding: 11px 10px 11px 34px;
   cursor: default;
   transition: background 0.12s ease;
 }
@@ -1720,7 +1820,12 @@ body.first-run .export-options-panel {
 }
 
 .order-row:hover {
-  background: var(--surface);
+  background: var(--hover-overlay);
+}
+
+/* Selected rows carry a faint accent wash (mock: bg-blue-500/5). */
+.order-row:has(.order-row-checkbox:checked) {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
 }
 
 .order-row.dimmed {
@@ -2010,4 +2115,63 @@ body.first-run .export-options-panel {
     flex: none;
     padding: 4px 10px;
     font-size: 12px;
+}
+
+/* ==========================================================================
+   2026-07 redesign — sticky bottom action bar + row/account polish
+   ========================================================================== */
+
+/* The download bar (Single/Multiple + Save to library) pins to the bottom of
+   the panel whenever the list is showing. Deliberately NOT hidden at zero
+   selected (the redesign mock hides it): the spec'd disabled-buttons +
+   inline "select at least one order" reason is more discoverable, and the
+   e2e behavioral tests encode it. */
+.action-bar {
+  position: sticky;
+  bottom: calc(var(--space-3) * -1);
+  z-index: 20;
+  margin: var(--space-3) calc(var(--space-3) * -1) calc(var(--space-3) * -1);
+  padding: var(--space-3);
+  background: var(--surface-raised);
+  border-top: 1px solid var(--border-strong);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.action-bar .action-row {
+  margin-top: 0;
+}
+
+/* Delivered reads green at a glance (mock: text-green-400). */
+.order-status-delivered {
+  color: var(--success-fg);
+}
+
+/* Per-account rows in Settings read as small cards with the meta line under
+   the name and the delete action on the right (mock). */
+.account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 10px 12px;
+  margin-bottom: var(--space-2);
+}
+
+.account-row-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text);
+  min-width: 0;
+}
+
+.account-row-meta {
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  color: var(--text-muted);
 }

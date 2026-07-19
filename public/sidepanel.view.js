@@ -644,8 +644,21 @@
 
     if (hasData) {
       const dateShort = formatRowDateShort(row.normalizedDate);
-      const primaryText = [dateShort, row.status].filter(Boolean).join(" · ");
-      primary.textContent = primaryText || `Order #…${last4}`;
+      if (!dateShort && !row.status) {
+        primary.textContent = `Order #…${last4}`;
+      } else {
+        // Status gets its own span so state reads by colour (delivered =
+        // success green) — 2026-07 redesign.
+        if (dateShort) primary.appendChild(document.createTextNode(dateShort));
+        if (row.status) {
+          if (dateShort) primary.appendChild(document.createTextNode(" · "));
+          const statusEl = document.createElement("span");
+          statusEl.className =
+            "order-status" + (/delivered/i.test(row.status) ? " order-status-delivered" : "");
+          statusEl.textContent = row.status;
+          primary.appendChild(statusEl);
+        }
+      }
       const itemLabel =
         row.itemCount !== "" && row.itemCount !== null && row.itemCount !== undefined
           ? `${row.itemCount} item${Number(row.itemCount) === 1 ? "" : "s"}`
@@ -1021,9 +1034,12 @@
     // (one workbook with every selected order) and Multiple files (one
     // file per selected order) — plus a quieter, full-width "Save to library"
     // secondary action that fetches full invoice details into local storage
-    // WITHOUT downloading a file. Returned as a fragment; the pair keeps the
-    // .action-row class the re-render guard looks for.
-    const fragment = document.createDocumentFragment();
+    // WITHOUT downloading a file. 2026-07 redesign: all three live in a
+    // sticky bottom .action-bar that shows only while ≥1 order is selected
+    // (pure CSS :has() on #orderNumbersContainer); .action-row keeps its
+    // class inside the bar for the re-render guard and existing queries.
+    const bar = document.createElement("div");
+    bar.className = "action-bar";
 
     const actionRow = document.createElement("div");
     actionRow.className = "action-row";
@@ -1042,7 +1058,7 @@
     multiButton.addEventListener("click", () => Sidepanel.download.downloadSelectedOrders(CONSTANTS.EXPORT_MODES.MULTIPLE));
     actionRow.appendChild(multiButton);
 
-    fragment.appendChild(actionRow);
+    bar.appendChild(actionRow);
 
     const saveButton = document.createElement("button");
     saveButton.id = "loadToLibrary";
@@ -1051,9 +1067,9 @@
     saveButton.title =
       "Fetch full invoice details for the selected orders into local storage without downloading a file. You can export them later, instantly, from storage.";
     saveButton.addEventListener("click", () => Sidepanel.download.loadSelectedOrdersToDb());
-    fragment.appendChild(saveButton);
+    bar.appendChild(saveButton);
 
-    return fragment;
+    return bar;
   }
 
   /**
@@ -1138,12 +1154,13 @@
       reconcileOrderRows(orderListBox, visible);
     }
 
-    const oldActionRow = container.querySelector(".action-row");
+    // The whole sticky bar (buttons + save-to-library) adds/removes as one.
+    const oldActionBar = container.querySelector(".action-bar");
     if (visible.length > 0) {
-      if (!oldActionRow) container.appendChild(buildActionRow());
+      if (!oldActionBar) container.appendChild(buildActionRow());
       updateDownloadButtonLabels();
-    } else if (oldActionRow) {
-      oldActionRow.remove();
+    } else if (oldActionBar) {
+      oldActionBar.remove();
     }
 
     if (listState.pendingSelection) {
