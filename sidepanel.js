@@ -494,9 +494,12 @@ document.addEventListener("DOMContentLoaded", async function () {
     versionBadge.style.display = "none";
   }
 
-  // Enforce data retention (off by default) before the first render, so any
-  // expired orders never flash on screen; re-render once it's done.
-  OrderDb.applyRetention()
+  // Inactivity retention (on by default): if the extension was abandoned past
+  // the window, wipe saved data BEFORE the first render (so it never flashes),
+  // then mark this open as "use" (resets the clock) and re-render.
+  OrderDb.enforceInactivityRetention()
+    .catch(() => 0)
+    .then(() => OrderDb.markUsed())
     .then(() => actions.checkCurrentTab())
     .catch(() => {});
 

@@ -39,8 +39,9 @@
   CONSTANTS.TIMING_SETTINGS.forEach((spec) => {
     SETTINGS_DEFAULTS[spec.key] = spec.defaultMs;
   });
-  // Data retention (off by default — keep everything until "Delete all").
-  SETTINGS_DEFAULTS.dataRetentionEnabled = false;
+  // Inactivity retention: ON by default (wipe saved data if the extension goes
+  // unused for this many days). Active users never lose data.
+  SETTINGS_DEFAULTS.dataRetentionEnabled = true;
   SETTINGS_DEFAULTS.dataRetentionDays = CONSTANTS.DATA_RETENTION.defaultDays;
 
   const THEME_OPTIONS = [
@@ -198,10 +199,10 @@
     const retentionRow = `
       <div class="toggle-group">
         <input type="checkbox" id="dataRetentionEnabled" ${retention.enabled ? "checked" : ""}>
-        <label for="dataRetentionEnabled" title="Automatically delete saved orders you haven't collected or downloaded within the set number of days. Off = keep everything until you use 'Delete all saved data'. Nothing leaves this device.">Auto-delete old saved data</label>
+        <label for="dataRetentionEnabled" title="If you don't open the extension for this many days, all saved orders are deleted from this device. As long as you keep using it, nothing is deleted. Turn off to keep data until you use 'Delete all saved data'. Nothing leaves this device.">Delete saved data if the extension goes unused</label>
       </div>
       <div class="input-group" id="dataRetentionDaysRow"${retention.enabled ? "" : " hidden"}>
-        <label for="dataRetentionDays">Delete data older than (days)</label>
+        <label for="dataRetentionDays">Delete after this many days unused</label>
         <input type="number" id="dataRetentionDays" min="${rspec.minDays}" max="${rspec.maxDays}" step="1" value="${retention.days}">
       </div>`;
 
@@ -213,24 +214,6 @@
         ${retentionRow}
       </div>
     `;
-  }
-
-  /**
-   * Persist a retention change, purge immediately so the effect is visible, and
-   * refresh the panel list/stats. Runs OrderDb.applyRetention (a no-op when the
-   * toggle is off), then re-renders Settings' stats and the main view.
-   */
-  async function applyRetentionAndRefresh() {
-    let purged = 0;
-    try {
-      purged = await OrderDb.applyRetention();
-    } catch (error) {
-      console.warn("Data-retention purge failed:", error);
-    }
-    if (purged) {
-      renderSettings();
-      if (Sidepanel.actions && Sidepanel.actions.checkCurrentTab) Sidepanel.actions.checkCurrentTab();
-    }
   }
 
   function wireAdvancedControls(container) {
@@ -252,7 +235,9 @@
       }
     });
 
-    // Data retention: toggle shows/hides the days row and purges immediately.
+    // Inactivity retention: the toggle shows/hides the days row and persists.
+    // No immediate wipe — the user is actively in Settings, so the inactivity
+    // clock is fresh; data is only ever wiped after a genuine unused stretch.
     const retentionToggle = container.querySelector("#dataRetentionEnabled");
     const daysRow = container.querySelector("#dataRetentionDaysRow");
     const daysInput = container.querySelector("#dataRetentionDays");
@@ -260,7 +245,6 @@
       retentionToggle.addEventListener("change", () => {
         if (daysRow) daysRow.hidden = !retentionToggle.checked;
         chrome.storage.local.set({ dataRetentionEnabled: retentionToggle.checked });
-        applyRetentionAndRefresh();
       });
     }
     if (daysInput) {
@@ -272,7 +256,6 @@
           : rspec.defaultDays;
         daysInput.value = String(days);
         chrome.storage.local.set({ dataRetentionDays: days });
-        applyRetentionAndRefresh();
       });
     }
   }
@@ -597,7 +580,8 @@
     const rspec = CONSTANTS.DATA_RETENTION;
     const retentionDaysRaw = Number(stored.dataRetentionDays);
     const retention = {
-      enabled: Boolean(stored.dataRetentionEnabled),
+      // ON by default — only an explicit stored false unchecks it.
+      enabled: stored.dataRetentionEnabled !== false,
       days: Number.isFinite(retentionDaysRaw)
         ? Math.min(rspec.maxDays, Math.max(rspec.minDays, Math.round(retentionDaysRaw)))
         : rspec.defaultDays,

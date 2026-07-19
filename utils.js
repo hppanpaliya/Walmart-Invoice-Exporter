@@ -1883,12 +1883,13 @@ const CONSTANTS = {
     },
   ],
 
-  // Optional on-device data retention (Settings → Advanced). OFF by default —
-  // data is kept until "Delete all saved data". When on, orders not collected
-  // or downloaded within `days` (each record's updatedAt) are auto-purged, so
-  // data doesn't pile up and a previous account's orders age out.
+  // Inactivity-based data retention (Settings → Advanced). ON by default: if
+  // the extension isn't used (panel opened / a run started) for `days`, ALL
+  // saved data is wiped in one shot — so an abandoned install doesn't keep data
+  // on the device. An active user's clock keeps resetting, so they never lose
+  // anything. NOT per-order aging.
   DATA_RETENTION: {
-    defaultDays: 90,
+    defaultDays: 30,
     minDays: 1,
     maxDays: 3650,
   },
