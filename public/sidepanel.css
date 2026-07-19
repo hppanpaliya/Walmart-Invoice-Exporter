@@ -1720,6 +1720,13 @@ body.first-run .export-options-panel {
 }
 
 /* --- Multi-account switcher (shown only when ≥2 accounts have data) ------ */
+/* The display:flex below would defeat the hidden attribute's UA
+   display:none (author styles beat UA styles) — restate it explicitly so
+   the gate in renderAccountSwitcher actually hides the control. */
+.account-switcher[hidden] {
+  display: none;
+}
+
 .account-switcher {
   display: flex;
   align-items: center;
