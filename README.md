@@ -159,7 +159,7 @@ See [docs/PORTS.md](./docs/PORTS.md) for the full list of differences.
 
 ## What's New
 
-### Unreleased
+### Version 8.1 (July 19, 2026)
 - **Optional AI access (MCP)**: a new off-by-default Settings toggle lets local AI tools (Claude Code, Claude Desktop, any MCP client) read your saved orders through the [walmart-invoice-mcp](https://github.com/hppanpaliya/walmart-invoice-mcp) helper ([on npm](https://www.npmjs.com/package/walmart-invoice-mcp)) — read-only, localhost-only, token-paired
 - **Project website launched**: [github.harsh.al/Walmart-Invoice-Exporter](https://github.harsh.al/Walmart-Invoice-Exporter/) — landing page, Help & FAQ, and privacy policy
 - **Tooling moved to pnpm** with a 14-day supply-chain cooldown (`minimumReleaseAge`) on dependency updates
