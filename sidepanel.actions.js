@@ -278,7 +278,14 @@
       });
 
       if (progress && !progressMatchesActiveScope(progress)) progress = null;
-      if (progress && Array.isArray(progress.orderNumbers)) {
+      // Overlay live order numbers only while a collection is (or may be) in
+      // progress. These are numbers that have streamed in but whose summary
+      // write hasn't landed yet, so they render as bare "Loading…" rows until
+      // the DB catches up. Once a collection has explicitly ENDED
+      // (isCollecting === false, which real GET_PROGRESS always sends), the DB
+      // is authoritative and complete, so we stop overlaying — otherwise stale
+      // session order numbers linger as bare rows that never refresh.
+      if (progress && progress.isCollecting !== false && Array.isArray(progress.orderNumbers)) {
         const known = new Set(orderNumbers);
         progress.orderNumbers.forEach((orderNumber) => {
           if (known.has(orderNumber)) return;

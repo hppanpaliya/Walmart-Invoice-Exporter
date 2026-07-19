@@ -653,7 +653,7 @@
       fine.textContent = [itemLabel, `#…${last4}`].filter(Boolean).join(" · ");
     } else {
       primary.textContent = `#…${last4}`;
-      fine.textContent = "Details arrive on next sync";
+      fine.textContent = "Loading details…";
       rowEl.classList.add("dimmed");
     }
     if (row.providerTag) {
