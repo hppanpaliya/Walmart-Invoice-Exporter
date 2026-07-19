@@ -41,7 +41,7 @@ jobs:
       - name: Get version from the built manifest
         id: version
         run: |
-          VERSION=$(jq -r '.version' .output/chrome-mv3/manifest.json)
+          VERSION=$(jq -r '.version' dist/chrome-mv3/manifest.json)
           echo "version=$VERSION" >> $GITHUB_ENV
         shell: bash
 
@@ -68,7 +68,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            .output/*.zip
+            dist/*.zip
           tag_name: v${{ env.version }}-${{ env.branch }}
           name: Release v${{ env.version }} - ${{ env.branch }}
           body: ${{ env.changelog }}
@@ -89,7 +89,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            .output/*.zip
+            dist/*.zip
           tag_name: latest-${{ env.branch }}
           name: Latest Release - ${{ env.branch }}
           body: ${{ env.changelog }}

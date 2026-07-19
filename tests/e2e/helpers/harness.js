@@ -18,7 +18,7 @@ const { startMockWalmart } = require('./mock-walmart');
 const REPO_ROOT = path.join(__dirname, '..', '..', '..');
 // Since the WXT migration the loadable extension is WXT's build output —
 // the same directory `wxt zip` packages for the store.
-const EXTENSION_DIR = path.join(REPO_ROOT, '.output', 'chrome-mv3');
+const EXTENSION_DIR = path.join(REPO_ROOT, 'dist', 'chrome-mv3');
 
 const ORDERS_URL = 'https://www.walmart.com/orders';
 const ONLINE_ORDER = '200010000000042';
@@ -28,7 +28,7 @@ const INSTORE_ORDER = '77501234567890123456';
 function buildExtension() {
   execFileSync('npx', ['wxt', 'build'], { cwd: REPO_ROOT, stdio: 'pipe' });
   if (!fs.existsSync(path.join(EXTENSION_DIR, 'manifest.json'))) {
-    throw new Error('wxt build did not produce .output/chrome-mv3');
+    throw new Error('wxt build did not produce dist/chrome-mv3');
   }
 }
 

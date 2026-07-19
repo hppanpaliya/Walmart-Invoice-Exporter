@@ -37,6 +37,11 @@ function backgroundImports(): string[] {
 }
 
 export default defineConfig({
+  // Build into the visible dist/ folder (not the hidden .output/ default) so
+  // "Load unpacked" in Chrome can reach it: pick dist/chrome-mv3. macOS's file
+  // picker hides dot-folders, which made the default undiscoverable.
+  outDir: 'dist',
+
   manifest: ({ browser }) => ({
     name: 'Walmart Invoice Exporter',
     version: '7.3',
