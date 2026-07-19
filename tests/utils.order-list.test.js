@@ -20,6 +20,29 @@ function loadUtils() {
 }
 
 // ---------------------------------------------------------------------------
+// compareOrderNumbersDesc — Walmart's own list ordering
+// ---------------------------------------------------------------------------
+
+test('compareOrderNumbersDesc: newest (largest) order number first, precision-safe', () => {
+  const sandbox = loadUtils();
+  const sorted = [
+    '200011122233344',
+    '200011122233345',
+    '99988877766',            // shorter = older
+    '200011122233345555555',  // longer = newer
+  ].sort(sandbox.compareOrderNumbersDesc);
+  assert.deepEqual(sorted, [
+    '200011122233345555555',
+    '200011122233345',
+    '200011122233344',
+    '99988877766',
+  ]);
+  // Equal-length numbers beyond Number precision still compare correctly.
+  assert.ok(sandbox.compareOrderNumbersDesc('98765432109876543210', '98765432109876543211') > 0);
+  assert.equal(sandbox.compareOrderNumbersDesc('123', '123'), 0);
+});
+
+// ---------------------------------------------------------------------------
 // parseWalmartTitleDate — dates recovered from Walmart's own title text
 // ---------------------------------------------------------------------------
 
@@ -57,6 +80,22 @@ test('buildOrderRowModel: undated record falls back to the Walmart title date (o
   // No date anywhere and no parseable title → still undated.
   const undated = sandbox.buildOrderRowModel('14', { title: 'Delivered on Jun 23' });
   assert.equal(undated.normalizedDate, '');
+});
+
+test('buildOrderRowModel: the request order date WINS over the delivery date when both are present', () => {
+  const sandbox = loadUtils();
+
+  // A PurchaseHistoryV3 summary carries the specific order date (orderDate) AND
+  // a later delivery date. The row must show the ORDER date, never delivery.
+  const row = sandbox.buildOrderRowModel('30', {
+    title: 'Mar 04, 2026 order',
+    summary: {
+      orderDate: '2026-03-04T17:59:29-08:00', // when the order was placed
+      deliveredDate: '2026-03-09T16:40:21-05:00', // 5 days later — must NOT win
+    },
+  });
+
+  assert.equal(row.normalizedDate, '2026-03-04', 'uses the order date from the request, not the delivery date');
 });
 
 test('buildOrderRowModel: undated record falls back to the delivered date before the title', () => {

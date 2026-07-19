@@ -167,3 +167,67 @@ test('handleStartCollection refuses to double-start while already collecting', a
   assert.equal(response.status, 'started');
   assert.equal(sandbox.chrome.tabs._calls.create.length, tabCreateCallsBefore, 'must not open a second collection tab');
 });
+
+// ---------------------------------------------------------------------------
+// Regression guard: the crawl MUST advance past page 1. A bug where page 1
+// reports orders but the loop stops (wrong hasNextPage handling, a throw in
+// the per-page path, etc.) would silently collect only the first page — this
+// drives the real background loop across three scripted pages and asserts it
+// collected every page.
+// ---------------------------------------------------------------------------
+test('collection loop advances through every page, not just page 1', async () => {
+  const sandbox = loadBackgroundSandbox();
+  const CollectionState = evalIn(sandbox, 'CollectionState');
+
+  // A background tab already parked on the Walmart orders list.
+  const ORDERS_URL = 'https://www.walmart.com/orders';
+  sandbox.chrome.tabs._tabsById.set(1, { id: 1, url: ORDERS_URL, status: 'complete' });
+
+  // Script the content script: each COLLECT returns that page's two orders and
+  // hasNextPage=true for pages 1-2, false on page 3; each CLICK_NEXT succeeds.
+  sandbox.chrome.tabs.sendMessage = (tabId, message, callback) => {
+    sandbox.chrome.runtime.lastError = null;
+    const page = CollectionState.currentPage;
+    let response;
+    if (message.action === evalIn(sandbox, 'CONSTANTS.MESSAGES.COLLECT_ORDER_NUMBERS')) {
+      response = {
+        orderNumbers: [`p${page}-a`, `p${page}-b`],
+        additionalFields: {},
+        orderSummaries: {},
+        hasNextPage: page < 3,
+      };
+    } else if (message.action === evalIn(sandbox, 'CONSTANTS.MESSAGES.CLICK_NEXT_BUTTON')) {
+      response = { success: true };
+    } else {
+      response = {};
+    }
+    if (callback) queueMicrotask(() => callback(response));
+  };
+
+  CollectionState.provider = 'WALMART_US';
+  CollectionState.isCollecting = true;
+  CollectionState.tabId = 1;
+  CollectionState.pageLoadDelay = 0; // don't wait a real second between pages
+  CollectionState.reset();
+
+  sandbox.collectOrderNumbers();
+
+  // Wait for the loop to finish (isCollecting flips false in finishCollection).
+  await new Promise((resolve, reject) => {
+    const started = Date.now();
+    const tick = () => {
+      if (!CollectionState.isCollecting) return resolve();
+      if (Date.now() - started > 5000) return reject(new Error('collection did not finish'));
+      setTimeout(tick, 10);
+    };
+    tick();
+  });
+
+  const collected = [...CollectionState.allOrderNumbers].sort();
+  assert.deepEqual(
+    collected,
+    ['p1-a', 'p1-b', 'p2-a', 'p2-b', 'p3-a', 'p3-b'],
+    'every page contributed its orders — the crawl did not stop after page 1'
+  );
+  assert.equal(CollectionState.currentPage, 3, 'reached the final page');
+});

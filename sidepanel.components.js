@@ -5,9 +5,9 @@
  * docs/superpowers/specs/2026-07-14-panel-redesign-and-storage-unification-
  * design.md §5.5). Loaded via a plain <script> tag after utils.js (for
  * renderIcon/escapeHtml) and sidepanel.state.js, before sidepanel.view.js —
- * view.js's notice functions (createOffTabWarning, showExtractionWarning,
- * updateFilterNotice) render through Banner() here instead of several
- * separate hand-rolled notice styles.
+ * view.js's notice functions (showExtractionWarning, updateFilterNotice)
+ * render through Banner() here instead of several separate hand-rolled
+ * notice styles.
  *
  * Every factory returns a plain DOM element (or, where there's genuine
  * ongoing state to manage, a small object wrapping one) — callers wire up
@@ -18,6 +18,43 @@
  */
 (() => {
   const Sidepanel = window.Sidepanel || (window.Sidepanel = {});
+
+  // Panel-owned styles for the multi-provider chrome: the header's
+  // always-visible provider dropdown (#providerSelect, sidepanel.html) and
+  // the per-row provider tag shown in the combined "All providers" view
+  // (sidepanel.view.js). Injected here rather than added to sidepanel.css so
+  // the provider UI ships as one self-contained unit with the components/view
+  // code that renders it. Idempotent and best-effort — a missing head (or a
+  // test sandbox's fake DOM) must never break the panel.
+  (function injectProviderChromeStyles() {
+    if (!document.head || document.getElementById("providerChromeStyles")) return;
+    const style = document.createElement("style");
+    style.id = "providerChromeStyles";
+    style.textContent = `
+      .provider-select {
+        max-width: 130px;
+        padding: 3px 6px;
+        font-size: 11px;
+        border: 1px solid var(--border, rgba(128, 128, 128, 0.35));
+        border-radius: 6px;
+        background: var(--surface, transparent);
+        color: inherit;
+      }
+      .order-provider-tag {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 0 5px;
+        border-radius: 8px;
+        font-size: 9px;
+        line-height: 14px;
+        background: var(--surface-2, rgba(128, 128, 128, 0.15));
+        color: var(--text-muted, inherit);
+        vertical-align: 1px;
+        white-space: nowrap;
+      }
+    `;
+    document.head.appendChild(style);
+  })();
 
   const BANNER_ICONS = {
     info: { icon: "INFO_CIRCLE", color: "var(--accent)" },

@@ -91,3 +91,12 @@ test('Toast: returns null gracefully when no #toast element exists (no throw)', 
 
   assert.equal(Toast('Link copied to clipboard!'), null);
 });
+
+test('provider chrome: loading components injects the #providerChromeStyles block (header dropdown + per-row provider tag)', () => {
+  const sandbox = loadComponentsSandbox();
+
+  const styles = sandbox.document.head.children.filter((child) => child.id === 'providerChromeStyles');
+  assert.equal(styles.length, 1, 'exactly one injected style block');
+  assert.match(styles[0].textContent, /\.provider-select/, 'styles the header provider dropdown');
+  assert.match(styles[0].textContent, /\.order-provider-tag/, 'styles the combined-view per-row provider tag');
+});

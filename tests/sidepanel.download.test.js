@@ -131,6 +131,36 @@ test('fetchFromUrl (via fetchOrderData) persists newly-fetched invoices to Order
   assert.equal(sandbox.chrome.tabs._calls.create.length, createCallsBefore, 're-fetch must be served from IndexedDB');
 });
 
+test('fetchOrderData: under the combined "All providers" view (app.provider === PROVIDER_ALL) reads/writes the CONCRETE provider partition that owns the order, not the "__ALL__" sentinel', async () => {
+  const sandbox = loadDownloadSandbox();
+
+  // The panel would load sidepanel.providers.js; the download sandbox doesn't,
+  // so stand in a minimal selector exposing exactly what resolveProviderId
+  // needs: the PROVIDER_ALL sentinel and scopeIds() over the enabled providers.
+  const PROVIDER_ALL = '__ALL__';
+  sandbox.window.Sidepanel.providers = {
+    PROVIDER_ALL,
+    scopeIds: async (active) =>
+      active === PROVIDER_ALL ? ['WALMART_US', 'UBER_EATS'] : [active],
+  };
+  sandbox.window.Sidepanel.state.app.provider = PROVIDER_ALL;
+
+  // The order lives ONLY in the UBER_EATS partition — the "__ALL__" sentinel is
+  // not a real partition, so a direct getOrder(num, "__ALL__") would miss it.
+  const OrderDb = evalIn(sandbox, 'OrderDb');
+  await OrderDb.putInvoice(ORDER_NUMBER, sampleInvoice(), 'UBER_EATS');
+
+  const data = await fetchOrderData(sandbox, ORDER_NUMBER);
+
+  assert.equal(data.orderNumber, ORDER_NUMBER);
+  assert.equal(data.orderTotal, '$28.11');
+  assert.deepEqual(
+    sandbox.chrome.tabs._calls.create,
+    [],
+    'the combined view must resolve the concrete partition and hit the fast path — no tab'
+  );
+});
+
 /**
  * Legacy Excel toggle routing (design spec §5.3): exportCombinedOrders /
  * exportOneOrder (exposed on Sidepanel.download for exactly this purpose)

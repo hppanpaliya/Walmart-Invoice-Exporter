@@ -142,37 +142,11 @@
   }
 
   /**
-   * A pure factory (no insertion) for the off-tab warning banner — kept
-   * separate from ensureOffTabWarning so callers can still build one
-   * without touching the DOM, matching this function's original contract.
-   * @param {Function} onReturn - Invoked when the "Walmart Orders" link is clicked.
-   * @returns {HTMLElement}
+   * The blocking "Return to Walmart Orders" banner is gone — the panel is
+   * tab-independent now (saved orders + an enabled Collect on any tab).
+   * This only remains to sweep away a banner left behind by an older
+   * session's markup; nothing creates one anymore.
    */
-  function createOffTabWarning(onReturn) {
-    const banner = Sidepanel.components.Banner({
-      variant: "warning",
-      message: `Return to <a href="#" id="returnToWalmartLink">Walmart Orders</a> to continue`,
-      id: "offTabWarning",
-    });
-
-    const returnLink = banner.querySelector("#returnToWalmartLink");
-    if (returnLink) {
-      returnLink.addEventListener("click", (e) => {
-        e.preventDefault();
-        if (onReturn) onReturn();
-      });
-    }
-
-    return banner;
-  }
-
-  function ensureOffTabWarning(onReturn) {
-    if (document.getElementById("offTabWarning")) return;
-    const region = getStatusRegion();
-    if (!region) return;
-    region.appendChild(createOffTabWarning(onReturn));
-  }
-
   function clearOffTabWarning() {
     clearStatusBanner("offTabWarning");
   }
@@ -244,7 +218,7 @@
       // disabled even when the tab itself is usable again).
       updateDownloadButtonsState();
     } else {
-      ["singleFileDownload", "multiFileDownload"].forEach((buttonId) => {
+      ["singleFileDownload", "multiFileDownload", "loadToLibrary"].forEach((buttonId) => {
         const button = document.getElementById(buttonId);
         if (button) {
           button.disabled = true;
@@ -267,6 +241,7 @@
   function updateDownloadButtonsState() {
     const singleButton = document.getElementById("singleFileDownload");
     const multiButton = document.getElementById("multiFileDownload");
+    const saveButton = document.getElementById("loadToLibrary");
     const hint = document.getElementById("downloadDisabledReason");
     if (!singleButton && !multiButton) return;
 
@@ -274,7 +249,7 @@
     const selectedCount = getSelectedOrderNumbers().length;
     const disabled = running || selectedCount === 0;
 
-    [singleButton, multiButton].forEach((button) => {
+    [singleButton, multiButton, saveButton].forEach((button) => {
       if (!button) return;
       button.disabled = disabled;
       button.style.opacity = disabled ? "0.6" : "1";
@@ -521,9 +496,27 @@
     if (viewButton) {
       viewButton.addEventListener("click", (event) => {
         event.stopPropagation();
-        chrome.tabs.create({ url: buildOrderViewUrl(viewButton.dataset.order) });
+        // Walmart rows deep-link to the order itself (unchanged); other
+        // providers have no stable per-order URL, so open their orders list.
+        const providerId = viewButton.dataset.provider || "WALMART_US";
+        const url =
+          providerId === "WALMART_US"
+            ? buildOrderViewUrl(viewButton.dataset.order)
+            : (Sidepanel.providers && Sidepanel.providers.ordersListUrlFor(providerId)) ||
+              buildOrderViewUrl(viewButton.dataset.order);
+        chrome.tabs.create({ url });
       });
     }
+  }
+
+  /** Label + provider for a row detail's "View on …" action — "View on Walmart" verbatim for WALMART_US rows (unchanged), the provider's own label otherwise. */
+  function viewActionButtonHtml(row, orderNumber) {
+    const providerId = row.providerId || "WALMART_US";
+    const label =
+      providerId === "WALMART_US"
+        ? "View on Walmart"
+        : `View on ${escapeHtml(Sidepanel.providers ? Sidepanel.providers.labelFor(providerId) : providerId)}`;
+    return `<button type="button" class="btn btn-clear order-action-view" data-order="${orderNumber}" data-provider="${escapeHtml(providerId)}">${label}</button>`;
   }
 
   /** Build one row's expanded accordion detail (spec §C): hasInvoice vs. summary-only content. */
@@ -557,7 +550,7 @@
       actions.className = "order-detail-actions";
       actions.innerHTML = `
         <button type="button" class="btn btn-clear order-action-reexport" data-order="${orderNumber}">Re-export</button>
-        <button type="button" class="btn btn-clear order-action-view" data-order="${orderNumber}">View on Walmart</button>
+        ${viewActionButtonHtml(row, orderNumber)}
       `;
       detail.appendChild(actions);
     } else {
@@ -586,7 +579,7 @@
       actions.className = "order-detail-actions";
       actions.innerHTML = `
         <button type="button" class="btn btn-clear order-action-download" data-order="${orderNumber}">Download this order</button>
-        <button type="button" class="btn btn-clear order-action-view" data-order="${orderNumber}">View on Walmart</button>
+        ${viewActionButtonHtml(row, orderNumber)}
       `;
       detail.appendChild(actions);
     }
@@ -663,6 +656,15 @@
       fine.textContent = "Details arrive on next sync";
       rowEl.classList.add("dimmed");
     }
+    if (row.providerTag) {
+      // Combined "All providers" view only: a small tag naming the row's
+      // provider (styled by the injected provider-chrome styles,
+      // sidepanel.components.js).
+      const tag = document.createElement("span");
+      tag.className = "order-provider-tag";
+      tag.textContent = row.providerTag;
+      fine.appendChild(tag);
+    }
     main.appendChild(primary);
     main.appendChild(fine);
     rowEl.appendChild(main);
@@ -725,6 +727,7 @@
     return [
       row.normalizedDate, row.status, row.itemCount, row.total,
       row.hasInvoice, row.title, Boolean(row.summary || row.invoice),
+      row.providerTag || "",
     ].join("|");
   }
 
@@ -780,7 +783,11 @@
     const fragment = document.createDocumentFragment();
     let lastGroup = null;
     visibleRows.forEach((row) => {
-      const group = monthGroupLabel(row.normalizedDate);
+      // Undated rows inherit the month of the orders around them (rows
+      // follow Walmart's own order-number sequence, so neighbors are the
+      // right chronological company). "NO DATE" appears only when the
+      // list STARTS with undated rows.
+      const group = row.normalizedDate ? monthGroupLabel(row.normalizedDate) : (lastGroup || monthGroupLabel(""));
       if (group !== lastGroup) {
         const pool = labelPool.get(group);
         let labelEl = pool && pool.length ? pool.shift() : null;
@@ -942,7 +949,12 @@
   function buildActionRow() {
     // Two-button model (spec §5.2): an equal, matched pair — Single file
     // (one workbook with every selected order) and Multiple files (one
-    // file per selected order).
+    // file per selected order) — plus a quieter, full-width "Save to library"
+    // secondary action that fetches full invoice details into local storage
+    // WITHOUT downloading a file. Returned as a fragment; the pair keeps the
+    // .action-row class the re-render guard looks for.
+    const fragment = document.createDocumentFragment();
+
     const actionRow = document.createElement("div");
     actionRow.className = "action-row";
 
@@ -960,7 +972,18 @@
     multiButton.addEventListener("click", () => Sidepanel.download.downloadSelectedOrders(CONSTANTS.EXPORT_MODES.MULTIPLE));
     actionRow.appendChild(multiButton);
 
-    return actionRow;
+    fragment.appendChild(actionRow);
+
+    const saveButton = document.createElement("button");
+    saveButton.id = "loadToLibrary";
+    saveButton.className = "btn btn-clear btn-save-library";
+    saveButton.innerHTML = `${renderIcon("CACHE")}<span class="btn-text">Save details to library (no file)</span>`;
+    saveButton.title =
+      "Fetch full invoice details for the selected orders into local storage without downloading a file. You can export them later, instantly, from storage.";
+    saveButton.addEventListener("click", () => Sidepanel.download.loadSelectedOrdersToDb());
+    fragment.appendChild(saveButton);
+
+    return fragment;
   }
 
   /**
@@ -1075,6 +1098,26 @@
   }
 
   /**
+   * Drop every cached row model and restore the placeholder — the
+   * synchronous companion to "Delete all saved data". Without this, the
+   * stale listState.rows could be re-rendered by any later
+   * renderFilteredList() (filter change, dashboard tap-through) and
+   * resurrect orders the user just deleted.
+   */
+  function clearOrderList() {
+    listState.rows = [];
+    listState.openRowEl = null;
+    listState.openDetailEl = null;
+    listState.pendingSelection = null;
+    const container = document.getElementById("orderNumbersContainer");
+    if (container) {
+      container.innerHTML = state.placeholders.initialOrderHtml || "";
+      listState.container = container;
+    }
+    updateDownloadButtonsState();
+  }
+
+  /**
    * Point the order list at a given range (and optionally an exact
    * selection), re-rendering immediately when the list has already been
    * built this session. The dashboard's tap-through paths (v7.2: tap a
@@ -1121,23 +1164,46 @@
 
     if (orderNumbers.length === 0) {
       container.innerHTML = state.placeholders.initialOrderHtml || "";
+      // Clear the cached row models too — otherwise a later filter/
+      // dashboard-driven renderFilteredList() resurrects orders the user
+      // just deleted ("Delete all saved data" showed stale rows).
+      listState.rows = [];
+      listState.openRowEl = null;
+      listState.openDetailEl = null;
       updateDownloadButtonsState();
       return;
     }
 
-    const records = await OrderDb.getAllOrders();
-    const byOrderNumber = new Map(records.map((record) => [record.orderNumber, record]));
-
-    const rows = orderNumbers.map((orderNumber) =>
-      buildOrderRowModel(orderNumber, byOrderNumber.get(orderNumber), additionalFields && additionalFields[orderNumber])
-    );
-    // Newest first; undated rows sink to the end (spec §B).
-    rows.sort((a, b) => {
-      if (a.normalizedDate && b.normalizedDate) return b.normalizedDate.localeCompare(a.normalizedDate);
-      if (a.normalizedDate) return -1;
-      if (b.normalizedDate) return 1;
-      return 0;
+    // Records for the ACTIVE provider selection (sidepanel.providers): one
+    // provider's partition, or every enabled provider's under the combined
+    // "All providers" view. Falls back to the Walmart-only default when the
+    // contract module isn't loaded (unit-test sandboxes).
+    const providers = Sidepanel.providers;
+    const active = (state.app && state.app.provider) || "WALMART_US";
+    const scopeIds =
+      providers && typeof providers.scopeIds === "function" ? await providers.scopeIds(active) : [active];
+    const perProvider = await Promise.all(scopeIds.map((providerId) => OrderDb.getAllOrders(providerId)));
+    const combined = Boolean(providers && active === providers.PROVIDER_ALL);
+    const byOrderNumber = new Map();
+    perProvider.flat().forEach((record) => {
+      if (!byOrderNumber.has(record.orderNumber)) byOrderNumber.set(record.orderNumber, record);
     });
+
+    const rows = orderNumbers.map((orderNumber) => {
+      const record = byOrderNumber.get(orderNumber);
+      const row = buildOrderRowModel(orderNumber, record, additionalFields && additionalFields[orderNumber]);
+      // Which provider this row belongs to (drives the detail's "View on …"
+      // action), plus — combined view only — a small per-row provider tag so
+      // mixed history stays legible.
+      row.providerId = (record && record.provider) || (combined ? "WALMART_US" : active);
+      row.providerTag = combined && providers ? providers.labelFor(row.providerId) : "";
+      return row;
+    });
+    // Walmart's own ordering (owner decision 2026-07-18): order number,
+    // newest first — the exact sequence walmart.com/orders shows. Dates
+    // only label the month groups; an undated order stays right where
+    // Walmart lists it instead of sinking into a "NO DATE" pile.
+    rows.sort((a, b) => compareOrderNumbersDesc(a.orderNumber, b.orderNumber));
 
     listState.rows = rows;
     listState.container = container;
@@ -1237,11 +1303,10 @@
     updateMacroState,
     getActiveRangeLabelSuffix,
     applyListFilter,
+    clearOrderList,
     getStatusRegion,
     renderStatusBanner,
     clearStatusBanner,
-    createOffTabWarning,
-    ensureOffTabWarning,
     clearOffTabWarning,
     showExtractionWarning,
     updateFilterNotice,

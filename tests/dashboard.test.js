@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { loadSandbox, toPlain } = require('./helpers/sandbox');
+const { loadSandbox, toPlain, evalIn } = require('./helpers/sandbox');
 
 function loadDashboardSandbox() {
   return loadSandbox({ scripts: ['utils.js', 'sidepanel.dashboard.js'] });
@@ -531,4 +531,193 @@ test('computeDashboardModel avgPerMonth divides spend across months with data', 
 
   const empty = sandbox.computeDashboardModel([], 'thisYear', fakeNow());
   assert.equal(empty.avgPerMonth, 0);
+});
+
+/*
+ * Multi-provider / currency-aware dashboard (2026-07-18): the dashboard
+ * follows the stored active provider selection, formats money in the
+ * provider's currency, and the combined "All providers" view groups spend
+ * BY CURRENCY (no conversion, ever). The Walmart-only assertions above are
+ * the compatibility contract — nothing below may change them.
+ */
+
+test('formatDashboardMoney keeps the historical USD rendering byte-for-byte', () => {
+  const sandbox = loadDashboardSandbox();
+  // The exact output shape the dashboard has always shown for Walmart.com.
+  assert.equal(sandbox.formatDashboardMoney(1234.5, 'USD'), '$1,234.50');
+  assert.equal(sandbox.formatDashboardMoney(0, 'USD'), '$0.00');
+  // null/undefined currency (combined default, missing adapter) → USD shape.
+  assert.equal(sandbox.formatDashboardMoney(24.11, null), '$24.11');
+  assert.equal(sandbox.formatDashboardMoney('$42.17', undefined), '$42.17');
+});
+
+test('formatDashboardMoney disambiguates non-USD currencies without converting', () => {
+  const sandbox = loadDashboardSandbox();
+  // CAD renders with an explicit prefix so USD "$" and CAD amounts can
+  // never be confused on a mixed-currency surface.
+  assert.equal(sandbox.formatDashboardMoney(1234.5, 'CAD'), 'CA$1,234.50');
+  assert.equal(sandbox.formatDashboardMoney('$4.49', 'CAD'), 'CA$4.49');
+  // An unknown code degrades to a labeled amount, never a fake symbol.
+  assert.equal(sandbox.formatDashboardMoney(5, 'NOPE!'), 'NOPE! 5.00');
+});
+
+/** Minimal schema-current invoice with just a total. */
+function invoiceOfTotal(total) {
+  return { schemaVersion: 3, orderTotal: total, items: [] };
+}
+
+/** Provider scopes spanning two currencies for combined-view tests. */
+function combinedScopes() {
+  return [
+    {
+      id: 'WALMART_US',
+      label: 'Walmart.com',
+      currency: 'USD',
+      records: [
+        { orderNumber: 'US1', orderDate: '2026-03-10T00:00:00.000Z', summary: null, invoice: invoiceOfTotal('$100.00') },
+        { orderNumber: 'US2', orderDate: '2026-06-01T00:00:00.000Z', summary: null, invoice: invoiceOfTotal('$50.00') },
+        {
+          orderNumber: 'US3',
+          orderDate: '2026-05-05T00:00:00.000Z',
+          summary: { orderDate: '2026-05-05T00:00:00.000Z', orderTotal: '$20.00' },
+          invoice: null, // summary-only: stored but never measured
+        },
+      ],
+    },
+    {
+      id: 'STORE_B',
+      label: 'Store B',
+      currency: 'USD',
+      records: [
+        { orderNumber: 'T1', orderDate: '2026-04-01T00:00:00.000Z', summary: null, invoice: invoiceOfTotal('$30.00') },
+      ],
+    },
+    {
+      id: 'WALMART_CA',
+      label: 'Walmart.ca',
+      currency: 'CAD',
+      records: [
+        { orderNumber: 'CA1', orderDate: '2026-02-01T00:00:00.000Z', summary: null, invoice: invoiceOfTotal('$80.00') },
+        { orderNumber: 'CA2', orderDate: '2025-06-15T00:00:00.000Z', summary: null, invoice: invoiceOfTotal('$40.00') },
+      ],
+    },
+  ];
+}
+
+test('computeProviderDashboard groups spend BY CURRENCY — never sums across currencies', () => {
+  const sandbox = loadDashboardSandbox();
+  const combined = sandbox.computeProviderDashboard(combinedScopes(), 'all', fakeNow());
+
+  assert.equal(combined.mixedCurrency, true);
+  // Counts are currency-free and DO sum across every provider.
+  assert.equal(combined.orderCount, 6);
+  assert.equal(combined.invoiceCount, 5);
+
+  // One subtotal per currency, biggest spend first; USD spend (100+50+30)
+  // and CAD spend (80+40) never appear merged into a single number.
+  assert.deepEqual(
+    toPlain(combined.currencyTotals).map(({ currency, totalSpend, invoiceCount, orderCount }) => ({
+      currency, totalSpend, invoiceCount, orderCount,
+    })),
+    [
+      { currency: 'USD', totalSpend: 180, invoiceCount: 3, orderCount: 4 },
+      { currency: 'CAD', totalSpend: 120, invoiceCount: 2, orderCount: 2 },
+    ]
+  );
+
+  // Per-provider breakdown inside the USD group, biggest spender first.
+  assert.deepEqual(
+    toPlain(combined.currencyTotals[0].providers).map(({ id, totalSpend, invoiceCount }) => ({
+      id, totalSpend, invoiceCount,
+    })),
+    [
+      { id: 'WALMART_US', totalSpend: 150, invoiceCount: 2 },
+      { id: 'STORE_B', totalSpend: 30, invoiceCount: 1 },
+    ]
+  );
+});
+
+test('computeProviderDashboard applies the range scope per provider', () => {
+  const sandbox = loadDashboardSandbox();
+  const combined = sandbox.computeProviderDashboard(combinedScopes(), 'thisYear', fakeNow());
+
+  // CA2 (2025) drops out of the CAD subtotal; every 2026 order stays.
+  const cad = combined.currencyTotals.find((group) => group.currency === 'CAD');
+  assert.equal(cad.totalSpend, 80);
+  assert.equal(cad.invoiceCount, 1);
+  const usd = combined.currencyTotals.find((group) => group.currency === 'USD');
+  assert.equal(usd.totalSpend, 180);
+  assert.equal(combined.invoiceCount, 4);
+});
+
+test('computeProviderDashboard keeps unmeasured providers visible in their currency group', () => {
+  const sandbox = loadDashboardSandbox();
+  const scopes = [
+    combinedScopes()[0],
+    {
+      id: 'STORE_C',
+      label: 'Store C',
+      currency: 'USD',
+      records: [
+        {
+          orderNumber: 'I1',
+          orderDate: '2026-06-20T00:00:00.000Z',
+          summary: { orderDate: '2026-06-20T00:00:00.000Z', orderTotal: '$15.00' },
+          invoice: null,
+        },
+      ],
+    },
+  ];
+  const combined = sandbox.computeProviderDashboard(scopes, 'all', fakeNow());
+
+  // Single currency across providers → one group, no mixed flag.
+  assert.equal(combined.mixedCurrency, false);
+  assert.equal(combined.currencyTotals.length, 1);
+  const storeC = combined.currencyTotals[0].providers.find((p) => p.id === 'STORE_C');
+  // Summary-only spend is never measured — but the provider is still listed.
+  assert.deepEqual(toPlain(storeC), { id: 'STORE_C', label: 'Store C', totalSpend: 0, invoiceCount: 0, orderCount: 1 });
+});
+
+test('computeProviderDashboard over a lone Walmart scope matches computeDashboardStats exactly', () => {
+  const sandbox = loadDashboardSandbox();
+  const records = modelRecords();
+  const combined = sandbox.computeProviderDashboard(
+    [{ id: 'WALMART_US', label: 'Walmart.com', currency: 'USD', records }],
+    'thisYear',
+    fakeNow()
+  );
+  const direct = sandbox.computeDashboardStats(
+    sandbox.filterDashboardRecords(records, 'thisYear', fakeNow())
+  );
+
+  // The combined machinery must never move a Walmart-only number.
+  assert.equal(combined.currencyTotals.length, 1);
+  assert.equal(combined.currencyTotals[0].totalSpend, direct.totalSpend);
+  assert.equal(combined.invoiceCount, direct.invoiceCount);
+  assert.equal(combined.orderCount, direct.orderCount);
+  assert.equal(combined.mixedCurrency, false);
+});
+
+test('computeProviderDashboard handles empty and malformed input', () => {
+  const sandbox = loadDashboardSandbox();
+  for (const input of [[], null, undefined]) {
+    const combined = sandbox.computeProviderDashboard(input, 'all', fakeNow());
+    assert.equal(combined.orderCount, 0);
+    assert.equal(combined.invoiceCount, 0);
+    assert.deepEqual(toPlain(combined.currencyTotals), []);
+    assert.equal(combined.mixedCurrency, false);
+  }
+  // A scope with no records/currency must not throw and defaults to USD.
+  const combined = sandbox.computeProviderDashboard([{ id: 'X' }], 'all', fakeNow());
+  assert.equal(combined.currencyTotals[0].currency, 'USD');
+});
+
+test('Sidepanel.dashboard.render entry point exists and is a safe no-op until a page registers', () => {
+  const sandbox = loadDashboardSandbox();
+  assert.equal(evalIn(sandbox, 'typeof window.Sidepanel.dashboard.render'), 'function');
+  // No renderer registered (e.g. inside the side panel) → harmless undefined.
+  assert.equal(evalIn(sandbox, 'window.Sidepanel.dashboard.render()'), undefined);
+  // dashboard.page.js registers _renderImpl; render() must route through it.
+  evalIn(sandbox, 'window.Sidepanel.dashboard._renderImpl = () => "re-rendered"');
+  assert.equal(evalIn(sandbox, 'window.Sidepanel.dashboard.render()'), 're-rendered');
 });
