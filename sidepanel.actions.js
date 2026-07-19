@@ -97,9 +97,17 @@
         chrome.tabs.sendMessage(tab.id, { action: CONSTANTS.MESSAGES.GET_ACCOUNT_KEY }, (resp) => {
           void chrome.runtime.lastError;
           const key = resp && resp.accountKey;
-          if (key && key !== app.accountKey) {
+          if (!key) return;
+          // Auto-follow the SIGNED-IN account only when the tab's account
+          // actually changes (a new tab, or a Walmart logout/login) — not on
+          // every periodic re-check, so a manual switch to view another saved
+          // account isn't yanked back. tabAccountKey always tracks who's signed
+          // in, for the pre-fetch "wrong account" guard.
+          const tabChanged = key !== app.tabAccountKey;
+          app.tabAccountKey = key;
+          if (tabChanged && key !== app.accountKey) {
             app.accountKey = key;
-            chrome.storage.local.set({ currentAccountKey: key });
+            chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.CURRENT_ACCOUNT]: key });
             loadCacheOnMainPage();
           }
         });

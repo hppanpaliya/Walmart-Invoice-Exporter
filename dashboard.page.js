@@ -1252,4 +1252,14 @@
 
   // First paint: provider options first, then the initial render.
   populateProviderSelect().then(() => refresh(true));
+
+  // Opened via the extension's right-click "Options" (manifest points there
+  // with ?view=settings): open Settings in the rail. sendToPanel buffers until
+  // the embedded panel is ready, so this is safe on first paint.
+  try {
+    if (new URLSearchParams(location.search).get('view') === 'settings') {
+      sendToPanel('OPEN_SETTINGS');
+      revealRail();
+    }
+  } catch (_) {}
 })();
