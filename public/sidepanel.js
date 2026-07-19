@@ -295,36 +295,48 @@ document.addEventListener("DOMContentLoaded", async function () {
   // The spending dashboard is a full extension page (dashboard.html) now,
   // not a panel view. Opening it never interrupts a running collection or
   // download; if a dashboard tab is already open, focus it instead of
-  // stacking duplicates.
+  // stacking duplicates. Two entry points share this: the header chart icon
+  // and the "View dashboard" button beside "Load my orders".
+  function openDashboardTab() {
+    const dashboardUrl = chrome.runtime.getURL("dashboard.html");
+    chrome.tabs.query({ url: dashboardUrl }, function (tabs) {
+      const existing = tabs && tabs[0];
+      if (existing) {
+        chrome.tabs.update(existing.id, { active: true });
+        if (existing.windowId !== undefined) {
+          chrome.windows.update(existing.windowId, { focused: true });
+        }
+      } else {
+        chrome.tabs.create({ url: dashboardUrl });
+      }
+      // The full-page dashboard embeds this same panel, so keep the side
+      // panel from lingering behind it — close it once the tab is up.
+      try {
+        window.close();
+      } catch (_) {}
+    });
+  }
+
   const dashboardButton = document.getElementById("dashboardButton");
-  if (dashboardButton) {
-    if (window.self !== window.top) {
-      // This panel is embedded in the dashboard's rail — you're already on the
-      // dashboard, so the button does nothing (and looks disabled).
+  const viewDashboardButton = document.getElementById("viewDashboardButton");
+  if (window.self !== window.top) {
+    // This panel is embedded in the dashboard's rail — you're already on the
+    // dashboard. The header icon reads disabled; the companion button (which
+    // would just duplicate the page you're on) disappears so the collect
+    // button stands alone, full width.
+    if (dashboardButton) {
       dashboardButton.disabled = true;
       dashboardButton.title = "You're already on the dashboard";
-    } else {
-      dashboardButton.addEventListener("click", function (e) {
-        e.preventDefault();
-        const dashboardUrl = chrome.runtime.getURL("dashboard.html");
-        chrome.tabs.query({ url: dashboardUrl }, function (tabs) {
-          const existing = tabs && tabs[0];
-          if (existing) {
-            chrome.tabs.update(existing.id, { active: true });
-            if (existing.windowId !== undefined) {
-              chrome.windows.update(existing.windowId, { focused: true });
-            }
-          } else {
-            chrome.tabs.create({ url: dashboardUrl });
-          }
-          // The full-page dashboard embeds this same panel, so keep the side
-          // panel from lingering behind it — close it once the tab is up.
-          try {
-            window.close();
-          } catch (_) {}
-        });
-      });
     }
+    if (viewDashboardButton) viewDashboardButton.style.display = "none";
+  } else {
+    [dashboardButton, viewDashboardButton].forEach((button) => {
+      if (!button) return;
+      button.addEventListener("click", function (e) {
+        e.preventDefault();
+        openDashboardTab();
+      });
+    });
   }
 
   const settingsBackButton = document.getElementById("settingsBackButton");

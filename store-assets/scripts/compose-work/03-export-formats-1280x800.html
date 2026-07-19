@@ -29,14 +29,22 @@
   .accent { color: #0071dc; }
   .bg-dark .accent { color: #6db3ff; }
 
-  .wrap { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
-  .row { display: flex; align-items: center; gap: 16px; }
-  .row img { width: 72px; height: 72px; border-radius: 16px; box-shadow: 0 6px 18px rgba(0,30,70,.35); }
-  .name { color: #fff; font-size: 27px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.15; max-width: 240px; }
-  .tag { color: #ffc220; font-size: 17px; font-weight: 700; letter-spacing: 0.01em; }
-</style></head><body><div class="canvas bg-blue">
+  .wrap { display: flex; height: 100%; align-items: center; gap: 64px; padding: 0 84px; }
+  .text { flex: 1; }
+  .headline { font-size: 46px; line-height: 1.1; margin-bottom: 26px; }
+  .sub { font-size: 20px; line-height: 1.55; margin-bottom: 30px; }
+  .chip { font-size: 17px; padding: 9px 18px; }
+  ul.plain { list-style: none; }
+  ul.plain li { font-size: 20px; font-weight: 600; color: #22354d; padding: 9px 0 9px 38px; position: relative; }
+  ul.plain li::before { content: "✓"; position: absolute; left: 0; top: 7px; width: 26px; height: 26px;
+    border-radius: 50%; background: #0071dc; color: #fff; font-size: 15px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center; }
+  .stage { flex: 0 0 auto; }
+  .shot-card img { height: 700px; }
+</style></head><body><div class="canvas bg-light">
   <div class="wrap">
-    <div class="row"><img src="file:///Users/harshalpanpaliya/Downloads/gnemaookpcekfeidmgocagofgijpoced/Walmart-Invoice-Exporter/public/images/icon128.png"><div class="name">Walmart Invoice Exporter</div></div>
-    <div class="tag">Orders → Excel, CSV &amp; PDF</div>
+    <div class="text"><div class="headline">Five formats.<br><span class="accent">Two clicks.</span></div><div class="sub">One combined workbook or one file per order — with product photos if you want them.</div>
+       <div class="chips"><span class="chip alt">Excel</span><span class="chip">CSV</span><span class="chip">JSON</span><span class="chip">PDF</span><span class="chip">Receipts</span></div></div>
+    <div class="stage"><div class="shot-card"><img src="file:///Users/harshalpanpaliya/Downloads/gnemaookpcekfeidmgocagofgijpoced/Walmart-Invoice-Exporter/store-assets/scripts/store-raw/panel-list.png"></div></div>
   </div>
 </div></body></html>
