@@ -37,13 +37,8 @@
                     d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
             <h1><span class="header-title-text">Walmart Invoice Exporter</span> <span id="versionBadge" class="version-badge"></span></h1>
-            <!-- Active-provider dropdown: first-class global state that scopes
-                 the WHOLE panel (order list, collection target, export).
-                 Always visible; options come from Sidepanel.providers
-                 .selectable() (sidepanel.js), so a Walmart-only install shows
-                 just "Walmart.com" and behaves exactly as before. Styled by
-                 the injected provider-chrome styles (sidepanel.components.js). -->
-            <select id="providerSelect" class="provider-select" title="Walmart site" aria-label="Walmart site"></select>
+<!-- The active-site dropdown moved to Settings (static #activeSiteSection)
+                 — the header stays focused on actions. -->
             <!-- Compact icon buttons (spec §5.4/P4) — fixes the old
                  text-button header crowding at narrow widths. -->
             <div class="header-actions" id="headerActions">
@@ -456,6 +451,19 @@
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
             <h1>Settings</h1>
+        </div>
+        <!-- Active-site picker (moved out of the main header, 2026-07-19):
+             first-class global state that scopes the WHOLE panel (order list,
+             collection target, export). STATIC on purpose — it sits outside
+             #settingsContent's innerHTML re-renders so the live element and
+             its sidepanel.js wiring survive every renderSettings(). Hidden by
+             populateProviderSelect() while only one site is selectable. -->
+        <div class="settings-section" id="activeSiteSection" hidden>
+            <h3 class="settings-section-title">Active site</h3>
+            <div class="input-group">
+                <label for="providerSelect">Which Walmart the panel shows and collects</label>
+                <select id="providerSelect" class="provider-select" title="Walmart site" aria-label="Walmart site"></select>
+            </div>
         </div>
         <!-- Filled in by the next phase (spec §5.4: Appearance, Collection,
              Export defaults, Data on this device, About). -->
