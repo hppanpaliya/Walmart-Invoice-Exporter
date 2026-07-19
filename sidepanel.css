@@ -327,6 +327,15 @@ body {
   color: var(--text-secondary);
 }
 
+/* Muted helper sitting between a field's label and its control, so the
+   three read as one group (label → hint → input) rather than the hint
+   floating inside the label text. */
+.input-group .input-hint {
+  margin: calc(var(--space-2) * -1) 0 var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
 .input-group input {
   width: 80px;
   padding: 6px;
@@ -1616,6 +1625,9 @@ body.first-run .export-options-panel {
 }
 
 .order-month-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -1625,6 +1637,20 @@ body.first-run .export-options-panel {
 
 .order-month-label:first-child {
   padding-top: 6px;
+}
+
+/* Select-every-order-in-this-month toggle sitting in the group header;
+   its indeterminate state means "some, not all, of the month is selected". */
+.month-select-checkbox {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  cursor: pointer;
+  margin: 0;
+}
+
+.order-month-label-text {
+  text-transform: inherit;
 }
 
 .order-row-wrapper {
@@ -1639,7 +1665,10 @@ body.first-run .export-options-panel {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 8px;
+  /* Indent the row's checkbox to sit under the month-header label text (8px
+     pad + 14px month checkbox + 8px gap), so each order reads as a child of
+     its month group rather than lining up with the group's own checkbox. */
+  padding: 10px 8px 10px 30px;
   border-radius: var(--radius-md);
   cursor: default;
   transition: background 0.12s ease;

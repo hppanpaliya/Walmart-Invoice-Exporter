@@ -227,7 +227,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
    long unwrappable row (an item name + price) would otherwise squeeze its
    sibling cards into a sliver. */
 .stats { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(4, minmax(0, 1fr)); gap: 14px; }
-.stat-value { font-size: 22px; font-weight: 650; margin-top: 2px; }
+.stat-value { font-size: 22px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .stat-hero .stat-value { font-size: 34px; letter-spacing: -.01em; }
 .stat-saved { color: var(--success-fg); }
 /* inline-block + nowrap: the delta never breaks internally, but wraps below
@@ -345,7 +345,7 @@ th {
 .sort-arrow { font-size: 10px; }
 td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 tr:hover td { background: var(--surface-2); }
-td.num, th.num { text-align: right; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 th.num .th-sort { justify-content: flex-end; }
 td.date-cell { white-space: nowrap; }
 .status-chip {
@@ -366,7 +366,9 @@ td.date-cell { white-space: nowrap; }
    absorbs leftover space and ellipsizes first, so the fixed columns (dates,
    totals, chips) never clip at the card edge. */
 .items-cell { color: var(--text-secondary); width: 100%; max-width: 0; min-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.onum { color: var(--text-muted); font-size: 12.5px; }
+/* Order # never wraps under its hyphen — nowrap + a min-width keep the long
+   number on one line; tabular-nums (also via .mono) aligns the digits. */
+.onum { color: var(--text-muted); font-size: 12.5px; min-width: 96px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .table-wrap { overflow-x: auto; }
 .table-empty td { text-align: center; color: var(--text-muted); padding: 24px 10px; }
 .fmt-row { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); }
@@ -408,7 +410,7 @@ footer {
 .pbar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pbar { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .pbar-fill { height: 100%; border-radius: 999px; background: var(--bar-hover); }
-.pbar-amount { text-align: right; }
+.pbar-amount { text-align: right; font-variant-numeric: tabular-nums; }
 .pbar-meta { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 @media (max-width: 700px) {
   .pbar-row { grid-template-columns: minmax(80px, 120px) minmax(0, 1fr) auto; }

@@ -742,7 +742,7 @@
           });
 
           if (cancelled) {
-            showDownloadResultBanner({ variant: "info", message: "Download cancelled." });
+            showDownloadResultBanner({ variant: "warning", message: "Download cancelled." });
             return;
           }
 
@@ -794,7 +794,7 @@
           });
 
           if (cancelled) {
-            showDownloadResultBanner({ variant: "info", message: "Download cancelled." });
+            showDownloadResultBanner({ variant: "warning", message: "Download cancelled." });
             return;
           }
 
@@ -905,7 +905,7 @@
         });
 
         if (cancelled) {
-          showDownloadResultBanner({ variant: "info", message: "Saving cancelled." });
+          showDownloadResultBanner({ variant: "warning", message: "Saving cancelled." });
           return;
         }
         if (extractionWarningsDetected) {

@@ -2276,6 +2276,25 @@ function setCollectionButtonsState({ running, startLabel } = {}) {
 }
 
 /**
+ * The checked/indeterminate state a group header (e.g. a month "select all")
+ * should show, given how many rows the group has and how many are selected.
+ * Pure so it can be unit-tested without a DOM:
+ *   none selected  → unchecked, not indeterminate
+ *   some selected  → indeterminate (the header shows a dash, not a tick)
+ *   all selected   → checked
+ * An empty group is never checked.
+ * @param {number} total - rows in the group
+ * @param {number} checked - how many of them are selected
+ * @returns {{checked: boolean, indeterminate: boolean}}
+ */
+function groupSelectionState(total, checked) {
+  return {
+    checked: total > 0 && checked === total,
+    indeterminate: checked > 0 && checked < total,
+  };
+}
+
+/**
  * Refresh the list heading row's two pieces of live-updating text (spec
  * v7.1 §B): "Select all N shown" (left) and "Orders (T) · M selected" /
  * "M selected · of T total" when a date-range filter is hiding rows
@@ -2284,8 +2303,8 @@ function setCollectionButtonsState({ running, startLabel } = {}) {
  * total so this stays the one source of truth for both counts.
  */
 function updateCheckboxCount(container) {
-  const checked = container.querySelectorAll('input[type="checkbox"]:not(#selectAll):checked').length;
-  const shown = container.querySelectorAll('input[type="checkbox"]:not(#selectAll)').length;
+  const checked = container.querySelectorAll('input[type="checkbox"]:not(#selectAll):not(.month-select-checkbox):checked').length;
+  const shown = container.querySelectorAll('input[type="checkbox"]:not(#selectAll):not(.month-select-checkbox)').length;
   const total = Number(container.dataset.totalOrders || shown);
 
   const selectAllLabel = container.querySelector('label[for="selectAll"]');

@@ -385,7 +385,10 @@
     }
 
     $('statAvgOrder').textContent = formatMoney(stats.avgOrder);
-    $('statSaved').textContent = formatMoney(stats.totalSavings);
+    // A "Saved" card should never read as a loss: some orders can net out
+    // negative (fees/adjustments exceeding line savings), but the total-savings
+    // figure is only meaningful as "money kept", so floor it at zero.
+    $('statSaved').textContent = formatMoney(Math.max(0, Number(stats.totalSavings) || 0));
   }
 
   /** Render the by-month bar chart for the current RANGE (months stay visible while month-scoped). */
