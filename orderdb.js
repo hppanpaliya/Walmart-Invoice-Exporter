@@ -209,6 +209,58 @@ const OrderDb = (() => {
   }
 
   /**
+   * Summarize the accounts that have saved data, so Settings can offer a
+   * per-account "delete" without needing (or storing) any account name. Each
+   * entry: { accountKey, orderCount, invoiceCount, newestOrderDate, updatedAt }.
+   * Untagged legacy records are reported as one entry with accountKey null.
+   * Sorted most-recently-used first.
+   * @returns {Promise<Array<Object>>}
+   */
+  function getAccountSummaries() {
+    return withStore('readonly', async (store) => {
+      const all = (await requestToPromise(store.getAll())) || [];
+      const byAccount = new Map();
+      all.forEach((record) => {
+        if (!record) return;
+        const key = record.accountKey || null;
+        const id = key || '__untagged__';
+        let entry = byAccount.get(id);
+        if (!entry) {
+          entry = { accountKey: key, orderCount: 0, invoiceCount: 0, newestOrderDate: '', updatedAt: 0 };
+          byAccount.set(id, entry);
+        }
+        entry.orderCount += 1;
+        if (record.invoice) entry.invoiceCount += 1;
+        const date = String(record.orderDate || '');
+        if (date && date > entry.newestOrderDate) entry.newestOrderDate = date;
+        if (typeof record.updatedAt === 'number' && record.updatedAt > entry.updatedAt) {
+          entry.updatedAt = record.updatedAt;
+        }
+      });
+      return Array.from(byAccount.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+    });
+  }
+
+  /**
+   * Delete every record belonging to ONE account (accountKey === null deletes
+   * the untagged legacy bucket). Leaves other accounts untouched — same
+   * clear + re-insert-survivors pattern as clearAll.
+   * @param {string|null} accountKey
+   * @returns {Promise<number>} how many records were removed
+   */
+  function clearAccount(accountKey) {
+    const target = accountKey || null;
+    return withStore('readwrite', async (store) => {
+      const all = (await requestToPromise(store.getAll())) || [];
+      const survivors = all.filter((record) => (record && (record.accountKey || null)) !== target);
+      if (survivors.length === all.length) return 0;
+      await requestToPromise(store.clear());
+      survivors.forEach((record) => store.put(record));
+      return all.length - survivors.length;
+    });
+  }
+
+  /**
    * Grandfather untagged records into an account: stamp `accountKey` on every
    * record for `provider` that has none yet. Called once when a collection first
    * learns the current account, so pre-existing (untagged) data becomes owned by
@@ -354,6 +406,8 @@ const OrderDb = (() => {
     getStats,
     clearAll,
     clearEverything,
+    clearAccount,
+    getAccountSummaries,
     stampUntaggedAccount,
     markUsed,
     enforceInactivityRetention,

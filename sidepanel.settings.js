@@ -260,7 +260,49 @@
     }
   }
 
-  function dataSectionHtml(stats) {
+  /** "Mar 2026"-style label from an ISO/date string, or '' when unknown. */
+  function accountDateLabel(iso) {
+    const s = String(iso || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}/.test(s)) return "";
+    const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const m = Number(s.slice(5, 7)) - 1;
+    return MONTHS[m] ? `${MONTHS[m]} ${s.slice(0, 4)}` : "";
+  }
+
+  /**
+   * Per-account delete rows — shown only when more than one account's data is
+   * saved, so a user with several Walmart logins can wipe just one. Accounts
+   * are identified WITHOUT any name (privacy): a running number, order count,
+   * newest order month, and a "(current)" marker for the one in view.
+   */
+  function accountsHtml(accounts, currentAccountKey) {
+    if (!accounts || accounts.length < 2) return "";
+    const rows = accounts
+      .map((acct, i) => {
+        const isCurrent = acct.accountKey && acct.accountKey === currentAccountKey;
+        const name = acct.accountKey ? `Account ${i + 1}` : "Older data (before accounts)";
+        const date = accountDateLabel(acct.newestOrderDate);
+        const meta = [
+          `${acct.orderCount} order${acct.orderCount === 1 ? "" : "s"}`,
+          date ? `newest ${date}` : "",
+          isCurrent ? "current" : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        return `
+          <div class="account-row">
+            <span class="account-row-label">${escapeHtml(name)}<span class="account-row-meta">${escapeHtml(meta)}</span></span>
+            <button type="button" class="btn btn-clear account-delete" data-account-key="${escapeHtml(acct.accountKey || "")}">Delete</button>
+          </div>`;
+      })
+      .join("");
+    return `
+      <p class="settings-about-note">Saved data is kept separately per Walmart account. Delete just one:</p>
+      <div class="account-list">${rows}</div>
+    `;
+  }
+
+  function dataSectionHtml(stats, accounts, currentAccountKey) {
     const line =
       stats.orders === 0
         ? "No orders saved on this device yet."
@@ -269,6 +311,7 @@
       <div class="settings-section">
         <h3 class="settings-section-title">Data on this device</h3>
         <p class="settings-stats-line" id="settingsStatsLine">${escapeHtml(line)}</p>
+        ${accountsHtml(accounts, currentAccountKey)}
         <div class="settings-actions">
           <button type="button" id="deleteAllDataButton" class="btn btn-danger" ${stats.orders === 0 ? "disabled" : ""}>
             ${renderIcon("TRASH")}
@@ -292,7 +335,8 @@
    */
   async function deleteAllSavedData() {
     try {
-      await OrderDb.clearAll();
+      // Every provider AND every account — the honest "delete everything".
+      await OrderDb.clearEverything();
     } catch (error) {
       console.error("Failed to clear the order database:", error);
     }
@@ -362,11 +406,46 @@
     renderSettings();
   }
 
+  /**
+   * Delete one account's saved data (accountKey ''/null = the untagged legacy
+   * bucket), then refresh Settings and the main view. If it was the account
+   * currently in view, forget it so the list falls back to showing everything.
+   */
+  async function deleteAccountData(accountKey) {
+    try {
+      await OrderDb.clearAccount(accountKey || null);
+    } catch (error) {
+      console.error("Failed to clear the account's data:", error);
+    }
+    if (accountKey && state.app.accountKey === accountKey) {
+      state.app.accountKey = null;
+      chrome.storage.local.remove("currentAccountKey");
+    }
+    if (Sidepanel.components) Sidepanel.components.Toast("Account data deleted");
+    renderSettings();
+    if (Sidepanel.actions && Sidepanel.actions.checkCurrentTab) Sidepanel.actions.checkCurrentTab();
+  }
+
   function wireDataControls(container, stats) {
     const deleteButton = container.querySelector("#deleteAllDataButton");
     if (deleteButton) {
       deleteButton.addEventListener("click", () => confirmDeleteAllData(stats));
     }
+
+    container.querySelectorAll(".account-delete").forEach((button) => {
+      button.addEventListener("click", () => {
+        const accountKey = button.dataset.accountKey || "";
+        const label = button.closest(".account-row")?.querySelector(".account-row-label")?.textContent || "this account";
+        Sidepanel.components.Dialog({
+          title: "Delete this account's data",
+          bodyHtml: `Removes all saved orders and invoices for ${escapeHtml(label.split("·")[0].trim())} from this device. This can't be undone.`,
+          confirmLabel: "Delete",
+          confirmVariant: "danger",
+          cancelLabel: "Cancel",
+          onConfirm: () => deleteAccountData(accountKey),
+        });
+      });
+    });
 
     const resetButton = container.querySelector("#resetSettingsButton");
     if (resetButton) {
@@ -587,12 +666,19 @@
         : rspec.defaultDays,
     };
 
-    let stats = { orders: 0, invoices: 0 };
+    // Account summaries drive both the "N orders saved" line (summed across
+    // every account + provider) and the per-account delete list.
+    let accounts = [];
     try {
-      stats = await OrderDb.getStats();
+      accounts = await OrderDb.getAccountSummaries();
     } catch (error) {
-      console.warn("Settings: order database unavailable for stats:", error);
+      console.warn("Settings: order database unavailable for account summaries:", error);
     }
+    const stats = accounts.reduce(
+      (acc, a) => ({ orders: acc.orders + a.orderCount, invoices: acc.invoices + a.invoiceCount }),
+      { orders: 0, invoices: 0 }
+    );
+    const currentAccountKey = (state.app && state.app.accountKey) || null;
 
     const providersHtml = await providersSectionHtml();
 
@@ -602,7 +688,7 @@
       exportDefaultsSectionHtml({ exportFormat, includeThumbnails, legacyExcel }),
       providersHtml,
       advancedSectionHtml(timings, retention),
-      dataSectionHtml(stats),
+      dataSectionHtml(stats, accounts, currentAccountKey),
       aboutSectionHtml(),
     ].join("");
 

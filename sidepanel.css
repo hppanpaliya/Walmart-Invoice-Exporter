@@ -1909,3 +1909,35 @@ body.first-run .export-options-panel {
     padding: 6px 10px;
     font-size: 12px;
 }
+
+/* Settings → Data on this device: per-account delete rows */
+.account-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: var(--space-2) 0;
+}
+.account-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: 6px 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+.account-row-label {
+    display: flex;
+    flex-direction: column;
+    font-size: var(--font-size-sm);
+}
+.account-row-meta {
+    color: var(--text-secondary);
+    font-size: var(--font-size-xs);
+}
+.account-delete {
+    flex: none;
+    padding: 4px 10px;
+    font-size: 12px;
+}

@@ -54,6 +54,43 @@ test('untagged (legacy) records are grandfathered — shown for any account unti
   assert.deepEqual(forB.map((r) => r.orderNumber), [], 'B sees nothing after legacy is absorbed into A');
 });
 
+test('clearAccount deletes ONE account; others untouched; null clears untagged', async () => {
+  const sandbox = loadDb();
+  const OrderDb = evalIn(sandbox, 'OrderDb');
+  await OrderDb.putSummaries({ a1: summ('2026-01-01T00:00:00.000Z') }, {}, 'WALMART_US', 'ACCT_A');
+  await OrderDb.putSummaries({ b1: summ('2026-02-01T00:00:00.000Z') }, {}, 'WALMART_US', 'ACCT_B');
+  await OrderDb.putSummaries({ old1: summ('2025-12-01T00:00:00.000Z') }, {}, 'WALMART_US'); // untagged
+
+  assert.equal(await OrderDb.clearAccount('ACCT_A'), 1);
+  assert.deepEqual((await OrderDb.getAllOrders('WALMART_US', null)).map((r) => r.orderNumber).sort(), ['b1', 'old1']);
+
+  // null clears only the untagged bucket.
+  assert.equal(await OrderDb.clearAccount(null), 1);
+  assert.deepEqual((await OrderDb.getAllOrders('WALMART_US', null)).map((r) => r.orderNumber), ['b1']);
+});
+
+test('getAccountSummaries reports per-account counts + newest date', async () => {
+  const sandbox = loadDb();
+  const OrderDb = evalIn(sandbox, 'OrderDb');
+  await OrderDb.putSummaries(
+    { a1: summ('2026-01-01T00:00:00.000Z'), a2: summ('2026-03-01T00:00:00.000Z') },
+    {},
+    'WALMART_US',
+    'ACCT_A'
+  );
+  await OrderDb.putInvoice('a1', { schemaVersion: 3, orderTotal: '$1', items: [] }, 'WALMART_US', 'ACCT_A');
+  await OrderDb.putSummaries({ b1: summ('2026-02-01T00:00:00.000Z') }, {}, 'WALMART_US', 'ACCT_B');
+
+  const summaries = await OrderDb.getAccountSummaries();
+  const a = summaries.find((s) => s.accountKey === 'ACCT_A');
+  const b = summaries.find((s) => s.accountKey === 'ACCT_B');
+  assert.equal(a.orderCount, 2);
+  assert.equal(a.invoiceCount, 1);
+  assert.equal(a.newestOrderDate.slice(0, 10), '2026-03-01');
+  assert.equal(b.orderCount, 1);
+  assert.equal(b.invoiceCount, 0);
+});
+
 test('a known account tag is never blanked out by a later untagged write', async () => {
   const sandbox = loadDb();
   const OrderDb = evalIn(sandbox, 'OrderDb');
