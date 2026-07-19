@@ -158,6 +158,16 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 .btn-link:hover { color: var(--accent-hover); }
 
+/* ---------- account switcher (top bar) ---------- */
+/* Reuses .scope-select for the box and .btn.btn-quiet for the pencil, so it
+   tracks the existing top-bar controls in both themes. The rename input is a
+   .scope-select too, so swapping it in for the select doesn't shift layout. */
+.account-switcher { display: inline-flex; align-items: center; gap: 6px; }
+.account-select { max-width: 220px; }
+.account-rename-input { max-width: 200px; }
+.account-rename { padding: 7px 9px; }
+.account-rename svg { display: block; }
+
 /* ---------- shell: main column + sticky panel rail ---------- */
 .shell {
   max-width: 1640px; margin: 0 auto; padding: 0 24px;

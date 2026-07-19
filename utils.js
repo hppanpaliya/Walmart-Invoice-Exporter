@@ -1836,6 +1836,27 @@ const CONSTANTS = {
     LEGACY_EXCEL: 'legacyExcel',
     // spec §7 risk table — one-time dismissible tip shown where Quick
     // Export used to be, telling returning users where it went.
+
+    // Multi-account: the account currently being VIEWED (a hashed account key,
+    // or the ACCOUNTS.UNTAGGED sentinel). Persisted so the side panel and the
+    // dashboard show the same account and stay in sync through storage events.
+    CURRENT_ACCOUNT: 'currentAccountKey',
+    // User-chosen display names per account, on-device only: { [key]: 'Work' }.
+    // We never store the account's real name/email — only the user's own label.
+    ACCOUNT_LABELS: 'accountLabels',
+    // Stable "Account 1 / Account 2" ordinals per key, assigned first-seen and
+    // never reshuffled: { [key]: 1 }. Separate from labels so a rename can't
+    // disturb another account's number.
+    ACCOUNT_ORDINALS: 'accountOrdinals',
+  },
+
+  // Multi-account support.
+  ACCOUNTS: {
+    // Selection sentinel for the "orders with no account tag yet" bucket
+    // (legacy data collected before per-account tagging, or when the account
+    // couldn't be read). A real account key is a 32-char hex hash, so this
+    // underscore-wrapped value can never collide with one.
+    UNTAGGED: '__untagged__',
   },
 
   // Cache Keys
@@ -2292,6 +2313,89 @@ function groupSelectionState(total, checked) {
     checked: total > 0 && checked === total,
     indeterminate: checked > 0 && checked < total,
   };
+}
+
+/* ------------------------------------------------------------------------- *
+ * Multi-account helpers (pure, DOM-free — shared by the side panel and the
+ * dashboard so both label and switch accounts identically). A "selection
+ * value" is what the switcher and CURRENT_ACCOUNT storage hold: either a real
+ * 32-hex account key, or the ACCOUNTS.UNTAGGED sentinel for the legacy bucket.
+ * A getAccountSummaries() entry carries `accountKey` (a real key, or null for
+ * untagged), which accountSelectionValue() maps into that selection space.
+ * ------------------------------------------------------------------------- */
+
+/** Map a record/summary account key (real, or null for untagged) to a switcher selection value. */
+function accountSelectionValue(accountKey) {
+  return accountKey || CONSTANTS.ACCOUNTS.UNTAGGED;
+}
+
+/**
+ * Assign stable "Account N" ordinals to any accounts that don't have one yet,
+ * without ever renumbering the ones that do (so a new account never bumps an
+ * existing account's number). The untagged bucket gets no ordinal — it's shown
+ * as "Earlier orders", not "Account N".
+ * @param {string[]} selectionValues - account selection values, in the order new ones should be numbered
+ * @param {Object<string,number>} [existingOrdinals]
+ * @returns {Object<string,number>} the updated ordinal map
+ */
+function assignAccountOrdinals(selectionValues = [], existingOrdinals = {}) {
+  const ordinals = { ...(existingOrdinals || {}) };
+  let next = Object.values(ordinals).reduce((max, n) => Math.max(max, Number(n) || 0), 0) + 1;
+  selectionValues.forEach((value) => {
+    if (!value || value === CONSTANTS.ACCOUNTS.UNTAGGED) return;
+    if (!ordinals[value]) ordinals[value] = next++;
+  });
+  return ordinals;
+}
+
+/**
+ * The name to show for an account: the user's own label if they set one, else
+ * "Account N" from its ordinal, else "Earlier orders" for the untagged bucket.
+ * @param {string|null} selectionValue
+ * @param {{labels?: Object, ordinals?: Object}} [maps]
+ */
+function accountDisplayName(selectionValue, { labels = {}, ordinals = {} } = {}) {
+  if (!selectionValue) return 'All accounts';
+  if (labels && labels[selectionValue]) return labels[selectionValue];
+  if (selectionValue === CONSTANTS.ACCOUNTS.UNTAGGED) return 'Earlier orders';
+  const ordinal = ordinals && ordinals[selectionValue];
+  return ordinal ? `Account ${ordinal}` : 'Account';
+}
+
+/**
+ * Which account the switcher should show: the stored selection if it still has
+ * data, otherwise the most-recently-used account (summaries are MRU-first),
+ * otherwise null (no data at all → "All accounts", no filter).
+ * @param {Array<{accountKey: string|null}>} summaries - from getAccountSummaries()
+ * @param {string|null} storedValue - CURRENT_ACCOUNT from storage
+ * @returns {string|null}
+ */
+function resolveSelectedAccount(summaries = [], storedValue = null) {
+  const available = (summaries || []).map((s) => accountSelectionValue(s.accountKey));
+  if (storedValue && available.includes(storedValue)) return storedValue;
+  return available.length ? available[0] : null;
+}
+
+/**
+ * Turn account summaries + label/ordinal maps into ready-to-render switcher
+ * options (used identically by the side panel and the dashboard), each with a
+ * display name, a short "N orders" meta line, and whether it's the current
+ * selection. Order is preserved (getAccountSummaries is MRU-first).
+ * @param {Array<{accountKey: string|null, orderCount?: number, newestOrderDate?: string}>} summaries
+ * @param {{labels?: Object, ordinals?: Object, selected?: string|null}} [opts]
+ * @returns {Array<{value: string, name: string, orderCount: number, newestOrderDate: string, selected: boolean}>}
+ */
+function buildAccountOptions(summaries = [], { labels = {}, ordinals = {}, selected = null } = {}) {
+  return (summaries || []).map((summary) => {
+    const value = accountSelectionValue(summary.accountKey);
+    return {
+      value,
+      name: accountDisplayName(value, { labels, ordinals }),
+      orderCount: summary.orderCount || 0,
+      newestOrderDate: summary.newestOrderDate || '',
+      selected: value === selected,
+    };
+  });
 }
 
 /**

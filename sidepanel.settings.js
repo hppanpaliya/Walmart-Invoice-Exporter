@@ -276,12 +276,15 @@
    * are identified WITHOUT any name (privacy): a running number, order count,
    * newest order month, and a "(current)" marker for the one in view.
    */
-  function accountsHtml(accounts, currentAccountKey) {
+  function accountsHtml(accounts, currentAccountKey, maps = { labels: {}, ordinals: {} }) {
     if (!accounts || accounts.length < 2) return "";
     const rows = accounts
-      .map((acct, i) => {
-        const isCurrent = acct.accountKey && acct.accountKey === currentAccountKey;
-        const name = acct.accountKey ? `Account ${i + 1}` : "Older data (before accounts)";
+      .map((acct) => {
+        const value = accountSelectionValue(acct.accountKey);
+        const isCurrent = value === currentAccountKey;
+        // Same names as the switcher (custom label, else "Account N", else
+        // "Earlier orders" for the untagged bucket) so the two never disagree.
+        const name = accountDisplayName(value, maps);
         const date = accountDateLabel(acct.newestOrderDate);
         const meta = [
           `${acct.orderCount} order${acct.orderCount === 1 ? "" : "s"}`,
@@ -303,7 +306,7 @@
     `;
   }
 
-  function dataSectionHtml(stats, accounts, currentAccountKey) {
+  function dataSectionHtml(stats, accounts, currentAccountKey, maps) {
     const line =
       stats.orders === 0
         ? "No orders saved on this device yet."
@@ -312,7 +315,7 @@
       <div class="settings-section">
         <h3 class="settings-section-title">Data on this device</h3>
         <p class="settings-stats-line" id="settingsStatsLine">${escapeHtml(line)}</p>
-        ${accountsHtml(accounts, currentAccountKey)}
+        ${accountsHtml(accounts, currentAccountKey, maps)}
         <div class="settings-actions">
           <button type="button" id="deleteAllDataButton" class="btn btn-danger" ${stats.orders === 0 ? "disabled" : ""}>
             ${renderIcon("TRASH")}
@@ -680,6 +683,18 @@
       { orders: 0, invoices: 0 }
     );
     const currentAccountKey = (state.app && state.app.accountKey) || null;
+    // Friendly names/ordinals for the per-account list — shared with the switcher.
+    const accountMaps = await new Promise((resolve) => {
+      chrome.storage.local.get(
+        [CONSTANTS.STORAGE_KEYS.ACCOUNT_LABELS, CONSTANTS.STORAGE_KEYS.ACCOUNT_ORDINALS],
+        (res) => {
+          resolve({
+            labels: (res && res[CONSTANTS.STORAGE_KEYS.ACCOUNT_LABELS]) || {},
+            ordinals: (res && res[CONSTANTS.STORAGE_KEYS.ACCOUNT_ORDINALS]) || {},
+          });
+        }
+      );
+    });
 
     const providersHtml = await providersSectionHtml();
 
@@ -689,7 +704,7 @@
       exportDefaultsSectionHtml({ exportFormat, includeThumbnails, legacyExcel }),
       providersHtml,
       advancedSectionHtml(timings, retention),
-      dataSectionHtml(stats, accounts, currentAccountKey),
+      dataSectionHtml(stats, accounts, currentAccountKey, accountMaps),
       aboutSectionHtml(),
     ].join("");
 

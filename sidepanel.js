@@ -452,6 +452,18 @@ document.addEventListener("DOMContentLoaded", async function () {
         break;
       }
 
+      case "SAVE_TO_LIBRARY": {
+        // "Fetch data" on the dashboard: fetch full invoice details into the
+        // library without downloading a file — the same pipeline as the
+        // panel's "Save details to library" button.
+        const orderNumbers = Array.isArray(data.orderNumbers)
+          ? data.orderNumbers.filter((n) => typeof n === "string" && n.length > 0)
+          : [];
+        if (orderNumbers.length === 0) return;
+        Sidepanel.download.loadSelectedOrdersToDb(orderNumbers);
+        break;
+      }
+
       case "OPEN_SETTINGS":
         // Mirrors the header gear, including the operation-in-progress
         // confirm-dialog guard.
@@ -522,4 +534,29 @@ document.addEventListener("DOMContentLoaded", async function () {
       });
     }
   });
+
+  // Keep the panel's account view in sync with the dashboard (and a second
+  // panel window): both write the shared CURRENT_ACCOUNT / ACCOUNT_LABELS /
+  // ACCOUNT_ORDINALS keys, and this reacts to the OTHER surface's writes.
+  if (chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener(function (changes, area) {
+      if (area !== "local") return;
+      const currentChange = changes[CONSTANTS.STORAGE_KEYS.CURRENT_ACCOUNT];
+      if (currentChange) {
+        const next = currentChange.newValue != null ? currentChange.newValue : null;
+        if (next !== app.accountKey) {
+          app.accountKey = next;
+          actions.loadCacheOnMainPage(); // re-scope the list + re-render the switcher
+          return;
+        }
+      }
+      // A label/ordinal change from elsewhere only needs the switcher redrawn.
+      if (
+        changes[CONSTANTS.STORAGE_KEYS.ACCOUNT_LABELS] ||
+        changes[CONSTANTS.STORAGE_KEYS.ACCOUNT_ORDINALS]
+      ) {
+        actions.renderAccountSwitcher();
+      }
+    });
+  }
 });

@@ -183,18 +183,17 @@ function activeAdapter() {
 }
 
 /**
- * Learn (once) which Walmart account this collection is running under. Records
- * it as the current account (so the panel scopes its list to it) and
- * grandfathers any untagged records into it, so pre-existing data becomes owned
- * by this account instead of showing for a different one.
+ * Learn (once) which Walmart account this collection is running under, and make
+ * it the current account so both the side panel and the dashboard scope their
+ * list to it (they watch CURRENT_ACCOUNT in storage). New orders are tagged
+ * with this key as they're saved; we deliberately do NOT touch already-stored
+ * records — the old "grandfather untagged into this account" step silently
+ * moved one account's orders into another and is gone.
  */
 function noteCollectionAccount(accountKey) {
   if (!accountKey || CollectionState.accountKey === accountKey) return;
   CollectionState.accountKey = accountKey;
-  chrome.storage.local.set({ currentAccountKey: accountKey });
-  OrderDb.stampUntaggedAccount(CollectionState.provider, accountKey).catch((error) =>
-    console.warn('Failed to grandfather untagged orders into the account:', error)
-  );
+  chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.CURRENT_ACCOUNT]: accountKey });
 }
 
 /**

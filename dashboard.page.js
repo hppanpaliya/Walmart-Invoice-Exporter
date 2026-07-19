@@ -44,7 +44,36 @@
     providerScopes: [],
     currency: 'USD',
     multiProvider: false,
+    // Multi-account scoping (2026-07-19): the resolved account SELECTION VALUE
+    // (a real 32-hex key, the CONSTANTS.ACCOUNTS.UNTAGGED sentinel, or null for
+    // "all accounts") drives every data read below. It is shared with the side
+    // panel through CONSTANTS.STORAGE_KEYS.CURRENT_ACCOUNT. `accountSummaries`
+    // (MRU-first, from OrderDb.getAccountSummaries) plus the stored label and
+    // ordinal maps feed the header switcher.
+    account: null,
+    accountSummaries: [],
+    accountLabels: {},
+    accountOrdinals: {},
   };
+
+  /** True while the inline rename input is open — keep re-renders from stomping it. */
+  let accountRenaming = false;
+
+  /* Small promise wrappers over the callback-style chrome.storage.local API,
+     so the account resolver can await reads/writes like the rest of refresh(). */
+  function storageGet(keys) {
+    return new Promise((resolve) => {
+      if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+        resolve({});
+        return;
+      }
+      chrome.storage.local.get(keys, (result) => resolve(result || {}));
+    });
+  }
+  function storageSet(items) {
+    if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) return;
+    chrome.storage.local.set(items);
+  }
 
   /** The provider-selection contract (sidepanel.providers.js), if loaded. */
   function providersApi() {
@@ -337,6 +366,7 @@
     $('selCount').textContent = `${count} selected`;
     $('exportSingleBtn').disabled = count === 0;
     $('exportMultipleBtn').disabled = count === 0;
+    $('exportFetchBtn').disabled = count === 0;
   }
 
   /* ------------------------------------------------------------------ *
@@ -739,6 +769,149 @@
   }
 
   /* ------------------------------------------------------------------ *
+   * Account selection (shared with the side panel via CURRENT_ACCOUNT)
+   * ------------------------------------------------------------------ */
+
+  /** Whether two ordinal maps hold the same keys → values (avoids needless writes). */
+  function ordinalsChanged(next, prev) {
+    const prevMap = prev || {};
+    const nextKeys = Object.keys(next);
+    if (nextKeys.length !== Object.keys(prevMap).length) return true;
+    return nextKeys.some((key) => next[key] !== prevMap[key]);
+  }
+
+  /**
+   * Re-read the account summaries and the shared CURRENT_ACCOUNT / label /
+   * ordinal storage keys, assign stable "Account N" ordinals to any new
+   * account (persisting ONLY when they actually changed), and resolve which
+   * account this page should show (persisting CURRENT_ACCOUNT only when the
+   * resolved value differs). Leaves the resolution + maps in state for the
+   * data reads (state.account) and the switcher to consume. Safe to re-run.
+   */
+  async function resolveAccountState() {
+    const KEYS = CONSTANTS.STORAGE_KEYS;
+    let summaries = [];
+    try {
+      summaries = await OrderDb.getAccountSummaries();
+    } catch (error) {
+      console.warn('Dashboard page: account summaries unavailable:', error);
+      summaries = [];
+    }
+    const stored = await storageGet([KEYS.CURRENT_ACCOUNT, KEYS.ACCOUNT_LABELS, KEYS.ACCOUNT_ORDINALS]);
+    const labels = (stored && stored[KEYS.ACCOUNT_LABELS]) || {};
+    const existingOrdinals = (stored && stored[KEYS.ACCOUNT_ORDINALS]) || {};
+    const storedCurrent = (stored && stored[KEYS.CURRENT_ACCOUNT]) || null;
+
+    const selectionValues = summaries.map((summary) => accountSelectionValue(summary.accountKey));
+    const ordinals = assignAccountOrdinals(selectionValues, existingOrdinals);
+    if (ordinalsChanged(ordinals, existingOrdinals)) {
+      storageSet({ [KEYS.ACCOUNT_ORDINALS]: ordinals });
+    }
+
+    const selected = resolveSelectedAccount(summaries, storedCurrent);
+    if (selected !== storedCurrent) {
+      storageSet({ [KEYS.CURRENT_ACCOUNT]: selected });
+    }
+
+    state.accountSummaries = summaries;
+    state.accountLabels = labels;
+    state.accountOrdinals = ordinals;
+    state.account = selected;
+  }
+
+  /**
+   * Render the header account switcher from the resolved account state. Shown
+   * only with ≥2 buckets to switch between; each option's text is the account's
+   * display name plus a quiet " · N orders" count. Skipped while a rename is in
+   * progress so it never blows away the open input.
+   */
+  function renderAccountSwitcher() {
+    const wrap = $('accountSwitcher');
+    if (!wrap) return;
+    const summaries = state.accountSummaries || [];
+    if (summaries.length < 2) {
+      wrap.hidden = true;
+      return;
+    }
+    wrap.hidden = false;
+    if (accountRenaming) return;
+
+    const options = buildAccountOptions(summaries, {
+      labels: state.accountLabels,
+      ordinals: state.accountOrdinals,
+      selected: state.account,
+    });
+    $('accountSelect').innerHTML = options
+      .map((option) => {
+        const meta = `${option.orderCount} order${option.orderCount === 1 ? '' : 's'}`;
+        return `<option value="${escapeHtml(option.value)}"${option.selected ? ' selected' : ''}>${escapeHtml(`${option.name} · ${meta}`)}</option>`;
+      })
+      .join('');
+    $('accountSelect').value = state.account || '';
+    // Rename only ever targets a concrete selection.
+    $('accountRenameBtn').disabled = !state.account;
+  }
+
+  /** Swap the select for an inline text input pre-filled with the current name. */
+  function beginRename() {
+    if (!state.account) return;
+    accountRenaming = true;
+    const input = $('accountRenameInput');
+    input.value = accountDisplayName(state.account, { labels: state.accountLabels, ordinals: state.accountOrdinals });
+    $('accountSelect').hidden = true;
+    $('accountRenameBtn').hidden = true;
+    input.hidden = false;
+    input.focus();
+    input.select();
+  }
+
+  /**
+   * Close the inline rename. When saving, a trimmed non-empty name is stored as
+   * the account's custom label; an empty name deletes the label so it falls back
+   * to "Account N". Writing ACCOUNT_LABELS keeps the side panel in sync.
+   */
+  function endRename(save) {
+    if (!accountRenaming) return;
+    const input = $('accountRenameInput');
+    if (save && state.account) {
+      const name = input.value.trim();
+      const labels = { ...(state.accountLabels || {}) };
+      if (name) {
+        labels[state.account] = name;
+      } else {
+        delete labels[state.account];
+      }
+      state.accountLabels = labels;
+      storageSet({ [CONSTANTS.STORAGE_KEYS.ACCOUNT_LABELS]: labels });
+    }
+    accountRenaming = false;
+    input.hidden = true;
+    $('accountSelect').hidden = false;
+    $('accountRenameBtn').hidden = false;
+    renderAccountSwitcher();
+  }
+
+  $('accountSelect').addEventListener('change', () => {
+    const value = $('accountSelect').value;
+    if (value === state.account) return;
+    state.account = value;
+    state.selectedMonth = null;
+    storageSet({ [CONSTANTS.STORAGE_KEYS.CURRENT_ACCOUNT]: value });
+    refresh(true);
+  });
+  $('accountRenameBtn').addEventListener('click', beginRename);
+  $('accountRenameInput').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      endRename(true);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      endRename(false);
+    }
+  });
+  $('accountRenameInput').addEventListener('blur', () => endRename(true));
+
+  /* ------------------------------------------------------------------ *
    * Data loading & live refresh
    * ------------------------------------------------------------------ */
 
@@ -764,6 +937,11 @@
    * @param {boolean} [force] - render even when the signature is unchanged
    */
   async function refresh(force = false) {
+    // Resolve the shared account selection before any data read so every scope
+    // below is filtered to state.account, then reflect it in the switcher.
+    await resolveAccountState();
+    renderAccountSwitcher();
+
     const api = providersApi();
     let provider = 'WALMART_US';
     let scopes = [];
@@ -776,7 +954,7 @@
         for (const id of ids) {
           let records = [];
           try {
-            records = await OrderDb.getAllOrders(id);
+            records = await OrderDb.getAllOrders(id, state.account);
           } catch (error) {
             console.warn('Dashboard page: order database unavailable:', error);
           }
@@ -799,7 +977,7 @@
       provider = 'WALMART_US';
       let records = [];
       try {
-        records = await OrderDb.getAllOrders();
+        records = await OrderDb.getAllOrders(provider, state.account);
       } catch (error) {
         console.warn('Dashboard page: order database unavailable:', error);
       }
@@ -808,7 +986,7 @@
 
     const combined = Boolean(api) && provider === api.PROVIDER_ALL;
     const signature =
-      `${provider}||` + scopes.map((scope) => `${scope.id}::${signatureOf(scope.records)}`).join('##');
+      `${provider}|${state.account}||` + scopes.map((scope) => `${scope.id}::${signatureOf(scope.records)}`).join('##');
     if (!force && signature === state.signature) return;
     state.signature = signature;
     state.provider = provider;
@@ -872,6 +1050,18 @@
       // Provider opt-ins/outs change what is enabled/selectable.
       if (changes.settings) {
         populateProviderSelect().then(() => refresh(true));
+      }
+      // Account live sync: the side panel (or a second dashboard tab) switched
+      // the active account or renamed one. A real selection change re-reads and
+      // re-renders the whole page; a label/ordinal-only change just re-resolves
+      // the maps and repaints the switcher. Guarded against self-triggered loops
+      // — we only act when the incoming value actually differs from state.
+      const AK = CONSTANTS.STORAGE_KEYS;
+      const currentChange = changes[AK.CURRENT_ACCOUNT];
+      if (currentChange && (currentChange.newValue || null) !== state.account) {
+        refresh(true);
+      } else if (changes[AK.ACCOUNT_LABELS] || changes[AK.ACCOUNT_ORDINALS]) {
+        resolveAccountState().then(() => renderAccountSwitcher());
       }
     });
   }
@@ -1014,6 +1204,16 @@
   }
   $('exportSingleBtn').addEventListener('click', () => exportSelection('single'));
   $('exportMultipleBtn').addEventListener('click', () => exportSelection('multiple'));
+
+  // "Fetch data": save the selected orders' full invoice details into the
+  // library without downloading a file (mirrors the panel's "Save details to
+  // library"). Useful straight from the dashboard when rows show "summary only".
+  $('exportFetchBtn').addEventListener('click', () => {
+    const orderNumbers = selectedShownOrderNumbers();
+    if (!orderNumbers.length) return;
+    sendToPanel('SAVE_TO_LIBRARY', { orderNumbers });
+    revealRail();
+  });
 
   // "Export <scope> orders": select every measured shown row, then export
   // them as one file via the embedded panel.

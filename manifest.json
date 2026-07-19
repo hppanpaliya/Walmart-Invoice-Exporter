@@ -22,6 +22,10 @@
   "side_panel": {
     "default_path": "sidepanel.html"
   },
+  "options_ui": {
+    "page": "dashboard.html",
+    "open_in_tab": true
+  },
   "content_scripts": [
     {
       "matches": ["https://www.walmart.com/orders*", "https://www.walmart.ca/orders*"],

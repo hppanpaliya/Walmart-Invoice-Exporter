@@ -192,18 +192,24 @@ const OrderDb = (() => {
 
   /**
    * @param {string} [provider] - provider partition (defaults to WALMART_US)
-   * @param {string|null} [accountKey] - when set, return only this account's
-   *   records PLUS untagged legacy records (grandfathered until re-collected);
-   *   when null/absent, no account filter (we don't know the current account).
+   * @param {string|null} [accountKey] - the switcher's selection value:
+   *   - null/absent → no account filter (account unknown → show everything);
+   *   - ACCOUNTS.UNTAGGED → only the untagged legacy bucket (records with no key);
+   *   - a real account key → ONLY that account's records.
+   *   Untagged records are NOT grandfathered into a real account anymore — that
+   *   silently leaked (and, via the old stamping, erased) one account's orders
+   *   into another. They live in their own bucket until re-collected.
    * @returns {Promise<Object[]>} matching records for the provider
    */
   function getAllOrders(provider = DEFAULT_PROVIDER, accountKey = null) {
+    const UNTAGGED = CONSTANTS.ACCOUNTS.UNTAGGED;
     return withStore('readonly', async (store) => {
       const all = (await requestToPromise(store.getAll())) || [];
       return all.filter((record) => {
         if (!record || record.provider !== provider) return false;
-        if (!accountKey) return true; // current account unknown → show everything
-        return !record.accountKey || record.accountKey === accountKey;
+        if (accountKey == null) return true; // account unknown → show everything
+        if (accountKey === UNTAGGED) return !record.accountKey; // legacy bucket
+        return record.accountKey === accountKey; // strict: only this account
       });
     });
   }
@@ -257,31 +263,6 @@ const OrderDb = (() => {
       await requestToPromise(store.clear());
       survivors.forEach((record) => store.put(record));
       return all.length - survivors.length;
-    });
-  }
-
-  /**
-   * Grandfather untagged records into an account: stamp `accountKey` on every
-   * record for `provider` that has none yet. Called once when a collection first
-   * learns the current account, so pre-existing (untagged) data becomes owned by
-   * that account and stops showing for a different one.
-   * @param {string} provider
-   * @param {string} accountKey
-   * @returns {Promise<number>} how many records were tagged
-   */
-  function stampUntaggedAccount(provider, accountKey) {
-    if (!accountKey) return Promise.resolve(0);
-    return withStore('readwrite', async (store) => {
-      const all = (await requestToPromise(store.getAll())) || [];
-      let tagged = 0;
-      all.forEach((record) => {
-        if (record && record.provider === provider && !record.accountKey) {
-          record.accountKey = accountKey;
-          store.put(record);
-          tagged += 1;
-        }
-      });
-      return tagged;
     });
   }
 
@@ -408,7 +389,6 @@ const OrderDb = (() => {
     clearEverything,
     clearAccount,
     getAccountSummaries,
-    stampUntaggedAccount,
     markUsed,
     enforceInactivityRetention,
   };
