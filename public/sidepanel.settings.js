@@ -1,11 +1,11 @@
 /**
- * Settings view (design spec Â§5.4) â Appearance, Collection, Export
+ * Settings view (design spec §5.4) — Appearance, Collection, Export
  * defaults, Data on this device, About.
  *
  * Deliberately reads/writes the SAME individual chrome.storage.local keys
  * the main view already uses (exportFormat, includeThumbnails, legacyExcel,
  * incrementalCollect, pageLimit, theme) rather than a consolidated
- * `settings` object â that migration is a separate, riskier change and is
+ * `settings` object — that migration is a separate, riskier change and is
  * out of scope here. Settings is the DEFAULTS editor; the main view's own
  * Options disclosure / format controls stay the per-run overrides, reading
  * and writing the exact same keys so a change made in either place takes
@@ -13,7 +13,7 @@
  *
  * Rendered fresh every time the header gear is opened (sidepanel.js's
  * settingsButton handler), matching the Dashboard's render-on-open pattern
- * â always reflects the latest storage/DB state rather than a stale
+ * — always reflects the latest storage/DB state rather than a stale
  * page-load snapshot.
  */
 (() => {
@@ -21,7 +21,7 @@
   const state = Sidepanel.state;
 
   /**
-   * Restored by "Reset settings to defaults" (spec Â§5.4) â mirrors
+   * Restored by "Reset settings to defaults" (spec §5.4) — mirrors
    * sidepanel.state.js's app defaults, plus theme/pageLimit (which live
    * only in chrome.storage.local, not in-memory app state).
    */
@@ -53,9 +53,9 @@
   /**
    * Push a Settings-made change into the main view's own controls + the
    * in-memory app state, so it takes effect immediately without a reload
-   * (spec Â§5.4: "changing a default reflects on the main view and
+   * (spec §5.4: "changing a default reflects on the main view and
    * vice-versa"). The main view's own change handlers (sidepanel.js) already
-   * do the reverse â this just closes the loop from the Settings side.
+   * do the reverse — this just closes the loop from the Settings side.
    */
   function syncMainView(key, value) {
     const app = state.app;
@@ -137,9 +137,9 @@
         </div>
         <div class="toggle-group">
           <input type="checkbox" id="settingsFastFetch" ${fastFetch ? "checked" : ""}>
-          <label for="settingsFastFetch" title="Faster collection: loads the first page, does ONE 'Next' to capture your browser's real request, then replays the rest of the pages instantly with those same request details â so it isn't treated as a bot. All pages keep their real order dates. Uses your logged-in session; nothing leaves this device.">Fast collection (fewer page loads)</label>
+          <label for="settingsFastFetch" title="Faster collection: loads the first page, does ONE 'Next' to capture your browser's real request, then replays the rest of the pages instantly with those same request details — so it isn't treated as a bot. All pages keep their real order dates. Uses your logged-in session; nothing leaves this device.">Fast collection (fewer page loads)</label>
         </div>
-        <p class="settings-about-note">Loads page 1, does a single "Next" to capture your browser's own request, then pulls every remaining page instantly by replaying that exact request â much faster than clicking through each page, and every page keeps its real order date. Turn off to page through one at a time.</p>
+        <p class="settings-about-note">Loads page 1, does a single "Next" to capture your browser's own request, then pulls every remaining page instantly by replaying that exact request — much faster than clicking through each page, and every page keeps its real order date. Turn off to page through one at a time.</p>
       </div>
     `;
   }
@@ -237,7 +237,7 @@
     });
 
     // Inactivity retention: the toggle shows/hides the days row and persists.
-    // No immediate wipe â the user is actively in Settings, so the inactivity
+    // No immediate wipe — the user is actively in Settings, so the inactivity
     // clock is fresh; data is only ever wiped after a genuine unused stretch.
     const retentionToggle = container.querySelector("#dataRetentionEnabled");
     const daysRow = container.querySelector("#dataRetentionDaysRow");
@@ -271,7 +271,7 @@
   }
 
   /**
-   * Per-account delete rows â shown only when more than one account's data is
+   * Per-account delete rows — shown only when more than one account's data is
    * saved, so a user with several Walmart logins can wipe just one. Accounts
    * are identified WITHOUT any name (privacy): a running number, order count,
    * newest order month, and a "(current)" marker for the one in view.
@@ -294,7 +294,7 @@
           isCurrent ? "current" : "",
         ]
           .filter(Boolean)
-          .join(" Â· ");
+          .join(" · ");
         return `
           <div class="account-row">
             <span class="account-row-label">${escapeHtml(name)}<span class="account-row-meta">${escapeHtml(meta)}</span></span>
@@ -312,7 +312,7 @@
     const line =
       stats.orders === 0
         ? "No orders saved on this device yet."
-        : `${stats.orders} order${stats.orders === 1 ? "" : "s"} saved Â· ${stats.invoices} with full invoice`;
+        : `${stats.orders} order${stats.orders === 1 ? "" : "s"} saved · ${stats.invoices} with full invoice`;
     return `
       <div class="settings-section">
         <h3 class="settings-section-title">Data on this device</h3>
@@ -330,8 +330,8 @@
   }
 
   /**
-   * The single honest clear-data control's actual effect (spec Â§4.4): wipes
-   * IndexedDB (OrderDb.clearAll â orders + invoices) AND
+   * The single honest clear-data control's actual effect (spec §4.4): wipes
+   * IndexedDB (OrderDb.clearAll — orders + invoices) AND
    * chrome.storage.session's live collection progress (RESET_SESSION_STATE,
    * background.js), then refreshes both Settings' own stats line and the
    * main view/dashboard so every surface lands on a true empty state.
@@ -341,7 +341,7 @@
    */
   async function deleteAllSavedData() {
     try {
-      // Every provider AND every account â the honest "delete everything".
+      // Every provider AND every account — the honest "delete everything".
       await OrderDb.clearEverything();
     } catch (error) {
       console.error("Failed to clear the order database:", error);
@@ -350,7 +350,7 @@
       chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.RESET_SESSION_STATE }, () => resolve());
     });
 
-    // Synchronously drop the panel's cached row models â the async
+    // Synchronously drop the panel's cached row models — the async
     // checkCurrentTab below re-renders eventually, but until it lands any
     // filter/dashboard-driven re-render would resurrect the deleted rows.
     if (Sidepanel.view && Sidepanel.view.clearOrderList) Sidepanel.view.clearOrderList();
@@ -380,7 +380,7 @@
   }
 
   /**
-   * Restore every settings key (NOT stored data â see deleteAllSavedData
+   * Restore every settings key (NOT stored data — see deleteAllSavedData
    * above for that) to its default, then refresh both Settings and the
    * main view's own controls so the reset is visible immediately.
    * @returns {Promise<void>}
@@ -444,7 +444,7 @@
         const label = button.closest(".account-row")?.querySelector(".account-row-label")?.textContent || "this account";
         Sidepanel.components.Dialog({
           title: "Delete this account's data",
-          bodyHtml: `Removes all saved orders and invoices for ${escapeHtml(label.split("Â·")[0].trim())} from this device. This can't be undone.`,
+          bodyHtml: `Removes all saved orders and invoices for ${escapeHtml(label.split("·")[0].trim())} from this device. This can't be undone.`,
           confirmLabel: "Delete",
           confirmVariant: "danger",
           cancelLabel: "Cancel",
@@ -460,8 +460,8 @@
   }
 
   /**
-   * About section (spec Â§5.4): version, an on-device/no-telemetry note, and
-   * the "Rate this extension" link â relocated here from the random
+   * About section (spec §5.4): version, an on-device/no-telemetry note, and
+   * the "Rate this extension" link — relocated here from the random
    * Math.random()>0.8-gated banner that used to appear near the download
    * actions (view.maybeShowRatingHint, removed). Same rating URL, but now a
    * single, always-available, non-nagging link.
@@ -475,7 +475,7 @@
       <div class="settings-section">
         <h3 class="settings-section-title">About</h3>
         <p class="settings-about-line">Version ${escapeHtml(version)}</p>
-        <p class="settings-about-note">All data stays on this device â no telemetry, no accounts, nothing sent anywhere.</p>
+        <p class="settings-about-note">All data stays on this device — no telemetry, no accounts, nothing sent anywhere.</p>
         <a href="${CONSTANTS.URLS.WALMART_REVIEWS}" target="_blank" class="rating-button">
           ${renderIcon("STAR")}
           Rate on Chrome Web Store
@@ -486,7 +486,7 @@
 
   /**
    * "Walmart sites" opt-in section: one toggle per additional Walmart site
-   * (currently just Walmart.ca â Walmart.com is always on and not shown). Each
+   * (currently just Walmart.ca — Walmart.com is always on and not shown). Each
    * toggle reflects Flags.isEnabled(id). Turning one ON requests that site's
    * host permission from within the user-gesture click handler; on grant the
    * flag is set, on denial the toggle reverts. Turning one OFF clears the flag
@@ -533,7 +533,7 @@
         if (!adapter) return;
         const origins = adapter.hostPermissions || [];
 
-        // A flag flip changes what Sidepanel.providers.selectable() returns â
+        // A flag flip changes what Sidepanel.providers.selectable() returns —
         // refresh the header provider dropdown's options right away (the
         // chrome.storage.onChanged echo in sidepanel.js also covers changes
         // made from other contexts).
@@ -545,7 +545,7 @@
           // Must run inside this user-gesture handler for the prompt to appear.
           chrome.permissions.request({ origins }, (granted) => {
             if (chrome.runtime.lastError || !granted) {
-              // Denied (or errored) â revert the toggle, leave the flag off.
+              // Denied (or errored) — revert the toggle, leave the flag off.
               toggle.checked = false;
               return;
             }
@@ -629,7 +629,7 @@
 
   /**
    * Render the Settings view content from current storage state. Called
-   * every time the header gear is opened â never cached, so every control
+   * every time the header gear is opened — never cached, so every control
    * (including the "Data on this device" stats line) always reflects the
    * latest state rather than a page-load snapshot.
    */
@@ -665,7 +665,7 @@
     const rspec = CONSTANTS.DATA_RETENTION;
     const retentionDaysRaw = Number(stored.dataRetentionDays);
     const retention = {
-      // ON by default â only an explicit stored false unchecks it.
+      // ON by default — only an explicit stored false unchecks it.
       enabled: stored.dataRetentionEnabled !== false,
       days: Number.isFinite(retentionDaysRaw)
         ? Math.min(rspec.maxDays, Math.max(rspec.minDays, Math.round(retentionDaysRaw)))
@@ -685,7 +685,7 @@
       { orders: 0, invoices: 0 }
     );
     const currentAccountKey = (state.app && state.app.accountKey) || null;
-    // Friendly names/ordinals for the per-account list â shared with the switcher.
+    // Friendly names/ordinals for the per-account list — shared with the switcher.
     const accountMaps = await new Promise((resolve) => {
       chrome.storage.local.get(
         [CONSTANTS.STORAGE_KEYS.ACCOUNT_LABELS, CONSTANTS.STORAGE_KEYS.ACCOUNT_ORDINALS],
