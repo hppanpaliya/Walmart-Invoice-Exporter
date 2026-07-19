@@ -243,13 +243,19 @@
                 </svg>
             </div>
             <div class="faq-answer">
-                <p>Every order you download is saved on your device — nothing expires and nothing is ever sent anywhere:</p>
+                <p>Every order you download is saved on your device — nothing is ever sent anywhere:</p>
 
                 <ul>
                     <li><strong>Saved automatically:</strong> Once an order is downloaded, its full details are stored
                         locally (in the browser's IndexedDB)</li>
                     <li><strong>Instant re-export:</strong> Re-downloading a saved order, in any format, reuses the
                         stored data instead of reopening the order page</li>
+                    <li><strong>Per-account:</strong> If you use more than one Walmart login, each account's data is
+                        kept separate — a switcher appears automatically, and Settings lets you delete just one
+                        account's data</li>
+                    <li><strong>Kept while you use it:</strong> Data never expires as long as you keep using the
+                        extension; if you don't open it at all for 180 days, it's deleted automatically for your
+                        privacy (adjustable, or turn it off, in Settings → Advanced)</li>
                     <li><strong>Yours to delete:</strong> One "Delete all saved data" control (Settings → "Data on this
                         device") wipes everything the extension has stored</li>
                 </ul>
@@ -271,6 +277,83 @@
                     <li>To clear everything and start fresh, use Settings → "Data on this device" → "Delete all saved
                         data"</li>
                 </ul>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question">
+                Spending Dashboard
+                <svg class="arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <div class="faq-answer">
+                <p>Click the chart icon in the panel header to open the dashboard — a full browser page built entirely
+                    from the orders saved on your device:</p>
+
+                <ul>
+                    <li><strong>Overview:</strong> monthly spend chart, stat cards, an optional monthly budget with an
+                        on-pace projection, and a searchable orders table — click any row for the full inline invoice</li>
+                    <li><strong>Items:</strong> every product you've ever bought, with times bought, price history
+                        sparklines, and your Personal Inflation Rate</li>
+                    <li><strong>Trends:</strong> cumulative and year-over-year spend, a shopping-days heatmap,
+                        delivery/pickup split, order-size histogram, and where each dollar went</li>
+                    <li><strong>Year in review:</strong> a Wrapped-style annual summary — biggest order, most-bought
+                        item, busiest month, longest Walmart-free streak, and more</li>
+                </ul>
+
+                <div class="tip">
+                    <strong>Note:</strong> Everything is computed on your device from your saved orders — collect
+                    orders first and the dashboard fills in.
+                </div>
+            </div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question">
+                AI access (MCP) — using your orders with Claude
+                <svg class="arrow" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <div class="faq-answer">
+                <p>Optionally, AI tools running on your own computer — Claude Code, Claude Desktop, or any
+                    <a href="https://modelcontextprotocol.io" target="_blank" style="color: var(--primary); text-decoration: none;">MCP</a>
+                    client — can read your saved orders, so you can ask things like <em>"how much did I spend on
+                    groceries in March?"</em> or <em>"find the order with the air fryer"</em>.</p>
+
+                <p style="margin-top: 15px;"><strong>Setup:</strong></p>
+                <ol>
+                    <li>In the extension: Settings → <strong>AI access (MCP)</strong> → turn the toggle on</li>
+                    <li>Copy the pairing token it generates</li>
+                    <li>Add the <a href="https://github.com/hppanpaliya/walmart-invoice-mcp" target="_blank"
+                            style="color: var(--primary); text-decoration: none;">walmart-invoice-mcp</a> helper to
+                        your MCP client's config:</li>
+                </ol>
+                <pre style="background: #f3f4f6; border-radius: 8px; padding: 12px; overflow-x: auto; font-size: 13px;"><code>{
+  "mcpServers": {
+    "walmart-invoices": {
+      "command": "npx",
+      "args": ["-y", "walmart-invoice-mcp", "--token", "&lt;paste token here&gt;"]
+    }
+  }
+}</code></pre>
+
+                <p style="margin-top: 15px;"><strong>Privacy &amp; safety:</strong></p>
+                <ul>
+                    <li><strong>Off by default</strong> — nothing happens unless you enable the toggle</li>
+                    <li><strong>Read-only</strong> — AI tools can list and read saved orders, never change, collect, or
+                        delete anything</li>
+                    <li><strong>Local-only</strong> — the extension only ever connects to 127.0.0.1 on your own
+                        machine, protected by the pairing token; nothing goes to the internet</li>
+                </ul>
+
+                <div class="tip">
+                    <strong>Tip:</strong> If your AI tool reports the extension isn't connected, open the extension's
+                    side panel once — that wakes it up so it can connect.
+                </div>
             </div>
         </div>
 

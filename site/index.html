@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Walmart Invoice Exporter — export your Walmart orders & see where the money went</title>
+  <meta name="description"
+    content="Free, open-source Chrome extension: export your Walmart order history to Excel, CSV, JSON, or PDF — with a private on-device spending dashboard. No accounts, no servers, no tracking.">
+  <link rel="icon" href="assets/icon128.png">
+  <link rel="stylesheet" href="styles.css">
+  <meta property="og:title" content="Walmart Invoice Exporter">
+  <meta property="og:description"
+    content="Export your Walmart order history to Excel, CSV, or PDF — and see where the money went on a built-in spending dashboard.">
+  <meta property="og:image" content="assets/01-hero-dashboard-1280x800.png">
+</head>
+
+<body>
+  <header class="site-header">
+    <div class="wrap nav">
+      <a class="brand" href="./"><img src="assets/icon128.png" alt="" width="28" height="28">Walmart Invoice Exporter</a>
+      <a class="navlink" href="#features">Features</a>
+      <a class="navlink" href="#dashboard">Dashboard</a>
+      <a class="navlink" href="#privacy">Privacy</a>
+      <a class="navlink" href="#ai">AI access</a>
+      <a class="navlink" href="faq.html">FAQ</a>
+      <a class="navlink" href="https://github.com/hppanpaliya/Walmart-Invoice-Exporter" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </header>
+
+  <main>
+    <div class="wrap hero">
+      <h1>Your Walmart order history, <em>exported</em> — and finally making sense.</h1>
+      <p class="lede">A free, open-source browser extension that collects every order from walmart.com, saves it
+        privately on your device, and turns it into clean Excel, CSV, JSON, or PDF files — with a built-in spending
+        dashboard that shows where the money went.</p>
+      <div class="cta">
+        <a class="btn btn-primary"
+          href="https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe"
+          target="_blank" rel="noopener">Add to Chrome — it's free</a>
+        <a class="btn btn-ghost" href="https://github.com/hppanpaliya/Walmart-Invoice-Exporter" target="_blank"
+          rel="noopener">View source on GitHub</a>
+      </div>
+      <p class="hero-note">No accounts. No servers. No tracking. Everything stays on your device.</p>
+      <div class="hero-shot">
+        <img src="assets/01-hero-dashboard-1280x800.png"
+          alt="The spending dashboard: monthly spend chart, stat cards, and a searchable orders table" loading="eager">
+      </div>
+    </div>
+
+    <section id="features">
+      <div class="wrap">
+        <p class="kicker">Everything included</p>
+        <h2 class="section-title">Built for tax season, expense reports, and curiosity</h2>
+        <p class="section-lede">Collect once, then slice your history any way you need — every feature runs locally in
+          your browser.</p>
+        <div class="grid">
+          <div class="card">
+            <div class="icon">⇩</div>
+            <h3>Export anything, any way</h3>
+            <p>Excel workbooks (combined or per-order), accounting-friendly CSV with QuickBooks &amp; Xero presets,
+              structured JSON, printable receipts, and true PDFs — with optional product photos.</p>
+          </div>
+          <div class="card">
+            <div class="icon">⚡</div>
+            <h3>Fast, flexible collection</h3>
+            <p>"Load my orders" gathers your whole history; "Check for new orders" tops it up in seconds. Optional fast
+              mode replays your own session instead of paging — with automatic classic fallback.</p>
+          </div>
+          <div class="card">
+            <div class="icon">🗂</div>
+            <h3>Walmart's own filters</h3>
+            <p>Collect by order type — online, in-store, in-progress, completed, returned — and by date range, using
+              the site's exact filter grammar.</p>
+          </div>
+          <div class="card">
+            <div class="icon">👥</div>
+            <h3>Multi-account aware</h3>
+            <p>Several Walmart logins stay cleanly separated (detected by a privacy-preserving hash — never your name).
+              Rename accounts, delete one account's data, and never mix histories.</p>
+          </div>
+          <div class="card">
+            <div class="icon">🧾</div>
+            <h3>Complete invoices</h3>
+            <p>Items, prices, delivery status, payment splits, taxes, tips, refunds, donations, sellers, tracking
+              numbers, and receipt barcodes — nothing fabricated, ever.</p>
+          </div>
+          <div class="card">
+            <div class="icon">🌘</div>
+            <h3>Polished in light &amp; dark</h3>
+            <p>One design language across the side panel, settings, and dashboard — including Firefox and Edge builds
+              from the same source.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="alt" id="dashboard">
+      <div class="wrap">
+        <p class="kicker">Spending dashboard</p>
+        <h2 class="section-title">See where the money went — privately</h2>
+        <p class="section-lede">A full browser page computed entirely from the orders saved on your device. Four views:
+          Overview, Items, Trends, and Year in review.</p>
+
+        <div class="split">
+          <div class="shot"><img src="assets/02-invoice-drilldown-1280x800.png"
+              alt="An order row expanded inline showing the complete invoice" loading="lazy"></div>
+          <div>
+            <h3>Every order, one click deep</h3>
+            <ul>
+              <li><strong>Inline invoices:</strong> click any order row to expand items, prices, the full money
+                breakdown, and payment methods — right in the table.</li>
+              <li><strong>Interactive charts:</strong> click a month's bar to scope the whole page to it, then export
+                just that scope.</li>
+              <li><strong>Monthly budget:</strong> set it once and get a progress ring with an on-pace month-end
+                projection.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="split reverse">
+          <div class="shot"><img src="assets/04-month-drilldown-dark-1280x800.png"
+              alt="Dark-mode month drill-down with stats and orders" loading="lazy"></div>
+          <div>
+            <h3>Insights you can't get from Walmart</h3>
+            <ul>
+              <li><strong>Personal Inflation Rate:</strong> a spend-weighted figure comparing your own basket across
+                the last two 12-month windows.</li>
+              <li><strong>Price watch:</strong> price-history sparklines on every item you rebuy.</li>
+              <li><strong>Trends:</strong> year-over-year lines, a shopping-days heatmap, delivery/pickup split, and
+                where each dollar went.</li>
+              <li><strong>Year in review:</strong> a Wrapped-style annual summary — biggest order, busiest month,
+                longest Walmart-free streak.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="privacy">
+      <div class="wrap">
+        <div class="split">
+          <div>
+            <p class="kicker">Private by design</p>
+            <h2 class="section-title">Your orders never leave your device</h2>
+            <ul class="check-list">
+              <li><strong>No accounts, no servers, no telemetry</strong> — all parsing, exports, and analytics happen
+                locally in your browser.</li>
+              <li><strong>Runs only on Walmart order pages</strong>, with minimal permissions; walmart.ca support is
+                opt-in.</li>
+              <li><strong>One honest delete button</strong> wipes everything — plus per-account delete.</li>
+              <li><strong>Automatic housekeeping:</strong> if you stop using the extension for 180 days, saved data is
+                deleted (adjustable, or turn it off).</li>
+              <li><strong>Open source</strong> — audit every line on GitHub.</li>
+            </ul>
+            <p style="margin-top: 22px;"><a href="privacy.html">Read the full privacy policy →</a></p>
+          </div>
+          <div class="shot"><img src="assets/05-privacy-1280x800.png"
+              alt="Privacy summary: on-device storage, no telemetry" loading="lazy"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="alt" id="ai">
+      <div class="wrap">
+        <p class="kicker">Optional · off by default</p>
+        <h2 class="section-title">Ask Claude about your orders (MCP)</h2>
+        <p class="section-lede">Connect AI tools running on your own computer — Claude Code, Claude Desktop, or any
+          <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener">MCP</a> client — and ask things like
+          <em>"how much did I spend on groceries in March?"</em> Read-only, localhost-only, token-paired.</p>
+
+        <div class="split">
+          <div>
+            <h3>Three-step setup</h3>
+            <ol style="color: var(--muted); padding-left: 20px;">
+              <li style="margin-bottom: 8px;">In the extension: Settings → <strong style="color: var(--text);">AI
+                  access (MCP)</strong> → turn the toggle on</li>
+              <li style="margin-bottom: 8px;">Copy the pairing token it generates</li>
+              <li>Add the <a href="https://github.com/hppanpaliya/walmart-invoice-mcp" target="_blank"
+                  rel="noopener">walmart-invoice-mcp</a> helper to your MCP client's config</li>
+            </ol>
+            <ul class="check-list" style="margin-top: 18px;">
+              <li><strong>Read-only</strong> — AI tools can list and read saved orders, never change or delete them.</li>
+              <li><strong>Local-only</strong> — the extension only ever connects to 127.0.0.1; nothing goes to the
+                internet.</li>
+            </ul>
+          </div>
+          <div>
+<pre><code>{
+  "mcpServers": {
+    "walmart-invoices": {
+      "command": "npx",
+      "args": [
+        "-y", "walmart-invoice-mcp",
+        "--token", "&lt;paste token here&gt;"
+      ]
+    }
+  }
+}</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="install">
+      <div class="wrap" style="text-align: center;">
+        <p class="kicker">Get started</p>
+        <h2 class="section-title">Two clicks from your first export</h2>
+        <p class="section-lede" style="margin-left: auto; margin-right: auto;">Install, open walmart.com/orders, click
+          "Load my orders" — then export or explore the dashboard.</p>
+        <div class="cta" style="display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;">
+          <a class="btn btn-primary"
+            href="https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe"
+            target="_blank" rel="noopener">Add to Chrome</a>
+          <a class="btn btn-ghost" href="https://github.com/hppanpaliya/Walmart-Invoice-Exporter#installation"
+            target="_blank" rel="noopener">Edge &amp; Firefox builds</a>
+        </div>
+        <p class="hero-note">Works on Chrome, Edge, and Firefox (MV3). Free and open source, MIT licensed.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap cols">
+      <div>
+        <strong style="color: var(--text);">Walmart Invoice Exporter</strong><br>
+        Made with <span class="heart">❤️</span> by <a href="https://github.com/hppanpaliya" target="_blank"
+          rel="noopener">Harshal Panpaliya</a><br>
+        Not affiliated with or endorsed by Walmart Inc.
+      </div>
+      <nav>
+        <a href="faq.html">Help &amp; FAQ</a>
+        <a href="privacy.html">Privacy policy</a>
+        <a href="https://github.com/hppanpaliya/Walmart-Invoice-Exporter/blob/main/CHANGELOG.md" target="_blank"
+          rel="noopener">Changelog</a>
+        <a href="https://github.com/hppanpaliya/Walmart-Invoice-Exporter/issues" target="_blank"
+          rel="noopener">Report an issue</a>
+      </nav>
+      <nav>
+        <a href="https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe/reviews"
+          target="_blank" rel="noopener">Rate on Chrome Web Store</a>
+        <a href="https://github.com/hppanpaliya/walmart-invoice-mcp" target="_blank" rel="noopener">walmart-invoice-mcp</a>
+        <a href="mailto:harshal.hpp@gmail.com">Contact</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+
+</html>

@@ -43,6 +43,11 @@
   // unused for this many days). Active users never lose data.
   SETTINGS_DEFAULTS.dataRetentionEnabled = true;
   SETTINGS_DEFAULTS.dataRetentionDays = CONSTANTS.DATA_RETENTION.defaultDays;
+  // Local MCP bridge: OFF by default. The pairing token is deliberately NOT
+  // part of the defaults — "Reset settings" turns the bridge off but keeps
+  // the token, so re-enabling doesn't silently break an existing pairing.
+  SETTINGS_DEFAULTS[CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_ENABLED] = false;
+  SETTINGS_DEFAULTS[CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_PORT] = CONSTANTS.MCP_BRIDGE.DEFAULT_PORT;
 
   const THEME_OPTIONS = [
     { value: "system", label: "System" },
@@ -587,6 +592,105 @@
     });
   }
 
+  /** 32 hex chars — the shared secret the bridge presents to the local relay. */
+  function generateMcpToken() {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  /**
+   * "AI access (MCP)" section: opt-in bridge that lets a LOCAL MCP server
+   * (the `walmart-invoice-mcp` npm package, run by Claude Code / Claude
+   * Desktop / any MCP client) read saved orders. Read-only, localhost-only,
+   * off by default. The token shown here must be passed to the server
+   * (`npx walmart-invoice-mcp --token <token>`) so only this pairing works.
+   */
+  function mcpSectionHtml(mcp) {
+    const port = mcp.port || CONSTANTS.MCP_BRIDGE.DEFAULT_PORT;
+    return `
+      <div class="settings-section">
+        <h3 class="settings-section-title">AI access (MCP)</h3>
+        <p class="settings-about-note">Let an AI tool on this computer (Claude Code, Claude Desktop, or any MCP client) read your saved orders through the <code>walmart-invoice-mcp</code> helper. Read-only and local-only: the extension only ever connects to 127.0.0.1, and the token below must match the one the helper runs with. Nothing is sent to the internet.</p>
+        <div class="toggle-group">
+          <input type="checkbox" id="settingsMcpEnabled" ${mcp.enabled ? "checked" : ""}>
+          <label for="settingsMcpEnabled">Enable local MCP access</label>
+        </div>
+        <div id="settingsMcpDetails"${mcp.enabled ? "" : " hidden"}>
+          <div class="input-group">
+            <label for="settingsMcpPort">Local port</label>
+            <input type="number" id="settingsMcpPort" min="${CONSTANTS.MCP_BRIDGE.MIN_PORT}" max="${CONSTANTS.MCP_BRIDGE.MAX_PORT}" value="${port}">
+          </div>
+          <div class="input-group">
+            <label for="settingsMcpToken">Pairing token</label>
+            <div class="input-with-default">
+              <input type="text" id="settingsMcpToken" readonly value="${escapeHtml(mcp.token || "")}">
+              <button type="button" class="btn btn-clear" id="settingsMcpCopyToken" title="Copy the token">Copy</button>
+              <button type="button" class="btn btn-clear" id="settingsMcpNewToken" title="Generate a new token (the helper must be restarted with it)">New</button>
+            </div>
+            <p class="input-hint">Run the helper with this token, e.g. <code>npx walmart-invoice-mcp --token &lt;token&gt;</code>, or paste it into your MCP client's config.</p>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function wireMcpControls(container) {
+    const K = CONSTANTS.STORAGE_KEYS;
+    const toggle = container.querySelector("#settingsMcpEnabled");
+    const details = container.querySelector("#settingsMcpDetails");
+    const portInput = container.querySelector("#settingsMcpPort");
+    const tokenInput = container.querySelector("#settingsMcpToken");
+
+    if (toggle) {
+      toggle.addEventListener("change", () => {
+        if (details) details.hidden = !toggle.checked;
+        const updates = { [K.MCP_BRIDGE_ENABLED]: toggle.checked };
+        // First enable: mint the pairing token so the bridge never dials out
+        // unauthenticated (mcp-bridge.js refuses to connect without one).
+        if (toggle.checked && tokenInput && !tokenInput.value) {
+          tokenInput.value = generateMcpToken();
+          updates[K.MCP_BRIDGE_TOKEN] = tokenInput.value;
+        }
+        chrome.storage.local.set(updates);
+      });
+    }
+
+    if (portInput) {
+      portInput.addEventListener("change", () => {
+        const spec = CONSTANTS.MCP_BRIDGE;
+        const raw = parseInt(portInput.value, 10);
+        const port = Number.isInteger(raw)
+          ? Math.min(spec.MAX_PORT, Math.max(spec.MIN_PORT, raw))
+          : spec.DEFAULT_PORT;
+        portInput.value = String(port);
+        chrome.storage.local.set({ [K.MCP_BRIDGE_PORT]: port });
+      });
+    }
+
+    const copyButton = container.querySelector("#settingsMcpCopyToken");
+    if (copyButton && tokenInput) {
+      copyButton.addEventListener("click", () => {
+        navigator.clipboard
+          .writeText(tokenInput.value)
+          .then(() => Sidepanel.components && Sidepanel.components.Toast("Token copied"))
+          .catch(() => {
+            tokenInput.select();
+            document.execCommand("copy");
+          });
+      });
+    }
+
+    const newButton = container.querySelector("#settingsMcpNewToken");
+    if (newButton && tokenInput) {
+      newButton.addEventListener("click", () => {
+        tokenInput.value = generateMcpToken();
+        chrome.storage.local.set({ [K.MCP_BRIDGE_TOKEN]: tokenInput.value });
+        if (Sidepanel.components) Sidepanel.components.Toast("New token generated — restart the helper with it");
+      });
+    }
+  }
+
   function wireThemeControl(container) {
     const control = container.querySelector("#themeControl");
     if (!control) return;
@@ -692,6 +796,9 @@
       ...CONSTANTS.TIMING_SETTINGS.map((spec) => spec.key),
       "dataRetentionEnabled",
       "dataRetentionDays",
+      CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_ENABLED,
+      CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_PORT,
+      CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_TOKEN,
     ];
     const stored = await new Promise((resolve) => chrome.storage.local.get(keys, resolve));
 
@@ -707,6 +814,11 @@
     CONSTANTS.TIMING_SETTINGS.forEach((spec) => {
       timings[spec.key] = resolveTimingSetting(spec, stored[spec.key]);
     });
+    const mcp = {
+      enabled: Boolean(stored[CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_ENABLED]),
+      port: Number(stored[CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_PORT]) || CONSTANTS.MCP_BRIDGE.DEFAULT_PORT,
+      token: String(stored[CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_TOKEN] || ""),
+    };
     const rspec = CONSTANTS.DATA_RETENTION;
     const retentionDaysRaw = Number(stored.dataRetentionDays);
     const retention = {
@@ -750,6 +862,7 @@
       collectionSectionHtml(pageLimit, incrementalCollect, fastFetch),
       exportDefaultsSectionHtml({ exportFormat, csvPreset, includeThumbnails, legacyExcel }),
       providersHtml,
+      mcpSectionHtml(mcp),
       advancedSectionHtml(timings, retention),
       dataSectionHtml(stats, accounts, currentAccountKey, accountMaps),
       aboutSectionHtml(),
@@ -759,6 +872,7 @@
     wireCollectionControls(container);
     wireExportDefaultsControls(container);
     wireProvidersControls(container);
+    wireMcpControls(container);
     wireAdvancedControls(container);
     wireDataControls(container, stats);
   }

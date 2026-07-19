@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Optional local MCP access (off by default)**: a new Settings → "AI access (MCP)" toggle lets AI tools on your own computer (Claude Code, Claude Desktop, any MCP client) read your saved orders through the [`walmart-invoice-mcp`](https://github.com/hppanpaliya/walmart-invoice-mcp) helper. Read-only and localhost-only: the extension only ever connects out to `127.0.0.1` with a pairing token you generate in Settings; nothing is sent to the internet.
+
+- **Project website on GitHub Pages**: a landing page, Help & FAQ, and privacy policy built from [site/](site/) and deployed automatically by the new `pages.yml` workflow — screenshots are pulled from `store-assets/` at build time so the site and store listing can't drift apart.
+
+### Changed
+- **Tooling moved from npm to pnpm**, with a 14-day supply-chain cooldown (`minimumReleaseAge`): newly published dependency versions aren't installed until they've been public for two weeks.
+- FAQs (in-panel, website) and the README now cover the v8.0 features (dashboard, multi-account, inactivity retention) and the new MCP access.
+
 ## [8.0] - July 19, 2026
 
 ### Added

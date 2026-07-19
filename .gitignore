@@ -25,9 +25,10 @@
 *.sublime-project
 *.sublime-workspace
 
-# Dependency lock files
+# Dependency lock files from other package managers (pnpm-lock.yaml is
+# committed: CI's `pnpm install --frozen-lockfile` requires it)
 yarn.lock
-# package-lock.json is committed: CI's `npm ci` (e2e job) requires it
+package-lock.json
 
 dev/
 
@@ -48,3 +49,9 @@ store-assets/scripts/.venv-kokoro/
 store-assets/scripts/compose-work/
 store-assets/scripts/seed-data.json
 store-assets/video/tour-4k.mp4
+
+# Assembled GitHub Pages site (built by scripts/build-site.sh / pages.yml).
+# site/assets/ is build-time-staged from store-assets/ + public/images/ —
+# never commit copies.
+_site/
+site/assets/

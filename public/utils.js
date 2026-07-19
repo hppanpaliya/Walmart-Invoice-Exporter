@@ -1848,6 +1848,27 @@ const CONSTANTS = {
     // never reshuffled: { [key]: 1 }. Separate from labels so a rename can't
     // disturb another account's number.
     ACCOUNT_ORDINALS: 'accountOrdinals',
+    // Optional local MCP bridge (Settings → "AI access"): OFF by default.
+    // When enabled, the background connects OUT to a localhost MCP relay
+    // (the separate `walmart-invoice-mcp` npm package) so tools like Claude
+    // Code can read saved orders. Read-only; nothing leaves the machine.
+    MCP_BRIDGE_ENABLED: 'mcpBridgeEnabled',
+    MCP_BRIDGE_PORT: 'mcpBridgePort',
+    // Shared secret the bridge presents to the relay so no other local
+    // process can impersonate the extension (generated on first enable).
+    MCP_BRIDGE_TOKEN: 'mcpBridgeToken',
+  },
+
+  // Local MCP bridge defaults/bounds (see mcp-bridge.js).
+  MCP_BRIDGE: {
+    DEFAULT_PORT: 8924,
+    MIN_PORT: 1024,
+    MAX_PORT: 65535,
+    // Heartbeat also keeps the MV3 service worker alive while the bridge is
+    // connected (Chrome ≥116 extends the worker's lifetime on socket activity).
+    HEARTBEAT_MS: 20000,
+    RECONNECT_MS: 15000,
+    PROTOCOL_VERSION: 1,
   },
 
   // Multi-account support.
