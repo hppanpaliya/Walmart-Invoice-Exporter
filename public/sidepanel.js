@@ -598,4 +598,15 @@ document.addEventListener("DOMContentLoaded", async function () {
       }
     });
   }
+
+  // Deep link: ?view=settings on the panel's own URL opens Settings once init
+  // is done. Set by the dashboard when IT was opened via the extension's
+  // right-click "Options" (manifest options_ui → dashboard.html?view=settings
+  // → iframe sidepanel.html?view=settings) — carried in the URL, not a bridge
+  // message, so it cannot race the panel's initialisation.
+  try {
+    if (new URLSearchParams(location.search).get("view") === "settings") {
+      requestViewSwitch("settings", () => Sidepanel.settings && Sidepanel.settings.renderSettings());
+    }
+  } catch (_) {}
 });

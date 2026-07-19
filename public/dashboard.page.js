@@ -1322,11 +1322,13 @@
   populateProviderSelect().then(() => refresh(true));
 
   // Opened via the extension's right-click "Options" (manifest points there
-  // with ?view=settings): open Settings in the rail. sendToPanel buffers until
-  // the embedded panel is ready, so this is safe on first paint.
+  // with ?view=settings): hand the deep link to the embedded panel via ITS
+  // OWN URL — the panel opens Settings as the last step of its init
+  // (sidepanel.js), which can't race. A bridge message here could land
+  // before/between the panel's own view initialisation and get lost.
   try {
     if (new URLSearchParams(location.search).get('view') === 'settings') {
-      sendToPanel('OPEN_SETTINGS');
+      frame.src = 'sidepanel.html?view=settings';
       revealRail();
     }
   } catch (_) {}
