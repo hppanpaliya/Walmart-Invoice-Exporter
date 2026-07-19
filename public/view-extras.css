@@ -1,0 +1,77 @@
+/*
+ * view-extras.css — Overview extras (budget + refunds cards), owned by
+ * dashboard.view-extras.js. Everything is scoped under #overviewExtras and
+ * uses the dashboard.css tokens only, so both themes come free. The slot's
+ * base layout (.view-slot: grid, 20px gap, hidden-when-empty) lives in
+ * dashboard.css — this file only sets the column template for the two
+ * extras cards (no other extra exists today; this module owns the slot).
+ */
+
+#overviewExtras { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* A lone card (refunds hidden) spans the whole slot instead of half. */
+#overviewExtras > .card:only-child { grid-column: 1 / -1; }
+@media (max-width: 900px) {
+  #overviewExtras { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------- budget card ---------- */
+#overviewExtras .ex-budget-body {
+  display: flex; align-items: center; gap: 18px; margin-top: 12px;
+}
+#overviewExtras .ex-ring { flex: none; }
+#overviewExtras .ex-ring-track { stroke: var(--border); }
+#overviewExtras .ex-ring-fill {
+  stroke: var(--accent);
+  transition: stroke-dashoffset .3s ease, stroke .3s ease;
+}
+#overviewExtras .ex-ring-warn .ex-ring-fill { stroke: var(--warn-fg); }
+#overviewExtras .ex-ring-over .ex-ring-fill { stroke: var(--danger-fg); }
+#overviewExtras .ex-ring-label {
+  fill: currentColor; font-size: 15px; font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+#overviewExtras .ex-budget-info { min-width: 0; }
+#overviewExtras .ex-line-main {
+  font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums;
+}
+#overviewExtras .ex-line-of { color: var(--text-muted); font-size: 13px; font-weight: 500; }
+#overviewExtras .ex-line-sub { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+#overviewExtras .ex-line-over {
+  color: var(--danger-fg); font-size: 12px; font-weight: 600; margin-top: 2px;
+}
+#overviewExtras .ex-actions { display: flex; gap: 8px; margin-top: 10px; }
+#overviewExtras .ex-actions .btn { padding: 5px 10px; font-size: 12.5px; }
+
+/* ---------- inline budget editor (CSP-safe, no prompt()) ---------- */
+#overviewExtras .ex-editor {
+  display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap;
+}
+#overviewExtras .ex-editor input {
+  width: 130px; padding: 7px 10px;
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  background: var(--surface); color: inherit; font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+#overviewExtras .ex-editor input::placeholder { color: var(--text-muted); }
+
+/* ---------- refunds card ---------- */
+#overviewExtras .ex-refund-total {
+  font-size: 22px; font-weight: 650; color: var(--success-fg); margin-top: 2px;
+}
+#overviewExtras .ex-refund-list {
+  list-style: none; margin: 10px 0 0; padding: 0;
+  display: grid; gap: 6px;
+}
+#overviewExtras .ex-refund-row {
+  display: flex; align-items: baseline; gap: 10px;
+  font-size: 13px; min-width: 0;
+}
+#overviewExtras .ex-refund-onum {
+  color: var(--text-muted); font-size: 12.5px; white-space: nowrap;
+}
+#overviewExtras .ex-refund-date {
+  color: var(--text-secondary); flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#overviewExtras .ex-refund-amt { font-weight: 600; white-space: nowrap; }

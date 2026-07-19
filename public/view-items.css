@@ -1,0 +1,91 @@
+/* Items view (#viewItems) — owned by dashboard.view-items.js. Every rule is
+   scoped under #viewItems and uses only dashboard.css design tokens, so both
+   themes come free and nothing here can leak into other views. */
+
+/* ---------- personal-inflation hero ---------- */
+#viewItems .items-rate {
+  font-size: 40px; font-weight: 650; letter-spacing: -.01em; margin-top: 8px;
+}
+#viewItems .items-rate-up { color: var(--danger-fg); }
+#viewItems .items-rate-down { color: var(--success-fg); }
+#viewItems .items-method {
+  margin: 6px 0 0; max-width: 640px;
+  color: var(--text-secondary); font-size: 13px;
+}
+#viewItems .items-quiet { margin: 10px 0 0; color: var(--text-muted); font-size: 13.5px; }
+#viewItems .items-movers {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 28px; margin-top: 14px;
+}
+#viewItems .items-movers h3 {
+  margin: 0; font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--text-secondary);
+}
+@media (max-width: 900px) {
+  #viewItems .items-movers { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------- items table card ---------- */
+#viewItems .items-toolbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-top: 12px;
+}
+#viewItems .items-toolbar .search { flex: 1; min-width: 220px; }
+#viewItems .items-count { color: var(--text-muted); font-size: 12.5px; white-space: nowrap; }
+
+#viewItems .table-wrap { margin-top: 10px; }
+#viewItems .items-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+#viewItems .items-table th {
+  text-align: left; font-size: 11.5px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--text-muted);
+  padding: 6px 10px 6px 0; border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+#viewItems .items-table td {
+  padding: 8px 10px 8px 0; border-bottom: 1px dashed var(--border);
+  vertical-align: middle;
+}
+#viewItems .items-table th.num,
+#viewItems .items-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* Item name is the table's one flexible column — absorbs leftover space and
+   ellipsizes first (same width:100% + max-width:0 trick as dashboard.css). */
+#viewItems .items-table .items-cell {
+  width: 100%; max-width: 0; min-width: 180px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text);
+}
+#viewItems tr.item-row { cursor: pointer; }
+#viewItems tr.item-row:hover td { background: var(--surface-2); }
+#viewItems tr.item-row.expanded td { border-bottom-style: solid; }
+#viewItems .items-up { color: var(--danger-fg); font-weight: 600; font-size: 12.5px; }
+#viewItems .items-down { color: var(--success-fg); font-weight: 600; font-size: 12.5px; }
+#viewItems .items-dim { color: var(--text-muted); font-size: 12.5px; }
+#viewItems .items-spark-cell { width: 98px; }
+#viewItems .items-spark { display: block; }
+
+/* ---------- expanded per-item detail ---------- */
+#viewItems .items-detail-row > td { padding: 0 0 14px; background: var(--surface-2); }
+#viewItems .items-detail {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 18px; padding: 14px 12px;
+}
+@media (max-width: 1100px) {
+  #viewItems .items-detail { grid-template-columns: minmax(0, 1fr); }
+}
+#viewItems .items-detail-history { overflow-x: auto; }
+#viewItems .items-history { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+#viewItems .items-history th {
+  text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--text-muted);
+  padding: 4px 10px 4px 0; border-bottom: 1px solid var(--border);
+}
+#viewItems .items-history td {
+  padding: 5px 10px 5px 0; border-bottom: 1px dashed var(--border);
+  white-space: nowrap;
+}
+#viewItems .items-history tr:last-child td { border-bottom: none; }
+#viewItems .items-history th.num,
+#viewItems .items-history td.num { text-align: right; font-variant-numeric: tabular-nums; }
+#viewItems .items-detail-chart { position: relative; min-height: 140px; }
+#viewItems .items-detail-chart canvas { max-height: 180px; }
+#viewItems .items-detail-svg { width: 100%; height: 140px; display: block; }
