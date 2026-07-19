@@ -611,7 +611,7 @@
     return `
       <div class="settings-section">
         <h3 class="settings-section-title">AI access (MCP)</h3>
-        <p class="settings-about-note">Let an AI tool on this computer (Claude Code, Claude Desktop, or any MCP client) read your saved orders through the <code>walmart-invoice-mcp</code> helper. Read-only and local-only: the extension only ever connects to 127.0.0.1, and the token below must match the one the helper runs with. Nothing is sent to the internet.</p>
+        <p class="settings-about-note">Let an AI tool on this computer (Claude Code, Claude Desktop, or any MCP client) read your saved orders through the <code>walmart-invoice-mcp</code> helper. Read-only by default and always local-only: the extension only ever connects to 127.0.0.1, and the token below must match the one the helper runs with. Nothing is sent to the internet.</p>
         <div class="toggle-group">
           <input type="checkbox" id="settingsMcpEnabled" ${mcp.enabled ? "checked" : ""}>
           <label for="settingsMcpEnabled">Enable local MCP access</label>
@@ -630,6 +630,11 @@
             </div>
             <p class="input-hint">Run the helper with this token, e.g. <code>npx walmart-invoice-mcp --token &lt;token&gt;</code>, or paste it into your MCP client's config.</p>
           </div>
+          <div class="toggle-group">
+            <input type="checkbox" id="settingsMcpAllowActions" ${mcp.allowActions ? "checked" : ""}>
+            <label for="settingsMcpAllowActions">Allow AI tools to collect data</label>
+          </div>
+          <p class="input-hint">Off = read-only (AI can only see orders already saved). On = AI tools may also start order collection and fetch invoices, which opens a background walmart tab using your signed-in session. Data still never leaves this computer.</p>
         </div>
       </div>
     `;
@@ -678,6 +683,13 @@
             tokenInput.select();
             document.execCommand("copy");
           });
+      });
+    }
+
+    const actionsToggle = container.querySelector("#settingsMcpAllowActions");
+    if (actionsToggle) {
+      actionsToggle.addEventListener("change", () => {
+        chrome.storage.local.set({ [K.MCP_BRIDGE_ALLOW_ACTIONS]: actionsToggle.checked });
       });
     }
 
@@ -799,6 +811,7 @@
       CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_ENABLED,
       CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_PORT,
       CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_TOKEN,
+      CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_ALLOW_ACTIONS,
     ];
     const stored = await new Promise((resolve) => chrome.storage.local.get(keys, resolve));
 
@@ -818,6 +831,7 @@
       enabled: Boolean(stored[CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_ENABLED]),
       port: Number(stored[CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_PORT]) || CONSTANTS.MCP_BRIDGE.DEFAULT_PORT,
       token: String(stored[CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_TOKEN] || ""),
+      allowActions: Boolean(stored[CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_ALLOW_ACTIONS]),
     };
     const rspec = CONSTANTS.DATA_RETENTION;
     const retentionDaysRaw = Number(stored.dataRetentionDays);

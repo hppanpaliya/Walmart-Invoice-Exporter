@@ -1,5 +1,11 @@
 # Changelog
 
+## [8.2] - July 19, 2026
+
+### Added
+- **Richer MCP read tools**: `search_orders` (free-text search across order numbers, titles, and item names), `spending_summary` (overall and per-month totals), `export_orders` (full records as JSON, paged), plus live progress tools `get_collection_progress` and `get_invoice_job`.
+- **MCP action tools behind a new opt-in**: a second, separate Settings toggle — **"Allow AI tools to collect data"** (off by default) — lets MCP clients start order collection (`start_collection` / `stop_collection`, with order-type and date filters) and fetch invoices in a background tab (`collect_invoices` / `cancel_invoice_job`) using the signed-in session. With the toggle off, the bridge stays exactly as read-only as before, and deleting data is never possible through MCP either way. Requires [`walmart-invoice-mcp`](https://www.npmjs.com/package/walmart-invoice-mcp) v0.2+ (wire protocol v2).
+
 ## [8.1] - July 19, 2026
 
 ### Added

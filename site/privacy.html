@@ -46,7 +46,10 @@
           telemetry, no analytics, and no external API calls.</li>
         <li>The optional <strong>AI access (MCP)</strong> feature is off by default. When you enable it, the extension
           connects only to <code>127.0.0.1</code> on your own machine (protected by a pairing token you generate) so a
-          local AI tool can <em>read</em> your saved orders. Nothing is sent to the internet.</li>
+          local AI tool can <em>read</em> your saved orders. A second, separate toggle — <strong>"Allow AI tools to
+          collect data"</strong>, also off by default — additionally lets a local AI tool start order collection and
+          invoice fetching in a background tab using your own signed-in session. Either way, nothing is sent to the
+          internet, and no AI tool can ever delete your saved data.</li>
         <li>You can delete everything at any time: Settings → "Data on this device" → "Delete all saved data". Saved
           data is also deleted automatically if the extension goes unused for 180 days (adjustable, or turn it off).</li>
       </ul>

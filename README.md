@@ -29,7 +29,7 @@ More screenshots live in [store-assets/screenshots/](./store-assets/screenshots/
 - **Legacy Excel layout (opt-in)**: restores the older single-sheet workbook; the modern Orders/Items two-sheet layout stays the default
 - **Inactivity housekeeping (configurable)**: by default, saved data is wiped only if the extension goes unused for 180 days — adjust the number of days or turn it off in Settings
 - **Walmart.ca support (optional)**: enable Canada support in Settings to collect and export walmart.ca orders too
-- **AI access via MCP (optional, off by default)**: let AI tools on your own computer (Claude Code, Claude Desktop, any MCP client) read your saved orders through the [walmart-invoice-mcp](https://github.com/hppanpaliya/walmart-invoice-mcp) helper ([on npm](https://www.npmjs.com/package/walmart-invoice-mcp), runs via `npx walmart-invoice-mcp`) — read-only, localhost-only, protected by a pairing token you generate in Settings → "AI access (MCP)"
+- **AI access via MCP (optional, off by default)**: let AI tools on your own computer (Claude Code, Claude Desktop, any MCP client) work with your saved orders through the [walmart-invoice-mcp](https://github.com/hppanpaliya/walmart-invoice-mcp) helper ([on npm](https://www.npmjs.com/package/walmart-invoice-mcp), runs via `npx walmart-invoice-mcp`) — localhost-only, protected by a pairing token you generate in Settings → "AI access (MCP)". Read-only by default (list/search/read orders, spending summaries, exports); a second off-by-default toggle, **"Allow AI tools to collect data"**, additionally lets AI start order collection and invoice fetching using your signed-in session. Deleting data is never possible through AI
 - **Dedicated Settings view**: Appearance (System/Light/Dark), Collection defaults (including fast collection), Export defaults, "Data on this device", and About
 - **Detailed exports**: each invoice includes:
   - Product details (name, quantity, price)
@@ -158,6 +158,9 @@ Notes:
 See [docs/PORTS.md](./docs/PORTS.md) for the full list of differences.
 
 ## What's New
+
+### Version 8.2 (July 19, 2026)
+- **MCP does much more**: new read tools (`search_orders`, `spending_summary`, `export_orders`) and — behind a new off-by-default Settings toggle, **"Allow AI tools to collect data"** — action tools that let AI start order collection (`start_collection`, with filters and progress polling) and fetch invoices in a background tab (`collect_invoices`). Requires [walmart-invoice-mcp](https://www.npmjs.com/package/walmart-invoice-mcp) v0.2+
 
 ### Version 8.1 (July 19, 2026)
 - **Optional AI access (MCP)**: a new off-by-default Settings toggle lets local AI tools (Claude Code, Claude Desktop, any MCP client) read your saved orders through the [walmart-invoice-mcp](https://github.com/hppanpaliya/walmart-invoice-mcp) helper ([on npm](https://www.npmjs.com/package/walmart-invoice-mcp)) — read-only, localhost-only, token-paired
@@ -432,7 +435,7 @@ This extension prioritizes your privacy and security:
 - Images are blocked during collection for performance (not accessed or stored)
 - No tracking or analytics implemented
 - No cookies or external API calls
-- Optional AI access (MCP) is off by default; when enabled, the extension only connects to `127.0.0.1` on your own machine (token-paired, read-only) — nothing goes to the internet
+- Optional AI access (MCP) is off by default; when enabled, the extension only connects to `127.0.0.1` on your own machine (token-paired, read-only by default) — nothing goes to the internet. The separate "Allow AI tools to collect data" toggle (also off by default) gates collection/invoice-fetch actions; deletion is never possible through AI
 
 **Your Control:**
 - Settings → "Data on this device" → "Delete all saved data" wipes everything the extension has stored, in one step — per-account delete is also available

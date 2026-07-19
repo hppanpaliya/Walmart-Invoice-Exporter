@@ -1851,12 +1851,18 @@ const CONSTANTS = {
     // Optional local MCP bridge (Settings → "AI access"): OFF by default.
     // When enabled, the background connects OUT to a localhost MCP relay
     // (the separate `walmart-invoice-mcp` npm package) so tools like Claude
-    // Code can read saved orders. Read-only; nothing leaves the machine.
+    // Code can read saved orders. Read-only by default; nothing leaves the
+    // machine either way.
     MCP_BRIDGE_ENABLED: 'mcpBridgeEnabled',
     MCP_BRIDGE_PORT: 'mcpBridgePort',
     // Shared secret the bridge presents to the relay so no other local
     // process can impersonate the extension (generated on first enable).
     MCP_BRIDGE_TOKEN: 'mcpBridgeToken',
+    // Second, separate opt-in: lets MCP tools START collection and fetch
+    // invoices (opens a background walmart tab using the signed-in session).
+    // OFF by default so the bridge's read-only promise holds unless the user
+    // explicitly grants actions.
+    MCP_BRIDGE_ALLOW_ACTIONS: 'mcpBridgeAllowActions',
   },
 
   // Local MCP bridge defaults/bounds (see mcp-bridge.js).
@@ -1868,7 +1874,9 @@ const CONSTANTS = {
     // connected (Chrome ≥116 extends the worker's lifetime on socket activity).
     HEARTBEAT_MS: 20000,
     RECONNECT_MS: 15000,
-    PROTOCOL_VERSION: 1,
+    // v2 added action tools (start_collection / collect_invoices) and the
+    // richer read tools (search_orders / spending_summary / export_orders).
+    PROTOCOL_VERSION: 2,
   },
 
   // Multi-account support.

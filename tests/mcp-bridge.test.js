@@ -112,6 +112,139 @@ test('get_order returns the full stored record; unknown order/provider are clean
   await assert.rejects(() => TOOLS.list_orders({ provider: 'TARGET' }), /Unknown provider/);
 });
 
+test('search_orders matches item names case-insensitively and reports matchedItems', async () => {
+  const sandbox = loadBridge();
+  const TOOLS = evalIn(sandbox, 'McpBridge.TOOLS');
+  const OrderDb = evalIn(sandbox, 'OrderDb');
+
+  await OrderDb.putSummaries(
+    {
+      o1: summ('2026-01-05T00:00:00.000Z', { items: [{ name: 'Ninja Air Fryer' }, { name: 'Paper towels' }] }),
+      o2: summ('2026-02-05T00:00:00.000Z', { items: [{ name: 'Bananas' }] }),
+    },
+    {},
+    'WALMART_US'
+  );
+
+  const hits = toPlain(await TOOLS.search_orders({ query: 'AIR fryer' }));
+  assert.equal(hits.total, 1);
+  assert.equal(hits.orders[0].orderNumber, 'o1');
+  assert.deepEqual(hits.orders[0].matchedItems, ['Ninja Air Fryer']);
+
+  const byNumber = toPlain(await TOOLS.search_orders({ query: 'o2' }));
+  assert.equal(byNumber.total, 1);
+
+  await assert.rejects(() => TOOLS.search_orders({}), /query is required/);
+});
+
+test('spending_summary totals parseable amounts and buckets by month', async () => {
+  const sandbox = loadBridge();
+  const TOOLS = evalIn(sandbox, 'McpBridge.TOOLS');
+  const OrderDb = evalIn(sandbox, 'OrderDb');
+
+  await OrderDb.putSummaries(
+    {
+      j1: summ('2026-01-05T00:00:00.000Z', { orderTotal: '$10.50' }),
+      j2: summ('2026-01-20T00:00:00.000Z', { orderTotal: 4.5 }),
+      f1: summ('2026-02-01T00:00:00.000Z', { orderTotal: '$1,000.00' }),
+      f2: summ('2026-02-02T00:00:00.000Z', { orderTotal: 'unavailable' }),
+    },
+    {},
+    'WALMART_US'
+  );
+
+  const summary = toPlain(await TOOLS.spending_summary({}));
+  assert.equal(summary.orders, 4);
+  assert.equal(summary.totalSpent, 1015);
+  assert.deepEqual(summary.months.map((m) => m.month), ['2026-02', '2026-01']);
+  assert.equal(summary.months[0].total, 1000);
+  assert.equal(summary.months[0].orders, 2);
+  assert.equal(summary.months[1].total, 15);
+  assert.match(summary.note, /1 order/);
+
+  const scoped = toPlain(await TOOLS.spending_summary({ since: '2026-02-01' }));
+  assert.equal(scoped.orders, 2);
+});
+
+test('export_orders scopes by date and can omit invoices', async () => {
+  const sandbox = loadBridge();
+  const TOOLS = evalIn(sandbox, 'McpBridge.TOOLS');
+  const OrderDb = evalIn(sandbox, 'OrderDb');
+
+  await OrderDb.putSummaries(
+    {
+      e1: summ('2026-01-05T00:00:00.000Z', { orderTotal: 1 }),
+      e2: summ('2026-03-05T00:00:00.000Z', { orderTotal: 2 }),
+    },
+    {},
+    'WALMART_US'
+  );
+  await OrderDb.putInvoice('e1', { items: [{ name: 'thing' }] }, 'WALMART_US');
+
+  const all = toPlain(await TOOLS.export_orders({}));
+  assert.equal(all.total, 2);
+  assert.deepEqual(all.orders.map((o) => o.orderNumber), ['e2', 'e1']);
+  assert.ok(all.orders[1].invoice);
+  assert.ok(all.orders[1].summary);
+
+  const lean = toPlain(await TOOLS.export_orders({ includeInvoices: false, until: '2026-02-01' }));
+  assert.equal(lean.total, 1);
+  assert.equal(lean.orders[0].orderNumber, 'e1');
+  assert.equal('invoice' in lean.orders[0], false);
+});
+
+test('parseMoneyCents handles strings, numbers, and junk', () => {
+  const sandbox = loadBridge();
+  const parseMoneyCents = evalIn(sandbox, 'McpBridge.parseMoneyCents');
+  assert.equal(parseMoneyCents('$62.93'), 6293);
+  assert.equal(parseMoneyCents('$1,234.56'), 123456);
+  assert.equal(parseMoneyCents(10.5), 1050);
+  assert.equal(parseMoneyCents('unavailable'), null);
+  assert.equal(parseMoneyCents(''), null);
+  assert.equal(parseMoneyCents(null), null);
+});
+
+test('action tools are gated: read-only by default, clear error message', async () => {
+  const sandbox = loadBridge();
+  const TOOLS = evalIn(sandbox, 'McpBridge.TOOLS');
+
+  for (const call of [
+    () => TOOLS.start_collection({}),
+    () => TOOLS.stop_collection(),
+    () => TOOLS.collect_invoices({}),
+    () => TOOLS.cancel_invoice_job(),
+  ]) {
+    await assert.rejects(call, /read-only by default/);
+  }
+
+  // Reads stay available regardless of the toggle.
+  const progress = toPlain(await TOOLS.get_collection_progress());
+  assert.equal(progress.isCollecting, false);
+  const job = toPlain(await TOOLS.get_invoice_job());
+  assert.equal(job.running, false);
+});
+
+test('with actions allowed: start_collection needs the engine, collect_invoices no-ops when done', async () => {
+  const sandbox = loadBridge();
+  const TOOLS = evalIn(sandbox, 'McpBridge.TOOLS');
+  const OrderDb = evalIn(sandbox, 'OrderDb');
+  // Let init()'s async applyConfig settle before granting actions, or the
+  // freshly-read (all-false) config would overwrite the grant.
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  evalIn(sandbox, 'chrome.storage.local.set({ mcpBridgeAllowActions: true })');
+  evalIn(sandbox, 'McpBridge._state').config.allowActions = true;
+
+  // background-main.js isn't loaded in the sandbox → engine unavailable.
+  await assert.rejects(() => TOOLS.start_collection({}), /Collection engine unavailable/);
+
+  // Every order already has its invoice → nothing to fetch, no tab opened.
+  await OrderDb.putSummaries({ done1: summ('2026-01-05T00:00:00.000Z') }, {}, 'WALMART_US');
+  await OrderDb.putInvoice('done1', { items: [] }, 'WALMART_US');
+  const result = toPlain(await TOOLS.collect_invoices({}));
+  assert.equal(result.started, false);
+  assert.match(result.note, /Nothing to do/);
+});
+
 test('list_accounts surfaces per-account summaries', async () => {
   const sandbox = loadBridge();
   const TOOLS = evalIn(sandbox, 'McpBridge.TOOLS');
