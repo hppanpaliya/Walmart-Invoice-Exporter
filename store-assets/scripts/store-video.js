@@ -10,20 +10,24 @@
  * generate-store-video.sh; a high-res upload still buys YouTube's higher-
  * bitrate encode ladder.
  *
- * DIRECTION (ad cut, ~72s) — structure: HOOK → REVEAL → PAYOFFS → OBJECTIONS
- * → CTA. No intro card: the store page already shows the name and icon, so
- * the first frame is the product doing its core verb, live.
+ * DIRECTION (ad cut, ~80s) — structure: HOOK → REVEAL → MAKE IT YOURS →
+ * PAYOFFS (in dark) → OBJECTIONS → CTA. No intro card: the store page
+ * already shows the name and icon, so the first frame is the product doing
+ * its core verb, live. The settings visit comes EARLY and flips dark mode,
+ * so most of the runtime plays in dark.
  *
  *   1. Cold open   — "Check for new orders" clicked on camera; real progress,
  *                    two new orders join the list. Hook: "one click".
  *   2. Reveal      — the dashboard turns that click into answers (stats, chart).
- *   3. Drill       — click a month, whole page rescopes.
- *   4. Montage     — Items (personal inflation), Trends (habits) — fast beats.
- *   5. Receipts    — Orders view, a row expands into a full invoice.
- *   6. Take it     — select orders, cycle formats, "tax season in two clicks".
- *   7. Yours       — Settings walk; dark mode via the real Appearance control.
+ *   3. Yours       — Settings walk: Collection, Export defaults (cycle the
+ *                    default format through every mode, land back on Excel),
+ *                    then Appearance → Dark. Everything after runs dark.
+ *   4. Drill       — click a month, whole page rescopes.
+ *   5. Montage     — Items (personal inflation), Trends (habits) — fast beats.
+ *   6. Receipts    — Orders view, a row expands into a full invoice.
+ *   7. Take it     — select orders, "tax season in two clicks".
  *   8. Trust       — privacy beat on the "Delete all saved data" button.
- *   9. Kicker      — Year in review, in dark.
+ *   9. Kicker      — Year in review.
  *  10. CTA card    — "Add to Chrome — it's free".
  *
  * The tour is fully in-page (injected cursor, caption pills, outro card), so
@@ -227,8 +231,32 @@ const TOUR_RUNTIME = () => {
     await scrollTo(430, 1100);      // chart in full view
     await hold(1600);
 
-    /* ---- 3. Drill: click a month, everything rescopes. ---- */
+    /* ---- 3. Yours (early): settings walk, format cycle, dark flip. ---- */
+    await cap('Make it yours — <b>every default is a setting</b>');
+    await click(frame.locator('#settingsButton'), 700);
+    await hold(1500);
+    await frameScrollToSection('Collection', 1600);
+    await frameScrollToSection('Export', 1200);
+    // Cycle the default export format through every mode — the point is the
+    // breadth — and land back on Excel.
+    await cap('Excel, CSV, JSON, receipts, PDF — <b>your call</b>');
+    await curTo(frame.locator('#settingsExportFormat'), 500);
+    for (const fmt of ['csv', 'json', 'receipt', 'pdf', 'xlsx']) {
+      await frame.selectOption('#settingsExportFormat', fmt).catch(() => {});
+      await hold(700);
+    }
+    await hold(400);
+    await frameScrollToSection('Appearance', 1100);
+    await cap('Light, dark, or follow your system — <b>one tap</b>');
+    await click(frame.locator('#themeControl [data-theme-choice="dark"]'), 700);
+    await hold(2200);
+    // Leave settings so the order list is on stage for the scenes ahead.
+    await click(frame.locator('#settingsBackButton'), 500);
+    await hold(700);
+
+    /* ---- 4. Drill (dark): click a month, everything rescopes. ---- */
     await cap('Click any month — see <b>exactly where it went</b>');
+    await scrollTo(430, 900);
     await click(dash.locator('.cbar').first(), 800);
     await hold(1900);
     await scrollTo(0, 900);
@@ -237,7 +265,7 @@ const TOUR_RUNTIME = () => {
     await click(dash.locator('#backChip'));
     await hold(800);
 
-    /* ---- 4. Montage: fast payoff beats. ---- */
+    /* ---- 5. Montage (dark): fast payoff beats. ---- */
     await cap('Every price hike, <b>caught</b>');
     await click(dash.locator('[data-nav="items"]'));
     await hold(2900);
@@ -249,7 +277,7 @@ const TOUR_RUNTIME = () => {
     await hold(1200);
     await scrollTo(0, 600);
 
-    /* ---- 5. Receipts: a row becomes a full invoice. ---- */
+    /* ---- 6. Receipts (dark): a row becomes a full invoice. ---- */
     await cap('Every order, down to <b>the last cent</b>');
     await click(dash.locator('[data-nav="orders"]'));
     await hold(1500);
@@ -263,42 +291,27 @@ const TOUR_RUNTIME = () => {
     await dash.evaluate(() => window.scrollBy({ top: -140, behavior: 'smooth' }));
     await hold(2500);
 
-    /* ---- 6. Take it with you: formats + two clicks. ---- */
-    await cap('Excel, CSV, PDF, receipts — <b>tax season in two clicks</b>');
+    /* ---- 7. Take it with you (dark): two clicks. ---- */
+    await cap('Tax season? <b>Two clicks.</b>');
     await click(dash.locator('[data-nav="overview"]'));
     await hold(800);
     const boxes = frame.locator('.order-list input[type="checkbox"]');
     await click(boxes.nth(0), 700);
     await hold(300);
     await click(boxes.nth(1), 450);
-    await hold(600);
-    // Cycle the export format so the download buttons visibly re-label.
-    await curTo(frame.locator('#exportFormat'), 500);
-    for (const fmt of ['csv', 'pdf', 'xlsx']) {
-      await frame.selectOption('#exportFormat', fmt).catch(() => {});
-      await hold(650);
-    }
+    await hold(700);
     await curTo(frame.locator('#singleFileDownload'), 500);
-    await hold(1300);
-
-    /* ---- 7. Yours: settings walk + dark via the real control. ---- */
-    await cap('Make it yours — <b>every default is a setting</b>');
-    await click(frame.locator('#settingsButton'), 700);
     await hold(1500);
-    await frameScrollToSection('Collection', 1500);
-    await frameScrollToSection('Export', 1500);
-    await frameScrollToSection('Appearance', 1100);
-    await cap('Light, dark, or follow your system — <b>one tap</b>');
-    await click(frame.locator('#themeControl [data-theme-choice="dark"]'), 700);
-    await hold(2000);
 
-    /* ---- 8. Trust: the objection killer, right before the ask. ---- */
+    /* ---- 8. Trust (dark): the objection killer, right before the ask. ---- */
     await cap('No accounts. No servers. <b>Nothing leaves your device.</b>');
+    await click(frame.locator('#settingsButton'), 700);
+    await hold(900);
     await frameScrollToSection('Data on this device', 1300);
     await curTo(frame.locator('#deleteAllDataButton'), 700); // point, never click
     await hold(2500);
 
-    /* ---- 9. Kicker: year in review, in dark. ---- */
+    /* ---- 9. Kicker (dark): year in review. ---- */
     await cap('Your year at Walmart — <b>yours to keep</b>');
     await click(dash.locator('[data-nav="review"]'));
     await hold(2300);
