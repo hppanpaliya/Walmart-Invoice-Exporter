@@ -1,7 +1,8 @@
 # Chrome Web Store description (copy–paste)
 
-> Publish this together with v8.1 — it describes the new UI and the MCP
-> feature. The short "summary" field and the detailed description are below.
+> Publish this together with v8.2 — it describes the new UI and the MCP
+> feature (including the opt-in AI collection actions). The short "summary"
+> field and the detailed description are below.
 
 ## Summary (132-char field)
 
@@ -40,7 +41,7 @@ Walmart Invoice Exporter collects every order from walmart.com/orders, saves it 
 • Optional housekeeping: saved data is wiped only after 180 days of not using the extension (adjust or turn off)
 • One honest "Delete all saved data" button — plus per-account delete
 • Open source on GitHub for full transparency
-• Optional AI access (off by default): let Claude or any MCP tool on your own computer read your saved orders via the walmart-invoice-mcp helper (on npm) — read-only, local-only, token-protected
+• Optional AI access (off by default): let Claude or any MCP tool on your own computer work with your orders via the walmart-invoice-mcp helper (on npm) — search, summaries, exports. Read-only by default; a second opt-in toggle can also let AI collect orders and invoices. Local-only, token-protected, and AI can never delete your data
 
 ★ PERFECT FOR
 • Tax reporting and reconciliation
@@ -55,12 +56,12 @@ Walmart Invoice Exporter collects every order from walmart.com/orders, saves it 
 
 Bulk downloads work best with Chrome's "Ask where to save each file" setting off — the in-app Help & FAQ walks you through it.
 
-★ WHAT'S NEW IN 8.1
+★ WHAT'S NEW IN 8.2
 • Full-app dashboard: expandable inline invoices, interactive monthly chart, and a new insights card
 • Fast collection with "only new orders" support and automatic classic fallback
 • Walmart's own order filters (type + date range) as collection options
 • Multi-account support with per-account data and delete
-• Optional AI access (MCP): ask Claude about your spending — off by default, read-only, never leaves your device
+• Optional AI access (MCP): ask Claude about your spending — search orders, spending summaries, exports, and (with a second opt-in) AI-started collection and invoice fetching. Off by default, never leaves your device
 • Complete visual redesign — light and dark — across panel, settings, and dashboard
 
 Note: This extension works only on walmart.com (and, optionally, walmart.ca).

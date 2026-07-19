@@ -31,7 +31,7 @@ as the hero video hurts more than no video.
 
 1. Merge to `main` — the listing refresh describes v8 and must not go live
    before the build does.
-2. Bump the version past 8.0 (currently 8.1 in `wxt.config.ts`), `pnpm run zip`, upload, publish.
+2. Bump the version past 8.0 (currently 8.2 in `wxt.config.ts`), `pnpm run zip`, upload, publish.
 3. Upload `video/tour-4k.mp4` to the project's YouTube account (public or
    unlisted), then set it as the listing video — this replaces the old FAQ
    video.

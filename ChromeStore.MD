@@ -21,7 +21,7 @@ See your entire Walmart spending on a private, built-in dashboard — and export
 • Complete Visual Redesign: one clean design language across the panel, settings, and dashboard, in both light and dark
 • Automatic Housekeeping (configurable): by default, saved data is wiped only if you don't use the extension for 180 days — change the number of days or turn it off entirely in Settings
 • Walmart.ca Support (optional): enable Canada support in Settings to collect and export walmart.ca orders too
-• AI Access via MCP (optional, off by default): let AI tools on your own computer (Claude Code, Claude Desktop, or any MCP client) read your saved orders and answer questions like "how much did I spend on groceries in March?" — read-only, localhost-only, protected by a pairing token you generate in Settings
+• AI Access via MCP (optional, off by default): let AI tools on your own computer (Claude Code, Claude Desktop, or any MCP client) work with your orders — ask "how much did I spend on groceries in March?", search items, get spending summaries, and export. Read-only by default; a second off-by-default toggle can also let AI start collection and fetch invoices. Localhost-only, protected by a pairing token you generate in Settings — and AI can never delete your data
 • Privacy-Focused: runs only on Walmart order pages with minimal permissions — no servers, no telemetry
 • Open Source: available on GitHub for transparency and community contributions
 
@@ -85,7 +85,7 @@ See your entire Walmart spending on a private, built-in dashboard — and export
    • Multi-account detection uses only a privacy-preserving hash — never your name or email
    • Saved orders are stored on-device (IndexedDB); by default they're wiped only after 180 days of not using the extension (configurable, or turn it off)
    • One "Delete all saved data" control (Settings → Data on this device) wipes everything, anytime — plus per-account delete
-   • Optional AI access (MCP) is off by default; when enabled, the extension only talks to 127.0.0.1 on your own machine (token-paired, read-only) — nothing goes to the internet
+   • Optional AI access (MCP) is off by default; when enabled, the extension only talks to 127.0.0.1 on your own machine (token-paired, read-only by default; collection actions need a second opt-in toggle, and deletion is never possible) — nothing goes to the internet
 
 ★ Website & Open Source:
    • Website (guides, FAQ, privacy policy): https://github.harsh.al/Walmart-Invoice-Exporter/
