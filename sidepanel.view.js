@@ -740,9 +740,83 @@
       checkbox.addEventListener("change", () => {
         updateCheckboxCount(listState.container);
         updateDownloadButtonsState();
+        refreshGroupSelectionStates(listState.container);
       });
     }
     return wrapper;
+  }
+
+  /**
+   * The order-row checkboxes belonging to one month group — the rows that
+   * follow `labelEl` (a .order-month-label) up to the next month header.
+   * Labels and row wrappers are flat siblings inside .order-list, so we walk
+   * forward from the header rather than nesting the DOM.
+   */
+  function monthGroupCheckboxes(labelEl) {
+    const boxes = [];
+    let node = labelEl.nextElementSibling;
+    while (node && !node.classList.contains("order-month-label")) {
+      if (node.classList.contains("order-row-wrapper")) {
+        const cb = node.querySelector("input.order-row-checkbox");
+        if (cb) boxes.push(cb);
+      }
+      node = node.nextElementSibling;
+    }
+    return boxes;
+  }
+
+  /**
+   * A month-group header carrying a "select every order in this month"
+   * checkbox — mirrors the global "Select all", scoped to one month. It goes
+   * indeterminate when only part of the month is selected.
+   */
+  function buildMonthLabel(group) {
+    const labelEl = document.createElement("div");
+    labelEl.className = "order-month-label";
+
+    const monthCheckbox = document.createElement("input");
+    monthCheckbox.type = "checkbox";
+    monthCheckbox.className = "month-select-checkbox";
+    monthCheckbox.setAttribute("aria-label", `Select all orders in ${group}`);
+    monthCheckbox.addEventListener("change", (event) => {
+      const header = event.currentTarget.closest(".order-month-label");
+      if (!header) return;
+      const checked = event.currentTarget.checked;
+      monthGroupCheckboxes(header).forEach((cb) => {
+        cb.checked = checked;
+      });
+      event.currentTarget.indeterminate = false;
+      updateCheckboxCount(listState.container);
+      updateDownloadButtonsState();
+      refreshGroupSelectionStates(listState.container);
+    });
+
+    const text = document.createElement("span");
+    text.className = "order-month-label-text";
+    text.textContent = group;
+
+    labelEl.appendChild(monthCheckbox);
+    labelEl.appendChild(text);
+    return labelEl;
+  }
+
+  /**
+   * Reflect each month header's checkbox from the live state of its rows:
+   * checked when the whole month is selected, indeterminate when only some
+   * of it is. Called after any selection change and after every re-render,
+   * so the headers never drift from the row checkboxes.
+   */
+  function refreshGroupSelectionStates(container) {
+    const scope = container || listState.container;
+    if (!scope) return;
+    scope.querySelectorAll(".order-month-label").forEach((labelEl) => {
+      const monthCheckbox = labelEl.querySelector("input.month-select-checkbox");
+      if (!monthCheckbox) return;
+      const boxes = monthGroupCheckboxes(labelEl);
+      const state = groupSelectionState(boxes.length, boxes.filter((cb) => cb.checked).length);
+      monthCheckbox.checked = state.checked;
+      monthCheckbox.indeterminate = state.indeterminate;
+    });
   }
 
   function buildOrderListBox(rows) {
@@ -790,9 +864,7 @@
         const pool = labelPool.get(group);
         let labelEl = pool && pool.length ? pool.shift() : null;
         if (!labelEl) {
-          labelEl = document.createElement("div");
-          labelEl.className = "order-month-label";
-          labelEl.textContent = group;
+          labelEl = buildMonthLabel(group);
         }
         fragment.appendChild(labelEl);
         lastGroup = group;
@@ -996,7 +1068,7 @@
     if (!container) return;
 
     const previouslyChecked = new Set(
-      Array.from(container.querySelectorAll('input[type="checkbox"]:not(#selectAll):checked')).map((cb) => cb.value)
+      Array.from(container.querySelectorAll('input[type="checkbox"]:not(#selectAll):not(.month-select-checkbox):checked')).map((cb) => cb.value)
     );
 
     const { visible, hiddenUndatedCount } = filterOrderRowsByRange(rows, listState.filter, {
@@ -1030,6 +1102,7 @@
           toggleAllCheckboxes(container.querySelector(".order-list"), selectAll.checked);
           updateCheckboxCount(container);
           updateDownloadButtonsState();
+          refreshGroupSelectionStates(container);
         });
       }
     } else {
@@ -1078,7 +1151,7 @@
       // replaces whatever was checked before; rows filtered out of view
       // simply don't get selected.
       const wanted = new Set(listState.pendingSelection);
-      container.querySelectorAll('input[type="checkbox"]:not(#selectAll)').forEach((checkbox) => {
+      container.querySelectorAll('input[type="checkbox"]:not(#selectAll):not(.month-select-checkbox)').forEach((checkbox) => {
         checkbox.checked = wanted.has(checkbox.value);
       });
       listState.pendingSelection = null;
@@ -1093,6 +1166,7 @@
     // (createRowWrapper); the select-all listener on first build above.
     updateCheckboxCount(container);
     updateDownloadButtonsState();
+    refreshGroupSelectionStates(container);
   }
 
   /**

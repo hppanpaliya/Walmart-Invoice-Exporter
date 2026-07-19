@@ -286,3 +286,21 @@ test('getRangeLabelSuffix: all-time is unsuffixed; every other range has a disti
   assert.equal(sandbox.getRangeLabelSuffix('lastYear', NOW), '_2025');
   assert.equal(sandbox.getRangeLabelSuffix('custom', NOW), '_Custom');
 });
+
+// ---------------------------------------------------------------------------
+// groupSelectionState (month-header "select all in this month", 2026-07-18):
+// the pure rule behind the month-group checkbox's checked/indeterminate state.
+// ---------------------------------------------------------------------------
+
+test('groupSelectionState: none selected → unchecked; some → indeterminate; all → checked', () => {
+  const sandbox = loadUtils();
+  assert.deepEqual(toPlain(sandbox.groupSelectionState(4, 0)), { checked: false, indeterminate: false });
+  assert.deepEqual(toPlain(sandbox.groupSelectionState(4, 1)), { checked: false, indeterminate: true });
+  assert.deepEqual(toPlain(sandbox.groupSelectionState(4, 3)), { checked: false, indeterminate: true });
+  assert.deepEqual(toPlain(sandbox.groupSelectionState(4, 4)), { checked: true, indeterminate: false });
+});
+
+test('groupSelectionState: an empty group is never checked or indeterminate', () => {
+  const sandbox = loadUtils();
+  assert.deepEqual(toPlain(sandbox.groupSelectionState(0, 0)), { checked: false, indeterminate: false });
+});

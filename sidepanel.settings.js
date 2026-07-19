@@ -127,7 +127,8 @@
       <div class="settings-section">
         <h3 class="settings-section-title">Collection</h3>
         <div class="input-group">
-          <label for="settingsPageLimit">Default pages to scan (0 = all)</label>
+          <label for="settingsPageLimit">Default pages to scan</label>
+          <p class="input-hint">Leave at 0 to scan every page.</p>
           <input type="number" id="settingsPageLimit" min="0" value="${Number(pageLimit) || 0}">
         </div>
         <div class="toggle-group">
