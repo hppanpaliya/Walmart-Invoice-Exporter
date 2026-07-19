@@ -2234,3 +2234,12 @@ body.first-run .export-options-panel {
 .collect-date-range span {
   color: var(--text-muted);
 }
+
+/* Active-site picker in Settings (moved from the header 2026-07-19): full
+   input width like every other settings control, overriding the compact
+   header sizing from the injected provider-chrome styles. */
+#activeSiteSection .provider-select {
+  width: 100%;
+  padding: 7px 8px;
+  font-size: var(--font-size-sm);
+}

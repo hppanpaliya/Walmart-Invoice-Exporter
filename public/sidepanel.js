@@ -417,6 +417,13 @@ document.addEventListener("DOMContentLoaded", async function () {
       )
       .join("");
     providerSelect.value = active;
+
+    // The picker lives in Settings now (static #activeSiteSection) and only
+    // exists as a choice when there IS a choice — a Walmart.com-only install
+    // never sees it.
+    const activeSiteSection = document.getElementById("activeSiteSection");
+    if (activeSiteSection) activeSiteSection.hidden = options.length < 2;
+
     if (previous !== active) renderPanelForProvider();
   }
 
