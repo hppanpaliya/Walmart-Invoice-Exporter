@@ -235,53 +235,68 @@ const OrderDb = (() => {
   }
 
   /**
-   * Delete every record last written (updatedAt) before `cutoffMs`, across ALL
-   * providers. Reads the whole store, clears it, and re-inserts the survivors
-   * (same environment-agnostic pattern as clearAll — no cursor/delete needed).
-   * A record with no numeric updatedAt is never purged (kept, to be safe).
-   * @param {number} cutoffMs - epoch ms; records older than this are removed
-   * @returns {Promise<number>} how many records were purged
+   * Wipe EVERY record for EVERY provider. Used by the inactivity-retention
+   * sweep (below) — the "you haven't used the extension in a while, so we
+   * cleaned up" one-shot. Manual per-provider clearing stays in clearAll().
+   * @returns {Promise<number>} how many records were removed
    */
-  function purgeOlderThan(cutoffMs) {
+  function clearEverything() {
     return withStore('readwrite', async (store) => {
       const all = (await requestToPromise(store.getAll())) || [];
-      const survivors = [];
-      let purged = 0;
-      all.forEach((record) => {
-        const ts = record && typeof record.updatedAt === 'number' ? record.updatedAt : Infinity;
-        if (ts < cutoffMs) {
-          purged += 1;
-        } else {
-          survivors.push(record);
-        }
-      });
-      if (purged === 0) return 0; // nothing expired — don't rewrite the store
       await requestToPromise(store.clear());
-      survivors.forEach((record) => store.put(record));
-      return purged;
+      return all.length;
+    });
+  }
+
+  // chrome.storage.local key holding the epoch-ms timestamp of the last time
+  // the user actually used the extension (opened the panel / started a run).
+  const LAST_USED_KEY = 'lastUsedAt';
+
+  /**
+   * Record that the extension is being used right now — resets the inactivity
+   * clock, so an active user's data is never auto-deleted. Called on panel open
+   * and when a collection starts.
+   */
+  function markUsed() {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.set({ [LAST_USED_KEY]: Date.now() }, () => resolve());
+      } catch (error) {
+        resolve();
+      }
     });
   }
 
   /**
-   * Apply the user's data-retention setting (Settings → Advanced): when it is
-   * enabled, purge orders not collected/downloaded within the configured number
-   * of days. No-op (returns 0) when retention is off. Safe to call on startup,
-   * on panel open, and after a collection.
-   * @returns {Promise<number>} how many records were purged
+   * Inactivity-based retention (Settings → Advanced, ON by default): if the
+   * extension hasn't been used within the configured number of days, wipe ALL
+   * saved data in one shot. This is NOT per-order aging — an active user keeps
+   * everything forever (their lastUsedAt keeps resetting); only an abandoned
+   * install gets cleaned up, so nothing lingers on a device that stopped using
+   * the extension. Never touches lastUsedAt itself (markUsed owns that), so a
+   * background wake can enforce the wipe without counting as "use".
+   * @returns {Promise<number>} how many records were wiped (0 = nothing)
    */
-  async function applyRetention() {
+  async function enforceInactivityRetention() {
     let settings = {};
     try {
       settings = await new Promise((resolve) =>
-        chrome.storage.local.get(['dataRetentionEnabled', 'dataRetentionDays'], resolve)
+        chrome.storage.local.get(['dataRetentionEnabled', 'dataRetentionDays', LAST_USED_KEY], resolve)
       );
     } catch (error) {
       return 0;
     }
-    if (!settings || !settings.dataRetentionEnabled) return 0;
+
+    // Default ON: only an explicit `false` disables the cleanup.
+    if (settings.dataRetentionEnabled === false) return 0;
+
+    // No baseline yet (fresh install / first run) — nothing to wipe; the first
+    // markUsed() sets the clock.
+    const lastUsed = settings[LAST_USED_KEY];
+    if (typeof lastUsed !== 'number') return 0;
 
     const spec = (typeof CONSTANTS !== 'undefined' && CONSTANTS.DATA_RETENTION) || {
-      defaultDays: 90,
+      defaultDays: 30,
       minDays: 1,
       maxDays: 3650,
     };
@@ -290,8 +305,8 @@ const OrderDb = (() => {
       ? Math.min(spec.maxDays, Math.max(spec.minDays, Math.round(raw)))
       : spec.defaultDays;
 
-    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-    return purgeOlderThan(cutoff);
+    if (Date.now() - lastUsed <= days * 24 * 60 * 60 * 1000) return 0; // still active
+    return clearEverything();
   }
 
   return {
@@ -302,7 +317,8 @@ const OrderDb = (() => {
     getKnownOrderNumbers,
     getStats,
     clearAll,
-    purgeOlderThan,
-    applyRetention,
+    clearEverything,
+    markUsed,
+    enforceInactivityRetention,
   };
 })();

@@ -28,13 +28,20 @@ migrateLegacyStorage().catch((error) =>
   console.warn('Legacy storage migration failed:', error)
 );
 
-// Enforce the optional data-retention setting on worker start (off by default;
-// see CONSTANTS.DATA_RETENTION). No new permissions — just one indexed scan.
-OrderDb.applyRetention()
-  .then((purged) => {
-    if (purged) console.log(`[retention] purged ${purged} order(s) past the retention period.`);
+// Inactivity retention (on by default; see CONSTANTS.DATA_RETENTION): if the
+// extension hasn't been used in the configured window, wipe all saved data on
+// worker start. Does NOT count as "use" (markUsed happens on panel open /
+// collection). If it wiped, drop any stale session progress too.
+OrderDb.enforceInactivityRetention()
+  .then((wiped) => {
+    if (wiped) {
+      console.log(`[retention] extension unused past the window — wiped ${wiped} saved order(s).`);
+      chrome.storage.session.remove(CONSTANTS.CACHE_KEYS.COLLECTION_SESSION, () => {
+        void chrome.runtime.lastError;
+      });
+    }
   })
-  .catch((error) => console.warn('Data-retention purge failed:', error));
+  .catch((error) => console.warn('Inactivity retention sweep failed:', error));
 
 // Encapsulate state to reduce global namespace pollution.
 //
@@ -192,6 +199,9 @@ async function canCollectProvider(providerId) {
 
 function handleStartCollection(request, sendResponse) {
   if (!CollectionState.isCollecting) {
+    // Starting a collection counts as using the extension — reset the
+    // inactivity-retention clock so active users never lose data.
+    OrderDb.markUsed();
     const providerId = request.provider || DEFAULT_PROVIDER_ID;
     // Claim the collecting flag synchronously so a rapid double-Start can't
     // race two crawls; release it if the provider turns out to be disallowed.
