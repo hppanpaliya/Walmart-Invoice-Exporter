@@ -34,15 +34,19 @@ function buildExtension() {
 
 /**
  * Launch Chromium with the extension and walmart.com interception.
+ * @param {Object} [contextOptions] - extra launchPersistentContext options
+ *        merged over the defaults (e.g. recordVideo/viewport for the store
+ *        tour video). `args` are appended, not replaced.
  * @returns {Promise<{context, extensionId, panel, userDataDir}>}
  */
-async function launch() {
+async function launch(contextOptions = {}) {
   buildExtension();
 
   // Browser-level mock: tabs the EXTENSION opens bypass Playwright's route
   // API, so interception must happen at the network layer via a proxy.
   const mock = await startMockWalmart();
 
+  const { args: extraArgs = [], ...extraOptions } = contextOptions;
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wie-e2e-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
     channel: 'chromium', // new headless mode — supports extensions
@@ -53,7 +57,9 @@ async function launch() {
       `--disable-extensions-except=${EXTENSION_DIR}`,
       `--load-extension=${EXTENSION_DIR}`,
       '--ignore-certificate-errors', // self-signed walmart cert from the mock
+      ...extraArgs,
     ],
+    ...extraOptions,
   });
 
   let [worker] = context.serviceWorkers();
@@ -131,9 +137,22 @@ async function renderOrderList(panel, progress) {
  * months walking back from the current month, 2-3 orders each, every 6th
  * order summary-only (stored but never downloaded). Anchored to the real
  * current date so date-scoped features ("This year") always have data.
+ * Pass `records` (same shape, e.g. a sanitize-seed.js fixture) to seed
+ * those instead of synthesizing.
  * Returns the seeded records.
  */
-async function seedOrderHistory(panel, { months = 14 } = {}) {
+async function seedOrderHistory(panel, { months = 14, records: fixture } = {}) {
+  if (fixture) {
+    await panel.evaluate(async (seeded) => {
+      const summaries = {};
+      for (const record of seeded) summaries[record.orderNumber] = record.summary;
+      await OrderDb.putSummaries(summaries, {});
+      for (const record of seeded) {
+        if (record.invoice) await OrderDb.putInvoice(record.orderNumber, record.invoice);
+      }
+    }, fixture);
+    return fixture;
+  }
   const catalog = [
     ['Great Value Whole Milk, 1 Gallon', 3.98],
     ['Bananas, each', 0.28],

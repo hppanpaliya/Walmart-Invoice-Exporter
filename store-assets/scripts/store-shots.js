@@ -15,7 +15,14 @@ const raw = (name) => path.join(OUT, name);
 (async () => {
   const { context, extensionId, panel, close } = await launch();
   try {
-    await seedOrderHistory(panel, { months: 14 });
+    // Prefer the sanitized real-history fixture (sanitize-seed.js) when it
+    // exists — richer, realistic, still PII-free. Falls back to synthetic.
+    const fixturePath = path.join(__dirname, 'seed-data.json');
+    const records = fs.existsSync(fixturePath)
+      ? JSON.parse(fs.readFileSync(fixturePath, 'utf8'))
+      : null;
+    console.log(records ? `seeding sanitized fixture (${records.length} orders)` : 'seeding synthetic data');
+    await seedOrderHistory(panel, { months: 14, records });
 
     const dash = await context.newPage();
     await dash.setViewportSize({ width: 1440, height: 900 });
