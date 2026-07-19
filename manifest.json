@@ -6,6 +6,7 @@
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "storage", "sidePanel"],
   "host_permissions": ["https://www.walmart.com/*"],
+  "optional_host_permissions": ["https://www.walmart.ca/*"],
   "background": {
     "service_worker": "background.js"
   },
@@ -23,8 +24,32 @@
   },
   "content_scripts": [
     {
+      "matches": ["https://www.walmart.com/orders*", "https://www.walmart.ca/orders*"],
+      "js": ["walmart-mainworld.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
       "matches": ["https://www.walmart.com/orders*"],
-      "js": ["utils.js", "content.js"]
+      "js": [
+        "utils.js",
+        "providers/base.js",
+        "providers/registry.js",
+        "providers/walmart-us.js",
+        "flags.js",
+        "content.js"
+      ]
+    },
+    {
+      "matches": ["https://www.walmart.ca/orders*"],
+      "js": [
+        "utils.js",
+        "providers/base.js",
+        "providers/registry.js",
+        "providers/walmart-ca.js",
+        "flags.js",
+        "content.js"
+      ]
     }
   ],
   "icons": {

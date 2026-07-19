@@ -35,18 +35,39 @@ test('Sidepanel.settings exposes renderSettings/SETTINGS_DEFAULTS/deleteAllSaved
   // Scope guard: individual chrome.storage.local keys, NOT a consolidated
   // settings object — this is the exact set the main view already reads.
   assert.deepEqual(Object.keys(settings.SETTINGS_DEFAULTS).sort(), [
+    'collectPageDelayMs',
     'csvPreset',
     'exportFormat',
     'exportMode',
+    'fastFetch',
     'includeThumbnails',
     'incrementalCollect',
     'legacyExcel',
+    'orderSettleMs',
+    'orderTimeoutMs',
     'pageLimit',
     'theme',
   ]);
   assert.equal(settings.SETTINGS_DEFAULTS.theme, 'system');
   assert.equal(settings.SETTINGS_DEFAULTS.pageLimit, 0);
   assert.equal(settings.SETTINGS_DEFAULTS.legacyExcel, false);
+  // Pure request-replay is opt-in (default off); reliable pagination is default.
+  assert.equal(settings.SETTINGS_DEFAULTS.fastFetch, false);
+  // Advanced timings default from the shared spec table (utils.js).
+  assert.equal(settings.SETTINGS_DEFAULTS.collectPageDelayMs, 1000);
+  assert.equal(settings.SETTINGS_DEFAULTS.orderTimeoutMs, 10000);
+  assert.equal(settings.SETTINGS_DEFAULTS.orderSettleMs, 1000);
+});
+
+test('resolveTimingSetting clamps into bounds and falls back to the default on garbage', () => {
+  const sandbox = loadSettingsSandbox();
+  const spec = { defaultMs: 1000, minMs: 250, maxMs: 30000 };
+  assert.equal(sandbox.resolveTimingSetting(spec, 5000), 5000);
+  assert.equal(sandbox.resolveTimingSetting(spec, 1), 250);          // below min
+  assert.equal(sandbox.resolveTimingSetting(spec, 999999), 30000);   // above max
+  assert.equal(sandbox.resolveTimingSetting(spec, 'abc'), 1000);     // garbage
+  assert.equal(sandbox.resolveTimingSetting(spec, undefined), 1000); // absent
+  assert.equal(sandbox.resolveTimingSetting(spec, 1234.6), 1235);    // rounded
 });
 
 test('deleteAllSavedData ("Delete all saved data", spec §4.4): clears OrderDb and resets session state via RESET_SESSION_STATE', async () => {

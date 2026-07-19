@@ -31,10 +31,14 @@
     csvPreset: CONSTANTS.CSV_PRESETS.GENERIC,
     includeThumbnails: false,
     incrementalCollect: false,
+    fastFetch: false,
     theme: "system",
     pageLimit: 0,
   };
   SETTINGS_DEFAULTS[CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL] = false;
+  CONSTANTS.TIMING_SETTINGS.forEach((spec) => {
+    SETTINGS_DEFAULTS[spec.key] = spec.defaultMs;
+  });
 
   const THEME_OPTIONS = [
     { value: "system", label: "System" },
@@ -78,6 +82,13 @@
         if (checkbox) checkbox.checked = value;
         break;
       }
+      case "collectPageDelayMs":
+      case "orderTimeoutMs":
+      case "orderSettleMs": {
+        // Advanced timings live only in app state (no main-view control).
+        app[key] = value;
+        break;
+      }
       case "pageLimit": {
         const input = document.getElementById("pageLimit");
         if (input) input.value = value;
@@ -107,7 +118,7 @@
     `;
   }
 
-  function collectionSectionHtml(pageLimit, incrementalCollect) {
+  function collectionSectionHtml(pageLimit, incrementalCollect, fastFetch) {
     return `
       <div class="settings-section">
         <h3 class="settings-section-title">Collection</h3>
@@ -119,6 +130,11 @@
           <input type="checkbox" id="settingsIncrementalCollect" ${incrementalCollect ? "checked" : ""}>
           <label for="settingsIncrementalCollect">Only new orders by default</label>
         </div>
+        <div class="toggle-group">
+          <input type="checkbox" id="settingsFastFetch" ${fastFetch ? "checked" : ""}>
+          <label for="settingsFastFetch" title="Faster collection: loads the first page, does ONE 'Next' to capture your browser's real request, then replays the rest of the pages instantly with those same request details — so it isn't treated as a bot. All pages keep their real order dates. Uses your logged-in session; nothing leaves this device.">Fast collection (fewer page loads)</label>
+        </div>
+        <p class="settings-about-note">Loads page 1, does a single "Next" to capture your browser's own request, then pulls every remaining page instantly by replaying that exact request — much faster than clicking through each page, and every page keeps its real order date. Turn off to page through one at a time.</p>
       </div>
     `;
   }
@@ -151,6 +167,56 @@
         </div>
       </div>
     `;
+  }
+
+  /**
+   * Advanced timing controls: every wait the collection/download flows use, as
+   * a seconds input with its own "Default" button. Values are stored in
+   * milliseconds; the UI shows seconds. Bounds and defaults come from
+   * CONSTANTS.TIMING_SETTINGS.
+   */
+  function advancedSectionHtml(timings) {
+    const rows = CONSTANTS.TIMING_SETTINGS.map((spec) => {
+      const seconds = (timings[spec.key] ?? spec.defaultMs) / 1000;
+      const defaultSeconds = spec.defaultMs / 1000;
+      return `
+        <div class="input-group">
+          <label for="timing-${spec.key}" title="${escapeHtml(spec.hint)}">${escapeHtml(spec.label)} (seconds)</label>
+          <div class="input-with-default">
+            <input type="number" id="timing-${spec.key}" data-timing-key="${spec.key}"
+              min="${spec.minMs / 1000}" max="${spec.maxMs / 1000}" step="0.1" value="${seconds}">
+            <button type="button" class="btn btn-clear btn-timing-default" data-timing-default="${spec.key}"
+              title="Reset to ${defaultSeconds}s">Default</button>
+          </div>
+        </div>`;
+    }).join("");
+    return `
+      <div class="settings-section">
+        <h3 class="settings-section-title">Advanced</h3>
+        <p class="settings-stats-line">How long the extension waits on walmart.com. The defaults suit most connections.</p>
+        ${rows}
+      </div>
+    `;
+  }
+
+  function wireAdvancedControls(container) {
+    CONSTANTS.TIMING_SETTINGS.forEach((spec) => {
+      const input = container.querySelector(`#timing-${spec.key}`);
+      if (input) {
+        input.addEventListener("change", () => {
+          const ms = resolveTimingSetting(spec, parseFloat(input.value) * 1000);
+          input.value = ms / 1000;
+          persist(spec.key, ms);
+        });
+      }
+      const defaultButton = container.querySelector(`[data-timing-default="${spec.key}"]`);
+      if (defaultButton) {
+        defaultButton.addEventListener("click", () => {
+          if (input) input.value = spec.defaultMs / 1000;
+          persist(spec.key, spec.defaultMs);
+        });
+      }
+    });
   }
 
   function dataSectionHtml(stats) {
@@ -193,6 +259,11 @@
       chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.RESET_SESSION_STATE }, () => resolve());
     });
 
+    // Synchronously drop the panel's cached row models — the async
+    // checkCurrentTab below re-renders eventually, but until it lands any
+    // filter/dashboard-driven re-render would resurrect the deleted rows.
+    if (Sidepanel.view && Sidepanel.view.clearOrderList) Sidepanel.view.clearOrderList();
+
     if (Sidepanel.components) Sidepanel.components.Toast("Saved data cleared");
     renderSettings();
     if (Sidepanel.actions && Sidepanel.actions.checkCurrentTab) {
@@ -232,6 +303,7 @@
     app.csvPreset = SETTINGS_DEFAULTS.csvPreset;
     app.includeThumbnails = SETTINGS_DEFAULTS.includeThumbnails;
     app.incrementalCollect = SETTINGS_DEFAULTS.incrementalCollect;
+    app.fastFetch = SETTINGS_DEFAULTS.fastFetch;
     app.legacyExcel = SETTINGS_DEFAULTS[CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL];
 
     if (Sidepanel.applyTheme) Sidepanel.applyTheme(SETTINGS_DEFAULTS.theme);
@@ -286,6 +358,86 @@
     `;
   }
 
+  /**
+   * "Walmart sites" opt-in section: one toggle per additional Walmart site
+   * (currently just Walmart.ca — Walmart.com is always on and not shown). Each
+   * toggle reflects Flags.isEnabled(id). Turning one ON requests that site's
+   * host permission from within the user-gesture click handler; on grant the
+   * flag is set, on denial the toggle reverts. Turning one OFF clears the flag
+   * and best-effort removes the host permission.
+   * @returns {Promise<string>} section HTML ('' when there are no extra sites)
+   */
+  async function providersSectionHtml() {
+    const adapters = (typeof ProviderRegistry !== "undefined" ? ProviderRegistry.list() : []).filter(
+      (adapter) => adapter && adapter.defaultEnabled === false
+    );
+    if (adapters.length === 0) return "";
+
+    const rows = await Promise.all(
+      adapters.map(async (adapter) => {
+        let enabled = false;
+        try {
+          enabled = await Flags.isEnabled(adapter.id);
+        } catch (error) {
+          console.warn(`Settings: could not read flag for ${adapter.id}:`, error);
+        }
+        return `
+          <div class="toggle-group">
+            <input type="checkbox" id="providerToggle_${adapter.id}" data-provider-id="${adapter.id}" ${enabled ? "checked" : ""}>
+            <label for="providerToggle_${adapter.id}">${escapeHtml(adapter.label)}</label>
+          </div>
+        `;
+      })
+    );
+
+    return `
+      <div class="settings-section">
+        <h3 class="settings-section-title">Walmart sites</h3>
+        <p class="settings-about-note">Also collect from another Walmart site. Turning one on asks Chrome for permission to that site; everything still stays on this device.</p>
+        ${rows.join("")}
+      </div>
+    `;
+  }
+
+  function wireProvidersControls(container) {
+    container.querySelectorAll("[data-provider-id]").forEach((toggle) => {
+      toggle.addEventListener("change", () => {
+        const providerId = toggle.dataset.providerId;
+        const adapter = typeof ProviderRegistry !== "undefined" ? ProviderRegistry.getById(providerId) : null;
+        if (!adapter) return;
+        const origins = adapter.hostPermissions || [];
+
+        // A flag flip changes what Sidepanel.providers.selectable() returns —
+        // refresh the header provider dropdown's options right away (the
+        // chrome.storage.onChanged echo in sidepanel.js also covers changes
+        // made from other contexts).
+        const refreshDropdown = () => {
+          if (Sidepanel.refreshProviderOptions) Sidepanel.refreshProviderOptions();
+        };
+
+        if (toggle.checked) {
+          // Must run inside this user-gesture handler for the prompt to appear.
+          chrome.permissions.request({ origins }, (granted) => {
+            if (chrome.runtime.lastError || !granted) {
+              // Denied (or errored) — revert the toggle, leave the flag off.
+              toggle.checked = false;
+              return;
+            }
+            Flags.setEnabled(providerId, true).then(refreshDropdown);
+          });
+        } else {
+          Flags.setEnabled(providerId, false).then(() => {
+            // Best-effort: revoke the host permission we no longer need.
+            chrome.permissions.remove({ origins }, () => {
+              void chrome.runtime.lastError;
+            });
+            refreshDropdown();
+          });
+        }
+      });
+    });
+  }
+
   function wireThemeControl(container) {
     const control = container.querySelector("#themeControl");
     if (!control) return;
@@ -312,6 +464,16 @@
     if (incrementalToggle) {
       incrementalToggle.addEventListener("change", () => {
         persist("incrementalCollect", incrementalToggle.checked);
+      });
+    }
+
+    const fastFetchToggle = container.querySelector("#settingsFastFetch");
+    if (fastFetchToggle) {
+      fastFetchToggle.addEventListener("change", () => {
+        chrome.storage.local.set({ fastFetch: fastFetchToggle.checked });
+        // Mirror into app state so a collection started right after toggling
+        // (no reload) picks it up synchronously.
+        state.app.fastFetch = fastFetchToggle.checked;
       });
     }
   }
@@ -353,18 +515,25 @@
       "theme",
       "pageLimit",
       "incrementalCollect",
+      "fastFetch",
       "exportFormat",
       "includeThumbnails",
       CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL,
+      ...CONSTANTS.TIMING_SETTINGS.map((spec) => spec.key),
     ];
     const stored = await new Promise((resolve) => chrome.storage.local.get(keys, resolve));
 
     const theme = stored.theme || "system";
     const pageLimit = Number.isFinite(stored.pageLimit) ? stored.pageLimit : 0;
     const incrementalCollect = Boolean(stored.incrementalCollect);
+    const fastFetch = Boolean(stored.fastFetch);
     const exportFormat = stored.exportFormat || CONSTANTS.EXPORT_FORMATS.XLSX;
     const includeThumbnails = Boolean(stored.includeThumbnails);
     const legacyExcel = Boolean(stored[CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL]);
+    const timings = {};
+    CONSTANTS.TIMING_SETTINGS.forEach((spec) => {
+      timings[spec.key] = resolveTimingSetting(spec, stored[spec.key]);
+    });
 
     let stats = { orders: 0, invoices: 0 };
     try {
@@ -373,10 +542,14 @@
       console.warn("Settings: order database unavailable for stats:", error);
     }
 
+    const providersHtml = await providersSectionHtml();
+
     container.innerHTML = [
       themeSectionHtml(theme),
-      collectionSectionHtml(pageLimit, incrementalCollect),
+      collectionSectionHtml(pageLimit, incrementalCollect, fastFetch),
       exportDefaultsSectionHtml({ exportFormat, includeThumbnails, legacyExcel }),
+      providersHtml,
+      advancedSectionHtml(timings),
       dataSectionHtml(stats),
       aboutSectionHtml(),
     ].join("");
@@ -384,6 +557,8 @@
     wireThemeControl(container);
     wireCollectionControls(container);
     wireExportDefaultsControls(container);
+    wireProvidersControls(container);
+    wireAdvancedControls(container);
     wireDataControls(container, stats);
   }
 

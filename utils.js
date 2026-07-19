@@ -1779,36 +1779,7 @@ const CONSTANTS = {
     LOADING_SPINNER: 'loading-spinner',
   },
 
-  // DOM Selectors (content.js)
-  SELECTORS: {
-    PRINT_ITEMS: '.dn.print-items-list',
-    PRINT_ITEM_NAME: '.flex.justify-between > .w_U9_0.w_sD6D.w_QcqU, .flex.justify-between > div:first-child',
-    PRINT_BILL_TYPE: '.print-bill-type .w_U9_0.w_sD6D.w_QcqU, .print-bill-type > div',
-    PRINT_BILL_QTY: '.print-bill-qty .w_U9_0.w_sD6D.w_QcqU, .print-bill-qty > div',
-    PRINT_BILL_PRICE: '.print-bill-price .w_U9_0.w_sD6D.w_QcqU, .print-bill-price > div',
-    VISIBLE_ITEMS: '[data-testid="itemtile-stack"] [data-testid="productName"] span',
-    ITEM_STACK: '[data-testid="itemtile-stack"]',
-    PRODUCT_LINK: 'a[link-identifier="itemClick"]',
-
-    PRINT_BILL_GROUP: '.print-bill-group',
-    PRINT_ITEM_ROW: '.dn.print-items-list > .flex.justify-between',
-    PAYMENT_METHODS: '[aria-labelledby^="card-description-"]',
-    ADDRESS: '.print-bill-payment-section .w_U9_0.w_sD6D.w_QcqU span, .print-bill-payment-section .w_yTSq.w_0aYG.w_MwbK, .print-bill-payment-section .flex.flex-column.mid-gray [data-sensitivity="medium"], .print-bill-payment-section .flex.flex-column.mid-gray span',
-    ORDER_NUMBER_BAR: '.f-subheadline-m.dark-gray-m.print-bill-bar-id',
-    ORDER_INFO_CARD: "[data-testid='orderInfoCard'] .dark-gray",
-    ORDER_NUMBER_HEADING: '.print-bill-heading .dark-gray',
-    PRINT_BILL_ID: '.print-bill-bar-id',
-    ORDER_DATE: '.print-bill-date',
-    ORDER_SUBTOTAL: '.flex.justify-between.pb3.bill-order-payment-subtotal, span[aria-label^="Subtotal after savings"]',
-    ORDER_TOTAL: '.bill-order-total-payment',
-    DELIVERY_CHARGES: '.print-fees-item',
-    TAX_ELEMENTS: '.print-fees-item',
-    TIP: '.flex.justify-between.pb2.pt3',
-    FEE_LABEL: '.ld_FS',
-    ORDER_CARDS: '[data-testid^="order-"], div.ld_V.mv4',
-    NEXT_BUTTON: 'button[data-automation-id="next-pages-button"]:not([disabled])',
-    MAIN_HEADING: 'h1, .ld_FM.ld_FQ.ld_FO',
-  },
+  // DOM selectors moved to providers/walmart-us.js (WalmartUsProvider.SELECTORS).
 
   // Text Strings
   TEXT: {
@@ -1836,9 +1807,22 @@ const CONSTANTS = {
     // there is no more chrome.storage invoice cache to clear.
     RESET_SESSION_STATE: 'resetSessionState',
     COLLECT_ORDER_NUMBERS: 'collectOrderNumbers',
+    // Optional Fast Collect: one call collects the whole history via direct
+    // in-page API replay (adapters that set supportsFastFetch). Used only when
+    // the `fastFetch` setting is on; otherwise the classic per-page flow runs.
+    COLLECT_ALL_FAST: 'collectAllFast',
+    // Fired by the content script during Fast Collect after each page so the
+    // panel shows live progress (page number + orders) instead of waiting for
+    // the whole history in silence. Fire-and-forget; the final COLLECT_ALL_FAST
+    // response still carries the complete result.
+    FAST_COLLECT_PROGRESS: 'fastCollectProgress',
     CLICK_NEXT_BUTTON: 'clickNextButton',
     BLOCK_IMAGES: 'blockImagesForDownload',
     GET_ORDER_DATA: 'getOrderData',
+    // Fast invoice: fetch one order's full invoice by HTML-fetching its detail
+    // page and parsing __NEXT_DATA__ — no tab navigation. Handled by adapters
+    // that set supportsFastInvoice; used only when the fast setting is on.
+    GET_ORDER_DATA_FAST: 'getOrderDataFast',
   },
 
   // Storage Keys
@@ -1867,6 +1851,37 @@ const CONSTANTS = {
     WALMART_REVIEWS: 'https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe/reviews',
     GITHUB_ISSUES: 'https://github.com/amruta-chaudhari/Walmart-Invoice-Exporter/issues/new',
   },
+
+  // User-configurable timings (Settings → Advanced). Single source of
+  // truth for key, label, default, and safe bounds — the Settings UI, the
+  // per-box "Default" buttons, state hydration, and the reset path all
+  // read this table so they can never disagree.
+  TIMING_SETTINGS: [
+    {
+      key: 'collectPageDelayMs',
+      label: 'Wait between order-history pages',
+      hint: 'Raise this if collection skips pages on a slow connection.',
+      defaultMs: 1000,
+      minMs: 250,
+      maxMs: 30000,
+    },
+    {
+      key: 'orderTimeoutMs',
+      label: 'Give up on an order page after',
+      hint: 'Raise this if very old orders fail to download.',
+      defaultMs: 10000,
+      minMs: 3000,
+      maxMs: 120000,
+    },
+    {
+      key: 'orderSettleMs',
+      label: 'Settle time before reading an order page',
+      hint: 'Raise this if downloads come back with blank fields.',
+      defaultMs: 1000,
+      minMs: 0,
+      maxMs: 15000,
+    },
+  ],
 
   // Timing Constants (in milliseconds)
   TIMING: {
@@ -1980,6 +1995,22 @@ function normalizeDashboardDate(rawDate) {
 }
 
 /**
+ * Resolve a stored value for one CONSTANTS.TIMING_SETTINGS entry to a safe
+ * number of milliseconds: non-numeric/absent → the default; numeric →
+ * clamped into [minMs, maxMs]. Every consumer of a configurable timing
+ * (download queue, background collection, Settings UI) goes through this,
+ * so a corrupt stored value can never hang or hammer anything.
+ * @param {{defaultMs: number, minMs: number, maxMs: number}} spec - a CONSTANTS.TIMING_SETTINGS entry
+ * @param {*} rawValue - whatever chrome.storage returned
+ * @returns {number} milliseconds
+ */
+function resolveTimingSetting(spec, rawValue) {
+  const value = Number(rawValue);
+  if (!Number.isFinite(value)) return spec.defaultMs;
+  return Math.min(spec.maxMs, Math.max(spec.minMs, Math.round(value)));
+}
+
+/**
  * Parse a date out of Walmart's own order title text, e.g.
  * "Jun 15, 2022 order", "June 15, 2022 purchase", "Sep. 3, 2023 order".
  * Walmart's purchase-history payload titles carry the full date (with
@@ -2085,6 +2116,25 @@ function buildOrderRowModel(orderNumber, record, sessionTitle) {
     invoice,
     title: sessionTitle || (record && record.title) || '',
   };
+}
+
+/**
+ * Newest-first order-number comparator (owner decision 2026-07-18): the
+ * panel lists orders the way walmart.com does — by order number, which
+ * Walmart assigns monotonically — NOT by extracted date. Undated orders
+ * therefore sit exactly where Walmart lists them instead of sinking into a
+ * "NO DATE" pile. More digits = newer; equal length falls back to string
+ * comparison (the numbers exceed Number/parseInt precision).
+ * @param {string} a - digits-only order number
+ * @param {string} b - digits-only order number
+ * @returns {number} negative when a is newer (sorts first)
+ */
+function compareOrderNumbersDesc(a, b) {
+  const left = String(a || '');
+  const right = String(b || '');
+  if (left.length !== right.length) return right.length - left.length;
+  if (left === right) return 0;
+  return left < right ? 1 : -1;
 }
 
 /** Month-group label for a row, e.g. "JULY 2026"; undated rows get "NO DATE". */

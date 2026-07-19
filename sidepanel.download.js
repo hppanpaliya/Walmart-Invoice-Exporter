@@ -20,6 +20,9 @@
 
   const OrderDataFetcher = (() => {
     let downloadTab = null;
+    // Whether the reused fast-invoice list tab has had a moment to initialize
+    // its content script + main-world bridge. Reset when the tab is closed.
+    let fastTabWarmedUp = false;
     // Older cached invoices (pre-v3 item-dedup fix) may contain doubled
     // items with $0.00 prices — they are re-fetched, never trusted.
     const MIN_ORDER_SCHEMA_VERSION = CONSTANTS.ORDER_SCHEMA_VERSION;
@@ -55,13 +58,112 @@
       return schemaVersion >= MIN_ORDER_SCHEMA_VERSION && isUsableInvoiceData(data);
     };
 
-    const buildOrderUrls = (orderNumber) => {
-      const baseUrl = `${CONSTANTS.URLS.WALMART_ORDERS}/${orderNumber}`;
-      const isLongOrderNumber = orderNumber.length >= 20;
-      if (isLongOrderNumber) {
-        return [`${baseUrl}?storePurchase=true`, baseUrl];
+    /** The adapter driving the current export (defaults to WALMART_US). */
+    const activeAdapter = () => {
+      const id = (app && app.provider) || "WALMART_US";
+      return (typeof ProviderRegistry !== "undefined" && ProviderRegistry.getById(id)) || null;
+    };
+
+    /** Provider partition used for OrderDb reads/writes in this fetcher. */
+    const activeProviderId = () => (app && app.provider) || "WALMART_US";
+
+    /**
+     * Resolve the CONCRETE provider partition to use for ONE order.
+     *
+     * Fast path (the common case, and every single-provider build): the active
+     * selection is already a concrete provider id — return app.provider
+     * directly with NO DB scan, so Walmart / single-provider behavior is
+     * byte-identical to before.
+     *
+     * Under the combined "All providers" view app.provider is the PROVIDER_ALL
+     * sentinel ("__ALL__"), which is NOT a real OrderDb partition — reads and
+     * writes against it would hit a non-existent partition. So probe each
+     * enabled provider's partition (spec: scopeIds(PROVIDER_ALL)) and return the
+     * first one that already holds this order; fall back to WALMART_US when none
+     * does (a not-yet-collected order still lands in a sensible partition).
+     *
+     * Guarded for a test sandbox where Sidepanel.providers is not loaded: with
+     * no selector module there is no combined view, so app.provider (or
+     * WALMART_US) is authoritative and no scan happens.
+     * @param {string} orderNumber
+     * @returns {Promise<string>} a concrete provider id
+     */
+    const resolveProviderId = async (orderNumber) => {
+      const providers = Sidepanel.providers;
+      if (!providers) {
+        return (app && app.provider) || "WALMART_US";
       }
-      return [baseUrl, `${baseUrl}?storePurchase=true`];
+
+      const active = (app && app.provider) || "WALMART_US";
+      if (active !== providers.PROVIDER_ALL) {
+        return active;
+      }
+
+      let ids = [];
+      try {
+        ids = await providers.scopeIds(providers.PROVIDER_ALL);
+      } catch (error) {
+        ids = [];
+      }
+      for (const id of ids) {
+        try {
+          const record = await OrderDb.getOrder(orderNumber, id);
+          if (record) {
+            return id;
+          }
+        } catch (error) {
+          // This partition is unreadable — try the next provider.
+        }
+      }
+      return "WALMART_US";
+    };
+
+    /**
+     * Candidate order-DETAIL URLs to try, in order, for one order.
+     *
+     * Delegates to the active adapter so it stays host-agnostic:
+     *  - an adapter that exposes orderDetailUrl()/buildDetailUrl() wins;
+     *  - otherwise fall back to the adapter's ordersListUrl + '/' + orderNumber.
+     *
+     * Walmart exposes neither helper, so it takes the fallback, and because its
+     * ordersListUrl === CONSTANTS.URLS.WALMART_ORDERS the base is identical to
+     * before — including the historic ?storePurchase=true dual-URL ordering,
+     * preserved for the Walmart platform (.com/.ca).
+     *
+     * The optional providerId pins the adapter to the site that owns THIS order
+     * (resolved by fetchOrderData) so the combined view uses the right site; for
+     * a single active site it resolves to the same adapter as activeAdapter().
+     */
+    const buildOrderUrls = (orderNumber, providerId) => {
+      const adapter =
+        (providerId && typeof ProviderRegistry !== "undefined" && ProviderRegistry.getById(providerId)) ||
+        activeAdapter();
+
+      if (adapter && typeof adapter.orderDetailUrl === "function") {
+        const url = adapter.orderDetailUrl(orderNumber);
+        if (url) return [url];
+      }
+      if (adapter && typeof adapter.buildDetailUrl === "function") {
+        const url = adapter.buildDetailUrl(orderNumber);
+        if (url) return [url];
+      }
+
+      const listUrl = (adapter && adapter.ordersListUrl) || CONSTANTS.URLS.WALMART_ORDERS;
+      const baseUrl = `${listUrl}/${orderNumber}`;
+
+      // The Walmart Orchestra platform (.com and .ca) serves in-store receipts
+      // behind ?storePurchase=true; keep the historic dual-URL probe order so
+      // Walmart's resulting URLs are byte-for-byte identical to before.
+      const isWalmartPlatform = /(^|\.)walmart\./i.test(listUrl);
+      if (isWalmartPlatform) {
+        const isLongOrderNumber = String(orderNumber).length >= 20;
+        if (isLongOrderNumber) {
+          return [`${baseUrl}?storePurchase=true`, baseUrl];
+        }
+        return [baseUrl, `${baseUrl}?storePurchase=true`];
+      }
+
+      return [baseUrl];
     };
 
     const createTabLoadWaiter = (tabId, expectedUrl = "") => {
@@ -148,8 +250,80 @@
       return downloadTab;
     };
 
-    const fetchFromUrl = async (orderNumber, url, options = {}) => {
-      const { timeoutMs = CONSTANTS.TIMING.DOWNLOAD_TIMEOUT, stabilizeDelayMs = 1000 } = options;
+    /**
+     * Ensure a single reusable tab for FAST invoice fetching. Unlike ensureTab,
+     * this never re-navigates: the fast path never loads a per-order page — it
+     * fetches each order's HTML in-page — so ANY already-open orders tab works
+     * (the content script + main-world bridge run on every walmart.com/orders*
+     * URL). Only opens a tab (on the orders list) when none exists yet.
+     */
+    const ensureFastTab = async (listUrl, timeoutMs) => {
+      if (downloadTab) {
+        try {
+          await ChromeApi.tabsGet(downloadTab.id);
+          return downloadTab; // reuse as-is — do NOT navigate it
+        } catch (error) {
+          downloadTab = null; // it was closed; fall through to create a new one
+        }
+      }
+      downloadTab = await ChromeApi.tabsCreate({ url: listUrl, active: false });
+      await waitForTabLoad(downloadTab, listUrl, timeoutMs);
+      return downloadTab;
+    };
+
+    /**
+     * Fast invoice: fetch one order's full invoice from its detail HTML via the
+     * content script's main-world bridge — NO per-order tab navigation. Reuses a
+     * single tab (any open orders tab, else opens the orders list). Returns the
+     * invoice, or null to signal a fallback to the classic per-order page flow.
+     * Persists to IndexedDB on success.
+     */
+    const fetchViaFastInvoice = async (orderNumber, providerId, options = {}) => {
+      const { timeoutMs = app.orderTimeoutMs } = options;
+      const adapter =
+        (providerId && typeof ProviderRegistry !== "undefined" && ProviderRegistry.getById(providerId)) ||
+        activeAdapter();
+      if (!adapter || !adapter.supportsFastInvoice) return null;
+
+      const listUrl = (adapter && adapter.ordersListUrl) || CONSTANTS.URLS.WALMART_ORDERS;
+      const tab = await ensureFastTab(listUrl, timeoutMs);
+      // Give a freshly-opened list tab a beat to install its content script and
+      // main-world bridge before the first message, so the first order doesn't
+      // fall back to a full order-page load. Reused tab → no wait.
+      if (!fastTabWarmedUp) {
+        await delay(800);
+        fastTabWarmedUp = true;
+      }
+
+      let response;
+      try {
+        response = await promiseWithTimeout(
+          ChromeApi.tabsSendMessage(tab.id, {
+            action: CONSTANTS.MESSAGES.GET_ORDER_DATA_FAST,
+            orderNumber,
+          }),
+          timeoutMs,
+          `Timeout fast-fetching order #${orderNumber}`
+        );
+      } catch (error) {
+        return null; // fall back to the order page
+      }
+
+      if (!response || response.fallback || !response.data) {
+        return null; // adapter couldn't fast-fetch this one — fall back
+      }
+
+      try {
+        await OrderDb.putInvoice(orderNumber, response.data, providerId || activeProviderId());
+      } catch (error) {
+        console.warn(`Failed to persist fast invoice #${orderNumber} to order DB:`, error);
+      }
+      view.updateOrderCacheStatus(orderNumber);
+      return response.data;
+    };
+
+    const fetchFromUrl = async (orderNumber, url, options = {}, providerId = null) => {
+      const { timeoutMs = app.orderTimeoutMs, stabilizeDelayMs = app.orderSettleMs } = options;
       const tab = await ensureTab(url, timeoutMs);
 
       try {
@@ -173,7 +347,7 @@
       // IndexedDB is the only durable store for invoices now (spec §4.1) —
       // no more chrome.storage invoice cache to duplicate this into.
       try {
-        await OrderDb.putInvoice(orderNumber, response.data);
+        await OrderDb.putInvoice(orderNumber, response.data, providerId || activeProviderId());
       } catch (error) {
         console.warn(`Failed to persist invoice #${orderNumber} to order DB:`, error);
       }
@@ -182,6 +356,13 @@
     };
 
     const fetchOrderData = async (orderNumber, options = {}) => {
+      // Resolve the concrete provider partition that owns THIS order once, up
+      // front, and thread it through every per-order DB read/write and URL
+      // build below. Under the combined "All providers" view app.provider is
+      // the PROVIDER_ALL sentinel (not a real partition); for a concrete active
+      // provider this returns app.provider directly with no extra DB reads.
+      const providerId = await resolveProviderId(orderNumber);
+
       // Fast path (spec §4.2): an already-downloaded, current-schema
       // invoice sits in IndexedDB — return it and open NO tab at all. This
       // is what makes re-exporting an already-downloaded order instant,
@@ -189,7 +370,7 @@
       // expired.
       let storedInvoice = null;
       try {
-        const record = await OrderDb.getOrder(orderNumber);
+        const record = await OrderDb.getOrder(orderNumber, providerId);
         storedInvoice = (record && record.invoice) || null;
       } catch (error) {
         console.warn(`Order DB unavailable for fast-path lookup of #${orderNumber}:`, error);
@@ -200,17 +381,30 @@
         return storedInvoice;
       }
 
+      // Fast invoice: when the user turned on fast collection, pull this order's
+      // invoice from its detail HTML via the main-world bridge — no tab opened
+      // for it. Any miss returns null and falls through to the classic flow, so
+      // this can only speed things up, never lose an invoice.
+      if (app && app.fastFetch) {
+        try {
+          const fast = await fetchViaFastInvoice(orderNumber, providerId, options);
+          if (fast) return fast;
+        } catch (error) {
+          console.warn(`Fast invoice for #${orderNumber} failed; using the order page:`, error && error.message);
+        }
+      }
+
       // Nothing usable stored yet, or it predates the current schema —
       // fetch live, but keep the stale record around unused unless every
       // live fetch fails, so a failed re-fetch never destroys usable data
       // (fetchFromUrl overwrites the DB record on success).
-      const [primaryUrl, fallbackUrl] = buildOrderUrls(orderNumber);
+      const [primaryUrl, fallbackUrl] = buildOrderUrls(orderNumber, providerId);
       try {
-        return await fetchFromUrl(orderNumber, primaryUrl, options);
+        return await fetchFromUrl(orderNumber, primaryUrl, options, providerId);
       } catch (error) {
         console.error(`Primary fetch failed for order #${orderNumber}:`, error);
         try {
-          return await fetchFromUrl(orderNumber, fallbackUrl, options);
+          return await fetchFromUrl(orderNumber, fallbackUrl, options, providerId);
         } catch (fallbackError) {
           if (isUsableInvoiceData(storedInvoice)) {
             console.warn(
@@ -225,6 +419,7 @@
     };
 
     const cleanup = async () => {
+      fastTabWarmedUp = false;
       if (!downloadTab) return;
       try {
         await ChromeApi.tabsRemove(downloadTab.id);
@@ -534,7 +729,7 @@
           const { failedOrders, cancelled } = await runDownloadQueue({
             selectedOrders,
             actionText: CONSTANTS.TEXT.COLLECTING,
-            options: { timeoutMs: CONSTANTS.TIMING.COLLECTION_TIMEOUT, stabilizeDelayMs: CONSTANTS.TIMING.PAGE_LOAD_WAIT },
+            options: { timeoutMs: app.orderTimeoutMs, stabilizeDelayMs: app.orderSettleMs },
             errorPrefix: "Failed to collect data for order",
             onOrder: async (orderNumber, options) => {
               const data = await OrderDataFetcher.fetchOrderData(orderNumber, options);
@@ -586,7 +781,7 @@
           const { failedOrders, cancelled } = await runDownloadQueue({
             selectedOrders,
             actionText: CONSTANTS.TEXT.DOWNLOADING,
-            options: { timeoutMs: CONSTANTS.TIMING.DOWNLOAD_TIMEOUT, stabilizeDelayMs: 1000 },
+            options: { timeoutMs: app.orderTimeoutMs, stabilizeDelayMs: app.orderSettleMs },
             errorPrefix: "Error downloading order",
             onOrder: async (orderNumber, options) => {
               const data = await OrderDataFetcher.fetchOrderData(orderNumber, options);
@@ -642,9 +837,120 @@
     }
   }
 
+  /**
+   * Fetch full invoice details for the selected orders into IndexedDB WITHOUT
+   * producing any file. Same per-order scrape+store the download flow uses
+   * (OrderDataFetcher.fetchOrderData persists each invoice), just without the
+   * export step — so the user can build up their local library / dashboard
+   * data and download later, instantly, from storage.
+   *
+   * fetchOrderData's fast path means orders whose current-schema invoice is
+   * already stored are skipped (no tab opened), so this is cheap to re-run.
+   * @param {string[]} [orderNumbersOverride] - specific orders; defaults to the selection
+   */
+  async function loadSelectedOrdersToDb(orderNumbersOverride) {
+    try {
+      if (app && app.downloadInProgress) {
+        showGuardBanner("A run is already in progress. Please wait.");
+        return;
+      }
+
+      const selectedOrders =
+        Array.isArray(orderNumbersOverride) && orderNumbersOverride.length > 0
+          ? orderNumbersOverride
+          : getSelectedOrderNumbers();
+
+      if (selectedOrders.length === 0) {
+        showGuardBanner("Select at least one order to save.");
+        return;
+      }
+
+      const button = document.getElementById("loadToLibrary");
+      if (app) app.downloadInProgress = true;
+      view.setButtonLoading(button, true);
+      // The download pair shares the downloadInProgress guard; disable it too.
+      ["singleFileDownload", "multiFileDownload"].forEach((id) => {
+        const b = document.getElementById(id);
+        if (b) b.disabled = true;
+      });
+      view.clearStatusBanner("downloadResultBanner");
+      view.showDownloadProgress(0, selectedOrders.length, {
+        onCancel: () => {
+          if (app) app.downloadInProgress = false;
+        },
+      });
+
+      let extractionWarningsDetected = false;
+      const onProgress = (current, total, orderNumber, actionText) => {
+        view.updateDownloadProgress(current, total, `${actionText} ${current} / ${total} (#${orderNumber})`);
+      };
+
+      try {
+        const { failedOrders, cancelled } = await runDownloadQueue({
+          selectedOrders,
+          actionText: CONSTANTS.TEXT.COLLECTING,
+          options: {
+            timeoutMs: CONSTANTS.TIMING.COLLECTION_TIMEOUT,
+            stabilizeDelayMs: CONSTANTS.TIMING.PAGE_LOAD_WAIT,
+          },
+          errorPrefix: "Failed to load data for order",
+          onOrder: async (orderNumber, options) => {
+            // fetchOrderData stores the invoice in IndexedDB as a side effect.
+            const data = await OrderDataFetcher.fetchOrderData(orderNumber, options);
+            if (checkExtractionWarnings(orderNumber, data)) {
+              extractionWarningsDetected = true;
+            }
+          },
+          onProgress,
+        });
+
+        if (cancelled) {
+          showDownloadResultBanner({ variant: "info", message: "Saving cancelled." });
+          return;
+        }
+        if (extractionWarningsDetected) {
+          view.showExtractionWarning();
+        }
+
+        const succeeded = selectedOrders.length - failedOrders.length;
+        if (failedOrders.length === 0) {
+          showDownloadResultBanner({
+            variant: "success",
+            message: `Saved ${succeeded} order${succeeded === 1 ? "" : "s"} to your library — no file downloaded.`,
+          });
+        } else {
+          showDownloadResultBanner({
+            variant: "danger",
+            message: `${succeeded} of ${selectedOrders.length} saved — ${failedOrders.length} failed (${escapeHtml(formatFailedOrders(failedOrders))})`,
+            retryOrders: failedOrders,
+          });
+        }
+      } catch (error) {
+        console.error("Load-to-library error:", error);
+        showDownloadResultBanner({
+          variant: "danger",
+          message: "An error occurred while saving. Some orders may have failed.",
+        });
+      } finally {
+        await OrderDataFetcher.cleanup();
+        view.hideDownloadProgress();
+        view.setButtonLoading(button, false);
+        if (app) app.downloadInProgress = false;
+        view.updateDownloadButtonsState();
+        // Reflect the newly-saved invoices (✓ saved chips, dashboard data).
+        if (Sidepanel.actions && Sidepanel.actions.checkCurrentTab) {
+          Sidepanel.actions.checkCurrentTab();
+        }
+      }
+    } catch (outerError) {
+      console.error("Error in loadSelectedOrdersToDb:", outerError);
+    }
+  }
+
   Sidepanel.download = {
     OrderDataFetcher,
     downloadSelectedOrders,
+    loadSelectedOrdersToDb,
     exportCombinedOrders,
     exportOneOrder,
   };

@@ -328,6 +328,114 @@ function computeDashboardModel(records, rangeValue, now = new Date()) {
 }
 
 /**
+ * Currency-aware money formatter (provider work, 2026-07-18).
+ *
+ * USD keeps the historical "$1,234.56" rendering byte-for-byte — the
+ * Walmart.com-only default view must not change. Every other currency
+ * formats through Intl with an explicit currency prefix ("CA$1,234.56"
+ * for CAD), so mixed-currency surfaces (the combined "All providers"
+ * view) stay unambiguous without ever converting anything.
+ *
+ * @param {number|string} value - number or stored display string ("$42.17")
+ * @param {string|null} [currency] - ISO-4217 code; null/omitted → USD
+ * @returns {string}
+ */
+function formatDashboardMoney(value, currency) {
+  const amount = Number(typeof value === 'number' ? value : parseNumericValue(value)) || 0;
+  const code = String(currency || 'USD').toUpperCase();
+  if (code === 'USD') {
+    return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: code,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch (error) {
+    // Unknown/invalid code: label with the code rather than faking a symbol.
+    return `${code} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+}
+
+/**
+ * Combined multi-provider dashboard model — the "All providers" view.
+ *
+ * Providers can bill in DIFFERENT currencies (Walmart.com USD, Walmart.ca
+ * CAD), so spend is NEVER summed across currencies and never converted:
+ * each currency gets its own subtotal group carrying a per-provider
+ * breakdown. Counts (orders/invoices) are currency-free and do sum.
+ * Range scoping applies per provider with the same engine the
+ * single-provider dashboard uses (filterDashboardRecords).
+ *
+ * @param {Array<{id: string, label: string, currency: string, records: Array}>} providerScopes
+ *        One entry per enabled provider: its OrderDb records plus identity
+ *        from Sidepanel.providers.enabledAdapters().
+ * @param {string} rangeValue - dashboard scope ('all'|'last3'|'last6'|'thisYear'|'lastYear')
+ * @param {Date} [now] - injectable for deterministic tests
+ * @returns {{
+ *   range: string,
+ *   providers: Array<{id, label, currency, stats: Object}>, // stats = computeDashboardStats over the range-scoped records
+ *   currencyTotals: Array<{currency, totalSpend, invoiceCount, orderCount,
+ *     providers: Array<{id, label, totalSpend, invoiceCount, orderCount}>}>,
+ *   orderCount: number,
+ *   invoiceCount: number,
+ *   mixedCurrency: boolean
+ * }}
+ */
+function computeProviderDashboard(providerScopes, rangeValue, now = new Date()) {
+  const scopes = Array.isArray(providerScopes) ? providerScopes : [];
+  const range = rangeValue || 'all';
+
+  const providers = scopes.map((scope) => ({
+    id: scope?.id || '',
+    label: scope?.label || scope?.id || '',
+    currency: scope?.currency || 'USD',
+    stats: computeDashboardStats(filterDashboardRecords(scope?.records, range, now)),
+  }));
+
+  const groups = new Map();
+  providers.forEach((provider) => {
+    let group = groups.get(provider.currency);
+    if (!group) {
+      group = { currency: provider.currency, totalSpend: 0, invoiceCount: 0, orderCount: 0, providers: [] };
+      groups.set(provider.currency, group);
+    }
+    group.totalSpend = roundMoneyToCents(group.totalSpend + provider.stats.totalSpend);
+    group.invoiceCount += provider.stats.invoiceCount;
+    group.orderCount += provider.stats.orderCount;
+    // Providers with nothing measured yet stay visible (0-width bar) so the
+    // combined view always accounts for every enabled provider.
+    group.providers.push({
+      id: provider.id,
+      label: provider.label,
+      totalSpend: provider.stats.totalSpend,
+      invoiceCount: provider.stats.invoiceCount,
+      orderCount: provider.stats.orderCount,
+    });
+  });
+
+  const currencyTotals = [...groups.values()]
+    .map((group) => ({
+      ...group,
+      providers: group.providers
+        .slice()
+        .sort((a, b) => b.totalSpend - a.totalSpend || a.label.localeCompare(b.label)),
+    }))
+    .sort((a, b) => b.totalSpend - a.totalSpend || a.currency.localeCompare(b.currency));
+
+  return {
+    range,
+    providers,
+    currencyTotals,
+    orderCount: providers.reduce((sum, provider) => sum + provider.stats.orderCount, 0),
+    invoiceCount: providers.reduce((sum, provider) => sum + provider.stats.invoiceCount, 0),
+    mixedCurrency: currencyTotals.length > 1,
+  };
+}
+
+/**
  * Track per-item unit-price history across downloaded invoices.
  *
  * Only records with an invoice carry per-item prices, so history grows as
@@ -409,4 +517,23 @@ function computePriceHistory(records) {
         a.name.localeCompare(b.name)
     );
 }
+
+/*
+ * Provider-switch render entry point (contract for panel-core).
+ *
+ * `Sidepanel.dashboard.render()` re-reads the stored active provider
+ * (Sidepanel.providers.getActive()) and re-renders every dashboard surface
+ * in the current document. The full-page dashboard (dashboard.page.js)
+ * registers its renderer as `Sidepanel.dashboard._renderImpl` at load; in
+ * documents with no dashboard UI the call is a safe no-op returning
+ * undefined. Call it whenever the active provider selection changes.
+ */
+(() => {
+  const root =
+    typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : globalThis;
+  const ns = root.Sidepanel || (root.Sidepanel = {});
+  const dashboard = ns.dashboard || (ns.dashboard = {});
+  dashboard.render = (options) =>
+    typeof dashboard._renderImpl === 'function' ? dashboard._renderImpl(options) : undefined;
+})();
 
