@@ -1,0 +1,131 @@
+/* view-review.css — "Year in review" view (#/review), owned by
+   dashboard.view-review.js. Every selector is scoped under #viewReview.
+   Tokens only (dashboard.css palette): this view is allowed to be a little
+   more expressive — bigger numbers, accent-weak washes via color-mix — but
+   must look native to the app in BOTH themes. No external assets (CSP). */
+
+/* ---------- header card: title + year pills + delivery chips ---------- */
+#viewReview .rv-head-card {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 10%, var(--surface)) 0%,
+    var(--surface) 60%);
+}
+#viewReview .rv-head {
+  display: flex; flex-wrap: wrap; gap: 12px 16px;
+  align-items: flex-start; justify-content: space-between;
+}
+#viewReview .rv-head-text { min-width: 0; }
+/* Override the small uppercase .card h2 label style — this one is the
+   view's headline. */
+#viewReview .rv-title {
+  margin: 0 0 2px; font-size: 24px; font-weight: 700; letter-spacing: -.01em;
+  text-transform: none; color: var(--text);
+}
+#viewReview .rv-years { display: flex; flex-wrap: wrap; gap: 6px; }
+#viewReview .rv-year-pill {
+  border: 1px solid var(--border-strong); background: var(--surface);
+  color: var(--text-secondary); border-radius: 999px; padding: 5px 14px;
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+#viewReview .rv-year-pill:hover { border-color: var(--accent); color: var(--text); }
+#viewReview .rv-year-pill.selected {
+  background: var(--accent); border-color: var(--accent); color: var(--on-accent);
+}
+#viewReview .rv-year-pill:focus-visible {
+  outline: 2px solid var(--focus-ring); outline-offset: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  #viewReview .rv-year-pill {
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+  }
+}
+#viewReview .rv-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+#viewReview .rv-chip {
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text-secondary); border-radius: 999px;
+  padding: 3px 10px; font-size: 12px;
+}
+
+/* ---------- hero stat row: big-number tiles ---------- */
+#viewReview .rv-hero {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+#viewReview .rv-hero-tile {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: var(--shadow);
+  padding: 18px 20px; min-width: 0;
+}
+#viewReview .rv-hero-accent {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: linear-gradient(160deg,
+    color-mix(in srgb, var(--accent) 12%, var(--surface)),
+    var(--surface) 70%);
+}
+#viewReview .rv-label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--text-secondary);
+}
+#viewReview .rv-hero-value {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  font-size: clamp(26px, 3vw, 34px); font-weight: 700; margin-top: 6px;
+  letter-spacing: -.01em; font-variant-numeric: tabular-nums; min-width: 0;
+}
+#viewReview .rv-hero-accent .rv-hero-value {
+  color: var(--accent); font-size: clamp(30px, 4vw, 42px);
+}
+#viewReview .rv-delta {
+  font-size: 12px; font-weight: 650; border-radius: 999px; padding: 2px 9px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-variant-numeric: normal; white-space: nowrap;
+}
+/* Spending up reads as a caution, down as a win — same polarity as the
+   Overview's delta (.delta-up / .delta-down). */
+#viewReview .rv-delta-up { color: var(--warn-fg); background: var(--warn-bg); }
+#viewReview .rv-delta-down { color: var(--success-fg); background: var(--success-bg); }
+#viewReview .rv-sub { color: var(--text-muted); font-size: 12px; margin-top: 4px; }
+
+/* ---------- superlatives grid (mi-tile look, review-sized) ---------- */
+#viewReview .rv-super-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px; margin-top: 12px;
+}
+#viewReview .rv-tile {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 16px; min-width: 0;
+}
+#viewReview .rv-tile .rv-value {
+  font-size: 20px; font-weight: 650; margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ---------- top 5 by spend ---------- */
+#viewReview .rv-top5 { list-style: none; margin: 10px 0 0; padding: 0; }
+#viewReview .rv-top5 li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px;
+}
+#viewReview .rv-top5 li:last-child { border-bottom: none; }
+#viewReview .rv-rank {
+  flex: none; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent-weak); color: var(--accent);
+  font-size: 12px; font-weight: 700; display: grid; place-items: center;
+}
+#viewReview .rv-name {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#viewReview .rv-total { flex: none; text-align: right; }
+#viewReview .rv-muted { color: var(--text-muted); font-size: 13px; margin-top: 10px; }
+
+/* ---------- "How your year moved" chart ---------- */
+#viewReview .rv-chart { position: relative; margin-top: 12px; }
+#viewReview .rv-chart.rv-chart-canvas { height: 240px; }
+#viewReview .rv-chart.rv-chart-canvas canvas { width: 100% !important; height: 100% !important; }
+#viewReview .rv-chart svg { display: block; width: 100%; height: 200px; }
+#viewReview .rv-svg-bar { fill: var(--accent); }
+#viewReview .rv-chart-months {
+  display: grid; grid-template-columns: repeat(12, 1fr); text-align: center;
+  font-size: 11px; color: var(--text-muted); margin-top: 6px;
+}

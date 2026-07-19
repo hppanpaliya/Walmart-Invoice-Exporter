@@ -178,13 +178,47 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .account-rename { padding: 7px 9px; }
 .account-rename svg { display: block; }
 
-/* ---------- shell: main column + sticky panel rail ---------- */
+/* ---------- shell: nav rail + main column + sticky panel rail ---------- */
 .shell {
-  max-width: 1640px; margin: 0 auto; padding: 0 24px;
-  display: grid; grid-template-columns: minmax(0, 1fr) 400px;
+  max-width: 1780px; margin: 0 auto; padding: 0 24px;
+  display: grid; grid-template-columns: 176px minmax(0, 1fr) 400px;
   gap: 24px; align-items: start;
 }
 .col-main { min-width: 0; }
+
+/* ---------- app navigation (view registry, dashboard.page.js) ---------- */
+.appnav {
+  position: sticky; top: var(--topbar-h);
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 24px 0;
+}
+.appnav-btn {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid transparent; background: none; border-radius: 10px;
+  padding: 9px 12px; font-size: 13.5px; font-weight: 500;
+  color: var(--text-secondary); text-align: left; width: 100%;
+}
+.appnav-btn svg { flex: none; }
+.appnav-btn:hover { background: var(--surface); color: var(--text); }
+.appnav-btn[aria-current="page"] {
+  background: var(--accent-weak); color: var(--accent); font-weight: 600;
+}
+.appnav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Routing: elements tagged data-view are hidden outside the active view.
+   Orthogonal to [hidden] (the data-state channel) — either hides. */
+.view-off { display: none !important; }
+/* View roots have no chrome of their own — the view modules render their
+   own .card children into them, inheriting the page's grid gap. */
+.view-slot { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+.view-slot:empty { display: none; }
+
+/* Icons-only nav on narrower desktop widths. */
+@media (max-width: 1420px) {
+  .shell { grid-template-columns: 56px minmax(0, 1fr) 400px; }
+  .appnav-btn { justify-content: center; padding: 10px 0; }
+  .appnav-label { display: none; }
+}
 .rail {
   position: sticky; top: var(--topbar-h);
   height: calc(100vh - var(--topbar-h));
@@ -204,6 +238,13 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   .shell { grid-template-columns: 1fr; }
   .rail { position: static; height: auto; padding-top: 0; }
   .rail iframe { height: 700px; }
+  /* Nav folds into a horizontal pill strip above the page content. */
+  .appnav {
+    position: sticky; z-index: 9; background: var(--bg);
+    flex-direction: row; overflow-x: auto; padding: 12px 0 0;
+  }
+  .appnav-btn { width: auto; justify-content: flex-start; padding: 8px 14px; white-space: nowrap; }
+  .appnav-label { display: inline; }
 }
 
 /* ---------- page scaffold ---------- */

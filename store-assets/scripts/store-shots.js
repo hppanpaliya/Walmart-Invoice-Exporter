@@ -29,8 +29,11 @@ const raw = (name) => path.join(OUT, name);
     await dash.screenshot({ path: raw('dash-light.png') });
     console.log('dash-light');
 
-    // 2. Expanded inline invoice (v8): open a fully-fetched order in the
-    // orders table so the item list + money breakdown render.
+    // 2. Expanded inline invoice (v8): the orders table lives on its own
+    // view now — navigate there, open a fully-fetched order so the item
+    // list + money breakdown render, then return to Overview.
+    await dash.locator('[data-nav="orders"]').click();
+    await dash.waitForTimeout(300);
     const invoiceRow = dash.locator('tr.order-row:has(.saved-chip)').first();
     await invoiceRow.scrollIntoViewIfNeeded();
     await invoiceRow.click();
@@ -42,6 +45,7 @@ const raw = (name) => path.join(OUT, name);
     await dash.screenshot({ path: raw('dash-invoice.png') });
     console.log('dash-invoice');
     await invoiceRow.click(); // collapse again
+    await dash.locator('[data-nav="overview"]').click();
     await dash.evaluate(() => window.scrollTo(0, 0));
     await dash.waitForTimeout(400);
 

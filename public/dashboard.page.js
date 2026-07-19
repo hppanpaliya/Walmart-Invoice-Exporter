@@ -184,6 +184,18 @@
     } else {
       root.removeAttribute('data-theme');
     }
+    // Canvas charts (core + view modules) bake CSS-token colors in at render
+    // time — a theme flip must repaint them or they keep the old palette.
+    // No-op before the first data render.
+    if (state.signature !== null) renderAll();
+  }
+
+  // System-theme flips repaint too (only matters while no manual override).
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+  if (prefersDark.addEventListener) {
+    prefersDark.addEventListener('change', () => {
+      if (state.signature !== null) renderAll();
+    });
   }
 
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
@@ -191,6 +203,162 @@
       applyTheme(result && result.theme);
     });
   }
+
+  /* ------------------------------------------------------------------ *
+   * View registry + hash router (2026-07-19)
+   *
+   * The dashboard is a multi-view app: #/overview, #/items, #/trends,
+   * #/orders, #/review. The Overview and Orders views are rendered by this
+   * core file; the others live in their own dashboard.view-*.js modules
+   * that call WIEDash.registerView(id, {render}) after this script loads.
+   * Elements opt into views with a space-separated data-view attribute —
+   * routing toggles .view-off on them, while the [hidden] attribute stays
+   * the orthogonal data-state channel (setSectionVisibility). View modules
+   * re-render only when active AND when data changed (dirty set), so
+   * Chart.js canvases are never sized inside a display:none container.
+   * ------------------------------------------------------------------ */
+
+  const navIcon = (paths) =>
+    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+
+  /** Nav order + chrome for each view. Extendable via WIEDash.addNavView. */
+  const NAV_VIEWS = [
+    { id: 'overview', label: 'Overview', icon: navIcon('<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>') },
+    { id: 'items', label: 'Items', icon: navIcon('<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>') },
+    { id: 'trends', label: 'Trends', icon: navIcon('<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>') },
+    { id: 'orders', label: 'Orders', icon: navIcon('<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M14 8H8"/><path d="M16 12H8"/><path d="M13 16H8"/>') },
+    { id: 'review', label: 'Year in review', icon: navIcon('<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/>') },
+  ];
+
+  const viewImpls = new Map(); // view id -> {render(ctx)}
+  const viewDirty = new Set(); // views whose data changed since their last render
+  const overviewExtras = []; // render fns for #overviewExtras (budget, refunds, …)
+  let lastViewCtx = null;
+  let activeView = 'overview';
+
+  function renderNav() {
+    $('appNav').innerHTML = NAV_VIEWS.map((view) => `
+      <button type="button" class="appnav-btn" data-nav="${view.id}" aria-current="${view.id === activeView ? 'page' : 'false'}" title="${escapeHtml(view.label)}">
+        ${view.icon}<span class="appnav-label">${escapeHtml(view.label)}</span>
+      </button>`).join('');
+  }
+
+  $('appNav').addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-nav]');
+    if (btn) location.hash = `#/${btn.dataset.nav}`;
+  });
+
+  function viewFromHash() {
+    const match = /^#\/([a-z-]+)/.exec(location.hash || '');
+    return match && NAV_VIEWS.some((view) => view.id === match[1]) ? match[1] : 'overview';
+  }
+
+  function applyViewVisibility() {
+    document.querySelectorAll('#page [data-view]').forEach((el) => {
+      const views = (el.getAttribute('data-view') || '').split(/\s+/);
+      el.classList.toggle('view-off', !views.includes(activeView));
+    });
+  }
+
+  function setActiveView(id) {
+    activeView = id;
+    document.body.dataset.view = id;
+    $('appNav').querySelectorAll('[data-nav]').forEach((btn) => {
+      btn.setAttribute('aria-current', btn.dataset.nav === id ? 'page' : 'false');
+    });
+    applyViewVisibility();
+    renderRegisteredView(id);
+  }
+
+  /** Render one registered view, but only when active data is newer than its last render. */
+  function renderRegisteredView(id) {
+    const impl = viewImpls.get(id);
+    if (!impl || !lastViewCtx || !viewDirty.has(id)) return;
+    viewDirty.delete(id);
+    try {
+      impl.render(lastViewCtx);
+    } catch (error) {
+      console.error(`Dashboard view "${id}" failed to render:`, error);
+    }
+  }
+
+  /**
+   * The context handed to view modules and overview extras. `model` /
+   * `scopedStats` are null outside single-provider normal mode (empty DB,
+   * nothing measured, or combined multi-currency mode — see `combined`).
+   */
+  function buildViewCtx(extra) {
+    return {
+      now: new Date(),
+      state,
+      records: state.records,
+      range: state.range,
+      selectedMonth: state.selectedMonth,
+      currency: state.currency,
+      combined: false,
+      model: null,
+      scopedRecords: [],
+      scopedStats: null,
+      formatMoney,
+      monthLabel,
+      rangeLabel,
+      scopeEchoLabel,
+      recordsInRange,
+      recordsInScope,
+      escapeHtml,
+      sendToPanel,
+      revealRail,
+      storageGet,
+      storageSet,
+      refresh,
+      Chart: (typeof window !== 'undefined' && window.Chart) || null,
+      ...extra,
+    };
+  }
+
+  /** New data rendered: mark every view dirty, re-render the active one. */
+  function notifyViews(extra) {
+    lastViewCtx = buildViewCtx(extra || {});
+    for (const id of viewImpls.keys()) viewDirty.add(id);
+    renderRegisteredView(activeView);
+  }
+
+  /** Run the overview add-on renderers (budget/refunds) into #overviewExtras. */
+  function renderOverviewExtras(ctx) {
+    const slot = $('overviewExtras');
+    overviewExtras.forEach((renderExtra) => {
+      try {
+        renderExtra(ctx, slot);
+      } catch (error) {
+        console.error('Dashboard overview extra failed to render:', error);
+      }
+    });
+  }
+
+  /** Public registration surface for the drop-in view modules. */
+  window.WIEDash = {
+    registerView(id, impl) {
+      viewImpls.set(id, impl);
+      if (lastViewCtx) {
+        viewDirty.add(id);
+        if (id === activeView) renderRegisteredView(id);
+      }
+    },
+    registerOverviewExtra(renderExtra) {
+      overviewExtras.push(renderExtra);
+      if (lastViewCtx && lastViewCtx.model && !lastViewCtx.combined) {
+        try {
+          renderExtra(lastViewCtx, $('overviewExtras'));
+        } catch (error) {
+          console.error('Dashboard overview extra failed to render:', error);
+        }
+      }
+    },
+    addNavView(view) {
+      NAV_VIEWS.push(view);
+      renderNav();
+    },
+  };
 
   /* ------------------------------------------------------------------ *
    * Data scoping
@@ -965,6 +1133,10 @@
     card.className = 'card more-insights';
     card.id = 'moreInsightsCard';
     card.hidden = true;
+    // JS-inserted after router boot: tag + sync its view membership, or it
+    // would be visible on every view (applyViewVisibility ran already).
+    card.setAttribute('data-view', 'overview');
+    card.classList.toggle('view-off', activeView !== 'overview');
     card.innerHTML =
       '<h2>More insights · <span class="scope-echo"></span></h2>' +
       '<div class="mi-grid" id="moreInsightsGrid"></div>';
@@ -1120,6 +1292,9 @@
     $('coverageRegion').hidden = !coverage;
     $('ordersCard').hidden = !orders;
     $('combinedSection').hidden = !combined;
+    // Overview extras (budget/refunds) follow the stat strip, except in
+    // combined mode where mixed-currency budgets would be meaningless.
+    $('overviewExtras').hidden = !stats || Boolean(combined);
     $('scopeSelect').hidden = empty && !orders;
     // Combined mode: mixed-currency averages/savings would be meaningless,
     // so those tiles hide and the stat strip re-flows (CSS .combined-scoped).
@@ -1164,6 +1339,7 @@
         <h3>No spending data yet</h3>
         <p>Use the panel on the right to load your orders, then download them once —
            the dashboard builds itself from your full invoices.</p>`;
+      notifyViews({});
       return;
     }
 
@@ -1190,6 +1366,7 @@
            then download them once — the dashboard builds itself from your full invoices.</p>`;
       document.querySelectorAll('.scope-echo').forEach((el) => { el.textContent = rangeLabel(state.range, now); });
       renderTable(now);
+      notifyViews({ now });
       return;
     }
 
@@ -1222,6 +1399,8 @@
     renderMostBought(scopedStats);
     renderCoverage(scopedRecords, scopedStats);
     renderTable(now);
+    notifyViews({ now, model, scopedRecords, scopedStats });
+    renderOverviewExtras(lastViewCtx);
   }
 
   /**
@@ -1251,6 +1430,7 @@
         <h3>No spending data yet</h3>
         <p>None of your enabled Walmart sites has stored orders. Use the panel on the right to load orders,
            then download them once — the dashboard builds itself from your full invoices.</p>`;
+      notifyViews({ now, combined: true });
       return;
     }
 
@@ -1283,6 +1463,7 @@
     $('statOrders').textContent = String(combined.invoiceCount);
 
     renderProviderBreakdown(combined);
+    notifyViews({ now, combined: true });
   }
 
   /** The per-currency, per-provider breakdown card of the combined view. */
@@ -1827,6 +2008,12 @@
   window.addEventListener('wie-chart-ready', () => {
     if (state.signature !== null) renderAll();
   }, { once: true });
+
+  // Router boot: nav chrome + the view named in the URL hash (or Overview),
+  // then keep following hash changes (back/forward work across views).
+  renderNav();
+  setActiveView(viewFromHash());
+  window.addEventListener('hashchange', () => setActiveView(viewFromHash()));
 
   // First paint: provider options first, then the initial render.
   populateProviderSelect().then(() => refresh(true));

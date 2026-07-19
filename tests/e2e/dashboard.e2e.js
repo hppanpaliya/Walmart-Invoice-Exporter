@@ -69,6 +69,11 @@ test('full-page dashboard', async (t) => {
   });
 
   await t.test('search filters the orders table live', async () => {
+    // The orders table lives on its own view now (#/orders) — navigate
+    // there via the app nav; the remaining subtests stay on it.
+    await page.locator('[data-nav="orders"]').click();
+    await page.waitForTimeout(200);
+    assert.ok(await page.locator('#ordersCard').isVisible(), 'orders view shows the table');
     // "all" guarantees at least one seeded order without Tide in it.
     await page.locator('#scopeSelect').selectOption('all');
     await page.waitForTimeout(300);

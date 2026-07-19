@@ -6,6 +6,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="/dashboard.css">
+    <!-- Per-view stylesheets: each nav view owns one file so views stay
+         drop-in additions (see the view registry in dashboard.page.js). -->
+    <link rel="stylesheet" href="/view-items.css">
+    <link rel="stylesheet" href="/view-trends.css">
+    <link rel="stylesheet" href="/view-review.css">
+    <link rel="stylesheet" href="/view-extras.css">
     <!-- Same load order as sidepanel.html for the shared data layer:
          utils.js defines CONSTANTS/escapeHtml/row-model helpers,
          orderdb.js the IndexedDB store; then the provider registry +
@@ -63,6 +69,11 @@
     </div>
 
     <div class="shell">
+        <!-- App navigation: buttons are rendered by dashboard.page.js from
+             its view registry (hash routes #/overview, #/items, #/trends,
+             #/orders, #/review) so future views are drop-in additions. -->
+        <nav class="appnav" id="appNav" aria-label="Dashboard views"></nav>
+
         <div class="col-main">
             <main class="page" id="page">
                 <div class="page-head">
@@ -84,9 +95,13 @@
 
                 <!-- Empty states (DB empty / nothing measured anywhere).
                      Filled and shown by dashboard.page.js as needed. -->
-                <section class="card empty-card" id="emptyRegion" hidden></section>
+                <!-- data-view: which nav views an element belongs to (space-
+                     separated). dashboard.page.js hides elements outside the
+                     active view with .view-off; the [hidden] attribute stays
+                     the orthogonal data-state channel (setSectionVisibility). -->
+                <section class="card empty-card" id="emptyRegion" data-view="overview orders" hidden></section>
 
-                <section class="stats" id="statsSection">
+                <section class="stats" id="statsSection" data-view="overview">
                     <div class="card stat-hero">
                         <h2>Total spent</h2>
                         <div class="stat-value mono"><span id="statTotal">$0.00</span><span class="delta-up" id="statDelta" hidden></span></div>
@@ -98,18 +113,23 @@
                     <div class="card"><h2>Saved</h2><div class="stat-value mono stat-saved" id="statSaved">$0.00</div><div class="stat-note">discounts &amp; rollbacks</div></div>
                 </section>
 
+                <!-- Overview add-ons (budget ring, refunds) render here via
+                     WIEDash.registerOverviewExtra — kept separate from the
+                     core stat strip so extras stay drop-in files. -->
+                <section class="view-slot" id="overviewExtras" data-view="overview" hidden></section>
+
                 <!-- Combined "All providers" breakdown (dashboard.page.js).
                      Shown only when the provider selection is PROVIDER_ALL:
                      spend per provider, grouped and subtotaled BY CURRENCY —
                      amounts in different currencies are never summed together
                      or converted. -->
-                <section class="card" id="combinedSection" hidden>
+                <section class="card" id="combinedSection" data-view="overview" hidden>
                     <h2>Spend by site · <span class="scope-echo"></span></h2>
                     <div class="sub">Each site keeps its own currency — subtotals are per currency, never converted.</div>
                     <div class="provider-breakdown" id="providerBreakdown"></div>
                 </section>
 
-                <section class="card" id="chartCard">
+                <section class="card" id="chartCard" data-view="overview">
                     <div class="chart-head">
                         <div><h2>Spending by month</h2><div class="sub">Click a bar to scope the whole page to that month.</div></div>
                     </div>
@@ -117,7 +137,7 @@
                     <div class="chart-foot" id="chartFoot">Hover a bar for its total · heights compare within the visible range.</div>
                 </section>
 
-                <section class="insights" id="insightsSection">
+                <section class="insights" id="insightsSection" data-view="overview">
                     <div class="card">
                         <h2>Where it went · <span class="scope-echo"></span></h2>
                         <div class="ledger" id="ledger"></div>
@@ -139,9 +159,9 @@
                 </section>
 
                 <!-- Coverage banner / all-measured line, rendered by JS. -->
-                <div id="coverageRegion"></div>
+                <div id="coverageRegion" data-view="orders"></div>
 
-                <section class="card" id="ordersCard">
+                <section class="card" id="ordersCard" data-view="orders">
                     <h2>Orders · <span class="scope-echo"></span></h2>
                     <div class="orders-toolbar">
                         <label class="search">
@@ -186,6 +206,12 @@
                         </table>
                     </div>
                 </section>
+
+                <!-- Dedicated view roots: each is filled and rendered by its
+                     own view module (dashboard.view-*.js) via the registry. -->
+                <section class="view-slot" id="viewItems" data-view="items"></section>
+                <section class="view-slot" id="viewTrends" data-view="trends"></section>
+                <section class="view-slot" id="viewReview" data-view="review"></section>
             </main>
 
             <footer>
@@ -202,6 +228,15 @@
     </div>
 
     <script src="/dashboard.page.js"></script>
+    <!-- View modules load AFTER the core page script: each registers itself
+         with the WIEDash view registry. The dashboard.*stats.js files are
+         pure computation (no DOM) shared with the unit tests. -->
+    <script src="/dashboard.itemstats.js"></script>
+    <script src="/dashboard.trendstats.js"></script>
+    <script src="/dashboard.view-items.js"></script>
+    <script src="/dashboard.view-trends.js"></script>
+    <script src="/dashboard.view-review.js"></script>
+    <script src="/dashboard.view-extras.js"></script>
 </body>
 
 </html>
