@@ -20,29 +20,6 @@ function loadUtils() {
 }
 
 // ---------------------------------------------------------------------------
-// compareOrderNumbersDesc — Walmart's own list ordering
-// ---------------------------------------------------------------------------
-
-test('compareOrderNumbersDesc: newest (largest) order number first, precision-safe', () => {
-  const sandbox = loadUtils();
-  const sorted = [
-    '200011122233344',
-    '200011122233345',
-    '99988877766',            // shorter = older
-    '200011122233345555555',  // longer = newer
-  ].sort(sandbox.compareOrderNumbersDesc);
-  assert.deepEqual(sorted, [
-    '200011122233345555555',
-    '200011122233345',
-    '200011122233344',
-    '99988877766',
-  ]);
-  // Equal-length numbers beyond Number precision still compare correctly.
-  assert.ok(sandbox.compareOrderNumbersDesc('98765432109876543210', '98765432109876543211') > 0);
-  assert.equal(sandbox.compareOrderNumbersDesc('123', '123'), 0);
-});
-
-// ---------------------------------------------------------------------------
 // parseWalmartTitleDate — dates recovered from Walmart's own title text
 // ---------------------------------------------------------------------------
 

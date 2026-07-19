@@ -2118,25 +2118,6 @@ function buildOrderRowModel(orderNumber, record, sessionTitle) {
   };
 }
 
-/**
- * Newest-first order-number comparator (owner decision 2026-07-18): the
- * panel lists orders the way walmart.com does — by order number, which
- * Walmart assigns monotonically — NOT by extracted date. Undated orders
- * therefore sit exactly where Walmart lists them instead of sinking into a
- * "NO DATE" pile. More digits = newer; equal length falls back to string
- * comparison (the numbers exceed Number/parseInt precision).
- * @param {string} a - digits-only order number
- * @param {string} b - digits-only order number
- * @returns {number} negative when a is newer (sorts first)
- */
-function compareOrderNumbersDesc(a, b) {
-  const left = String(a || '');
-  const right = String(b || '');
-  if (left.length !== right.length) return right.length - left.length;
-  if (left === right) return 0;
-  return left < right ? 1 : -1;
-}
-
 /** Month-group label for a row, e.g. "JULY 2026"; undated rows get "NO DATE". */
 function monthGroupLabel(normalizedDate) {
   if (!normalizedDate) return 'NO DATE';

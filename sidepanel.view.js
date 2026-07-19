@@ -783,11 +783,9 @@
     const fragment = document.createDocumentFragment();
     let lastGroup = null;
     visibleRows.forEach((row) => {
-      // Undated rows inherit the month of the orders around them (rows
-      // follow Walmart's own order-number sequence, so neighbors are the
-      // right chronological company). "NO DATE" appears only when the
-      // list STARTS with undated rows.
-      const group = row.normalizedDate ? monthGroupLabel(row.normalizedDate) : (lastGroup || monthGroupLabel(""));
+      // Rows are date-sorted (undated sink to the end), so each row's own
+      // month is the correct group; undated rows fall under "NO DATE".
+      const group = monthGroupLabel(row.normalizedDate);
       if (group !== lastGroup) {
         const pool = labelPool.get(group);
         let labelEl = pool && pool.length ? pool.shift() : null;
@@ -1199,11 +1197,17 @@
       row.providerTag = combined && providers ? providers.labelFor(row.providerId) : "";
       return row;
     });
-    // Walmart's own ordering (owner decision 2026-07-18): order number,
-    // newest first — the exact sequence walmart.com/orders shows. Dates
-    // only label the month groups; an undated order stays right where
-    // Walmart lists it instead of sinking into a "NO DATE" pile.
-    rows.sort((a, b) => compareOrderNumbersDesc(a.orderNumber, b.orderNumber));
+    // Newest first, by DATE — so the month-group headers read in order and
+    // never repeat. (Sorting by order number instead assumes Walmart numbers
+    // orders in date order; they don't, which made the month headers jump
+    // around, e.g. FEB → MAR → FEB. Dates are captured reliably now, so any
+    // rare undated order sinks cleanly to the end.)
+    rows.sort((a, b) => {
+      if (a.normalizedDate && b.normalizedDate) return b.normalizedDate.localeCompare(a.normalizedDate);
+      if (a.normalizedDate) return -1;
+      if (b.normalizedDate) return 1;
+      return 0;
+    });
 
     listState.rows = rows;
     listState.container = container;
