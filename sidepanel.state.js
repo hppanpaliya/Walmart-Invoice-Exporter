@@ -27,6 +27,12 @@
     // provider), so one provider's live progress never renders into another
     // provider's view (sidepanel.actions.js's progressMatchesActiveScope).
     collectionProvider: null,
+    // Hashed key of the Walmart account currently in view. The order list and
+    // exports are scoped to it, so a different account's data doesn't show after
+    // a logout/login. null = unknown (no filter — show everything). Hydrated
+    // from chrome.storage.local `currentAccountKey` and refreshed when a Walmart
+    // orders tab reports its account.
+    accountKey: null,
   };
 
   // Configurable timings (Settings → Advanced) default from the shared

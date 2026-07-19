@@ -177,7 +177,39 @@ const CONTENT_MESSAGE_ACTIONS = new Set([
   CONSTANTS.MESSAGES.BLOCK_IMAGES,
   CONSTANTS.MESSAGES.GET_ORDER_DATA,
   CONSTANTS.MESSAGES.GET_ORDER_DATA_FAST,
+  CONSTANTS.MESSAGES.GET_ACCOUNT_KEY,
 ]);
+
+// ---------------------------------------------------------------------------
+// Account identity (multi-account support).
+//
+// A non-reversible key for the Walmart account logged into THIS page, so saved
+// data can be scoped per account and a different account's orders don't show
+// after a logout/login. We read the site's own `CID` cookie (Walmart's customer
+// id — a UUID, readable by JS on the page we already have host permission for)
+// and return only its SHA-256 hash. The raw CID never leaves the page and is
+// never stored; no `cookies` permission is used. null when not logged in.
+// ---------------------------------------------------------------------------
+function readPageCookie(name) {
+  const match = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+async function computeAccountKey() {
+  try {
+    const cid = readPageCookie("CID");
+    if (!cid) return null;
+    const bytes = new TextEncoder().encode(cid);
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    // 128-bit hex is plenty to distinguish accounts and keeps records compact.
+    return Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")
+      .slice(0, 32);
+  } catch (error) {
+    return null;
+  }
+}
 
 // The adapter that owns this hostname (or null if none is registered for it).
 const activeProvider =
@@ -256,18 +288,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
       const ctx = providerContext;
       const handlers = {
-        [CONSTANTS.MESSAGES.COLLECT_ORDER_NUMBERS]: withImageBlocking((req) =>
-          provider.collectOrderNumbers({ ...ctx, currentPage: Number(req.currentPage || 1) })
-        ),
+        [CONSTANTS.MESSAGES.COLLECT_ORDER_NUMBERS]: withImageBlocking(async (req) => {
+          const result = await provider.collectOrderNumbers({ ...ctx, currentPage: Number(req.currentPage || 1) });
+          // Stamp which Walmart account this page was collected under, so the
+          // background can partition the records per account.
+          return { ...result, accountKey: await computeAccountKey() };
+        }),
         // Fast Collect: whole-history collection in one call. Only adapters
         // that implement collectAllFast handle it; anything else signals a
         // classic-loop fallback so the background never hangs on this message.
-        [CONSTANTS.MESSAGES.COLLECT_ALL_FAST]: withImageBlocking((req) => {
+        [CONSTANTS.MESSAGES.COLLECT_ALL_FAST]: withImageBlocking(async (req) => {
           if (typeof provider.collectAllFast !== "function") {
-            return Promise.resolve({ fallbackToClassic: true });
+            return { fallbackToClassic: true };
           }
-          return provider.collectAllFast({ ...ctx, pageLimit: Number(req.pageLimit || 0) });
+          const result = await provider.collectAllFast({ ...ctx, pageLimit: Number(req.pageLimit || 0) });
+          if (result && result.fallbackToClassic) return result;
+          return { ...result, accountKey: await computeAccountKey() };
         }),
+        // The account logged into this page (SHA-256 of the CID cookie), so the
+        // panel/background can scope data per account. Not image-blocked — it's
+        // a pure read, never opens the order UI.
+        [CONSTANTS.MESSAGES.GET_ACCOUNT_KEY]: async () => ({ accountKey: await computeAccountKey() }),
         // currentPage rides along from the background loop for cursor-paged
         // cursor-paged adapters that validate the advance against the page the
         // loop is on; Walmart's clickNextPage ignores ctx entirely.

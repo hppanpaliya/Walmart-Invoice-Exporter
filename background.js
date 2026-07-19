@@ -82,12 +82,17 @@ const CollectionState = {
   // can't fast-collect (e.g. it can't learn the query signature).
   fastFetch: false,
 
+  // The Walmart account (hashed) this collection is running under; the content
+  // script reports it, and every record gets stamped with it.
+  accountKey: null,
+
   // Reset state for new collection
   reset() {
     this.currentPage = 1;
     this.retryCount = 0;
     this.initialPageLoaded = false;
     this.emptyPageStreak = 0;
+    this.accountKey = null;
   },
 
   // Clear all collected data
@@ -175,6 +180,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 /** The adapter driving the current (or requested) collection. */
 function activeAdapter() {
   return ProviderRegistry.getById(CollectionState.provider) || null;
+}
+
+/**
+ * Learn (once) which Walmart account this collection is running under. Records
+ * it as the current account (so the panel scopes its list to it) and
+ * grandfathers any untagged records into it, so pre-existing data becomes owned
+ * by this account instead of showing for a different one.
+ */
+function noteCollectionAccount(accountKey) {
+  if (!accountKey || CollectionState.accountKey === accountKey) return;
+  CollectionState.accountKey = accountKey;
+  chrome.storage.local.set({ currentAccountKey: accountKey });
+  OrderDb.stampUntaggedAccount(CollectionState.provider, accountKey).catch((error) =>
+    console.warn('Failed to grandfather untagged orders into the account:', error)
+  );
 }
 
 /**
@@ -375,12 +395,15 @@ function handleFastCollectProgress(request, sendResponse) {
       });
     }
 
+    if (request.accountKey) noteCollectionAccount(request.accountKey);
+
     // Persist this page so the panel's DB-backed render shows dated rows as the
     // collection fills, not just bare order numbers.
     OrderDb.putSummaries(
       request.orderSummaries || {},
       request.additionalFields || {},
-      CollectionState.provider
+      CollectionState.provider,
+      CollectionState.accountKey
     ).catch((error) => console.warn("Failed to persist Fast Collect page to order DB:", error));
 
     saveSessionState();
@@ -508,6 +531,7 @@ function collectAllFast() {
           return;
         }
 
+        if (response.accountKey) noteCollectionAccount(response.accountKey);
         response.orderNumbers.forEach((num) => CollectionState.allOrderNumbers.add(num));
         if (response.additionalFields) {
           CollectionState.allAdditionalFields = {
@@ -535,7 +559,8 @@ function collectAllFast() {
         OrderDb.putSummaries(
           response.orderSummaries || {},
           response.additionalFields || {},
-          CollectionState.provider
+          CollectionState.provider,
+          CollectionState.accountKey
         )
           .catch((error) => console.warn("Failed to persist Fast Collect result to order DB:", error))
           .finally(() => {
@@ -659,6 +684,8 @@ function collectOrderNumbers() {
         CollectionState.emptyPageStreak = 0;
       }
 
+      if (response.accountKey) noteCollectionAccount(response.accountKey);
+
       // Add order numbers to the set
       response.orderNumbers.forEach((num) => CollectionState.allOrderNumbers.add(num));
 
@@ -680,9 +707,12 @@ function collectOrderNumbers() {
       }
 
       // Persist this page into the durable order database (best-effort).
-      OrderDb.putSummaries(response.orderSummaries || {}, response.additionalFields || {}, CollectionState.provider).catch(
-        (error) => console.warn("Failed to persist page to order DB:", error)
-      );
+      OrderDb.putSummaries(
+        response.orderSummaries || {},
+        response.additionalFields || {},
+        CollectionState.provider,
+        CollectionState.accountKey
+      ).catch((error) => console.warn("Failed to persist page to order DB:", error));
 
       // Mirror live progress to chrome.storage.session after each page.
       saveSessionState();

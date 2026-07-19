@@ -314,7 +314,7 @@
       }
 
       try {
-        await OrderDb.putInvoice(orderNumber, response.data, providerId || activeProviderId());
+        await OrderDb.putInvoice(orderNumber, response.data, providerId || activeProviderId(), (app && app.accountKey) || null);
       } catch (error) {
         console.warn(`Failed to persist fast invoice #${orderNumber} to order DB:`, error);
       }
@@ -347,7 +347,7 @@
       // IndexedDB is the only durable store for invoices now (spec §4.1) —
       // no more chrome.storage invoice cache to duplicate this into.
       try {
-        await OrderDb.putInvoice(orderNumber, response.data, providerId || activeProviderId());
+        await OrderDb.putInvoice(orderNumber, response.data, providerId || activeProviderId(), (app && app.accountKey) || null);
       } catch (error) {
         console.warn(`Failed to persist invoice #${orderNumber} to order DB:`, error);
       }

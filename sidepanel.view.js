@@ -1180,7 +1180,8 @@
     const active = (state.app && state.app.provider) || "WALMART_US";
     const scopeIds =
       providers && typeof providers.scopeIds === "function" ? await providers.scopeIds(active) : [active];
-    const perProvider = await Promise.all(scopeIds.map((providerId) => OrderDb.getAllOrders(providerId)));
+    const acct = (state.app && state.app.accountKey) || null;
+    const perProvider = await Promise.all(scopeIds.map((providerId) => OrderDb.getAllOrders(providerId, acct)));
     const combined = Boolean(providers && active === providers.PROVIDER_ALL);
     const byOrderNumber = new Map();
     perProvider.flat().forEach((record) => {
