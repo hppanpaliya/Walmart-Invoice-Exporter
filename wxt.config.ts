@@ -42,12 +42,19 @@ export default defineConfig({
   // picker hides dot-folders, which made the default undiscoverable.
   outDir: 'dist',
 
+  // Keep the AMO sources zip to actual build inputs — the store media kit
+  // (4K video, screenshots) and the website are not needed to rebuild.
+  zip: {
+    excludeSources: ['store-assets/**', '_site/**', 'site/**', 'docs/**'],
+  },
+
   manifest: ({ browser }) => ({
     name: 'Walmart Invoice Exporter',
     version: '8.1',
     description:
       'Export your Walmart order history to Excel, CSV, or PDF — and see where the money went on a built-in spending dashboard.',
     default_locale: 'en',
+    homepage_url: 'https://github.harsh.al/Walmart-Invoice-Exporter/',
 
     host_permissions: ['https://www.walmart.com/*'],
     optional_host_permissions: ['https://www.walmart.ca/*'],

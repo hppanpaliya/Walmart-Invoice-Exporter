@@ -31,7 +31,7 @@ as the hero video hurts more than no video.
 
 1. Merge to `main` — the listing refresh describes v8 and must not go live
    before the build does.
-2. Bump the version past 8.0, `npm run zip`, upload, publish.
+2. Bump the version past 8.0 (currently 8.1 in `wxt.config.ts`), `pnpm run zip`, upload, publish.
 3. Upload `video/tour-4k.mp4` to the project's YouTube account (public or
    unlisted), then set it as the listing video — this replaces the old FAQ
    video.
@@ -39,7 +39,8 @@ as the hero video hurts more than no video.
 5. Replace summary + description from `description.md` (update the
    "What's New" version number to the actual released version).
 6. Developer account hygiene: verify publisher identity (→ Established
-   Publisher badge), fill the website field (GitHub repo or Pages site),
+   Publisher badge), fill the website field with the live site
+   (`https://github.harsh.al/Walmart-Invoice-Exporter/`),
    confirm support URL and privacy-policy link still resolve.
 7. Reply to reviews from `review-replies.md` — after verifying every
    bracketed claim against what actually shipped.
