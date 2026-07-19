@@ -2248,3 +2248,9 @@ body.first-run .export-options-panel {
   padding: 7px 8px;
   font-size: var(--font-size-sm);
 }
+
+/* Slot stability: Start/Stop swap into the SAME left slot while collecting;
+   View dashboard is pinned to the right slot and never shifts. */
+#viewDashboardButton {
+  order: 1;
+}
