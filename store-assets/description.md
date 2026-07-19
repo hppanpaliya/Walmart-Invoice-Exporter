@@ -51,10 +51,20 @@ Walmart Invoice Exporter collects every order from walmart.com/orders, saves it 
 
 ★ GETTING STARTED
 1. Open walmart.com/orders and click the extension icon
-2. Click "Load my orders" (or "Check for new orders") and let it collect
+2. Click "Load my orders" (or "Check for new orders") and let it collect — the Options disclosure holds the page limit, "only new orders", order type, and date range
 3. Select orders and download — or click "View dashboard" to see where the money went
 
-Bulk downloads work best with Chrome's "Ask where to save each file" setting off — the in-app Help & FAQ walks you through it.
+★ HOW TO USE
+
+☆ Single order: open any Walmart order page, click the extension icon (the order appears automatically), check its box, click "Single file".
+
+☆ Batch download: on walmart.com/orders, collect your history, select the orders you want, pick a format (Excel, CSV, JSON, printable receipt, or PDF), then "Single file" (one file with every selected order), "Multiple files" (one file per order), or "Save details to library (no file)" to store them without downloading.
+
+☆ Dashboard: click "View dashboard" for the full page. Click a bar in the monthly chart to scope everything to that month (click again to zoom out); click any order row to expand its full invoice inline. If a row's invoice hasn't been fetched yet, select it and click "Fetch data" — then export exactly what's in view.
+
+⚠️ For bulk downloads, turn OFF "Ask where to save each file before downloading" in chrome://settings/downloads — the in-app Help & FAQ walks you through it.
+
+☆ Need to merge multiple Excel files afterwards? https://hppanpaliya.github.io/excel-merger
 
 ★ WHAT'S NEW IN 8.2
 • Full-app dashboard: expandable inline invoices, interactive monthly chart, and a new insights card
