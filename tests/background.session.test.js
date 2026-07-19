@@ -6,7 +6,7 @@ const { loadSandbox, evalIn, toPlain } = require('./helpers/sandbox');
 
 /** background.js pulls in utils.js + orderdb.js itself via importScripts. */
 function loadBackgroundSandbox() {
-  return loadSandbox({ scripts: ['background.js'] });
+  return loadSandbox({ scripts: ['background-main.js'] });
 }
 
 function getProgress(sandbox, request = {}) {
