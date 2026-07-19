@@ -14,6 +14,10 @@ const path = require('path');
 const vm = require('vm');
 
 const REPO_ROOT = path.join(__dirname, '..', '..');
+// Since the WXT migration, every runtime script ships verbatim from public/
+// (classic scripts, unchanged load order) — that's where the sandbox reads
+// them from. The old background.js is public/background-main.js now.
+const SRC_ROOT = path.join(REPO_ROOT, 'public');
 
 function makeFakeElement() {
   const element = {
@@ -404,14 +408,14 @@ function loadSandbox({
   // its own `importScripts('utils.js', 'orderdb.js')` pull in the rest.
   sandbox.importScripts = (...files) => {
     files.forEach((file) => {
-      const source = fs.readFileSync(path.join(REPO_ROOT, file), 'utf8');
+      const source = fs.readFileSync(path.join(SRC_ROOT, file), 'utf8');
       vm.runInContext(source, sandbox, { filename: file });
     });
   };
 
   vm.createContext(sandbox);
   for (const script of scripts) {
-    const source = fs.readFileSync(path.join(REPO_ROOT, script), 'utf8');
+    const source = fs.readFileSync(path.join(SRC_ROOT, script), 'utf8');
     vm.runInContext(source, sandbox, { filename: script });
   }
   return sandbox;

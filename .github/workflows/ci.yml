@@ -26,10 +26,18 @@ jobs:
 
       - name: Syntax check every extension script
         run: |
-          for f in *.js; do
-            if [ "$f" = "exceljs.bare.min.js" ]; then continue; fi
+          for f in public/*.js public/providers/*.js entrypoints/*.js; do
+            if [ "$f" = "public/exceljs.bare.min.js" ]; then continue; fi
             node --check "$f"
           done
+
+      # Validates wxt.config.ts and produces the loadable extension — the
+      # same output `wxt zip` packages for the stores.
+      - name: Build (Chrome MV3)
+        run: npx wxt build
+
+      - name: Build (Firefox MV3)
+        run: npx wxt build -b firefox --mv3
 
       - name: Unit tests (extractors, export writers, fixtures)
         run: node --test tests/*.test.js
@@ -51,5 +59,7 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      # The e2e harness runs `npx wxt build` itself and loads
+      # .output/chrome-mv3 into a real Chromium.
       - name: End-to-end tests (real extension, mocked walmart.com)
         run: npm run test:e2e

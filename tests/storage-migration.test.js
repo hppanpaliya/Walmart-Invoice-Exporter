@@ -140,9 +140,9 @@ test('migrateLegacyStorage: a malformed/empty invoice-cache entry is skipped, no
   assert.deepEqual(all.map((r) => r.orderNumber), ['good-entry']);
 });
 
-test('migrateLegacyStorage: called from both background.js and sidepanel.js init (function is shared, not duplicated)', () => {
-  const bgSource = require('fs').readFileSync(require('path').join(__dirname, '..', 'background.js'), 'utf8');
-  const panelSource = require('fs').readFileSync(require('path').join(__dirname, '..', 'sidepanel.js'), 'utf8');
+test('migrateLegacyStorage: called from both the background worker and sidepanel.js init (function is shared, not duplicated)', () => {
+  const bgSource = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'background-main.js'), 'utf8');
+  const panelSource = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'sidepanel.js'), 'utf8');
   assert.match(bgSource, /migrateLegacyStorage\(\)/);
   assert.match(panelSource, /migrateLegacyStorage\(\)/);
 });

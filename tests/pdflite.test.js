@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 function loadPdfLite() {
-  const code = fs.readFileSync(path.join(__dirname, '..', 'pdflite.js'), 'utf8');
+  const code = fs.readFileSync(path.join(__dirname, '..', 'public', 'pdflite.js'), 'utf8');
   const context = vm.createContext({});
   vm.runInContext(code, context, { filename: 'pdflite.js' });
   assert.ok(context.PdfLite, 'PdfLite global should be defined after loading');

@@ -7,6 +7,10 @@
 /dist/
 /node_modules/
 
+# WXT build system
+/.output/
+/.wxt/
+
 # Chrome extension development files
 *.log
 *.swp
