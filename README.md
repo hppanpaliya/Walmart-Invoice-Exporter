@@ -6,7 +6,7 @@ A Chrome extension that turns your Walmart order history into a private spending
 
 More screenshots live in [store-assets/screenshots/](./store-assets/screenshots/): the [inline invoice drill-down](./store-assets/screenshots/02-invoice-drilldown-1280x800.png), [export formats](./store-assets/screenshots/03-export-formats-1280x800.png), [month drill-down in dark mode](./store-assets/screenshots/04-month-drilldown-dark-1280x800.png), and the [privacy view](./store-assets/screenshots/05-privacy-1280x800.png).
 
-**Website:** [hppanpaliya.github.io/Walmart-Invoice-Exporter](https://hppanpaliya.github.io/Walmart-Invoice-Exporter/) — landing page, Help & FAQ, and privacy policy, deployed from this repo (see [Website](#website-github-pages) below).
+**Website:** [github.harsh.al/Walmart-Invoice-Exporter](https://github.harsh.al/Walmart-Invoice-Exporter/) — landing page, Help & FAQ, and privacy policy, deployed from this repo (see [Website](#website-github-pages) below).
 
 ## Features
 
@@ -29,7 +29,7 @@ More screenshots live in [store-assets/screenshots/](./store-assets/screenshots/
 - **Legacy Excel layout (opt-in)**: restores the older single-sheet workbook; the modern Orders/Items two-sheet layout stays the default
 - **Inactivity housekeeping (configurable)**: by default, saved data is wiped only if the extension goes unused for 180 days — adjust the number of days or turn it off in Settings
 - **Walmart.ca support (optional)**: enable Canada support in Settings to collect and export walmart.ca orders too
-- **AI access via MCP (optional, off by default)**: let AI tools on your own computer (Claude Code, Claude Desktop, any MCP client) read your saved orders through the [walmart-invoice-mcp](https://github.com/hppanpaliya/walmart-invoice-mcp) helper — read-only, localhost-only, protected by a pairing token you generate in Settings → "AI access (MCP)"
+- **AI access via MCP (optional, off by default)**: let AI tools on your own computer (Claude Code, Claude Desktop, any MCP client) read your saved orders through the [walmart-invoice-mcp](https://github.com/hppanpaliya/walmart-invoice-mcp) helper ([on npm](https://www.npmjs.com/package/walmart-invoice-mcp), runs via `npx walmart-invoice-mcp`) — read-only, localhost-only, protected by a pairing token you generate in Settings → "AI access (MCP)"
 - **Dedicated Settings view**: Appearance (System/Light/Dark), Collection defaults (including fast collection), Export defaults, "Data on this device", and About
 - **Detailed exports**: each invoice includes:
   - Product details (name, quantity, price)
@@ -126,14 +126,14 @@ pnpm run zip:firefox   # Firefox (MV3) zip, including the AMO sources zip
 
 ### Website (GitHub Pages)
 
-The project website (landing page, Help & FAQ, privacy policy) lives in [site/](./site/) and deploys to GitHub Pages automatically via [.github/workflows/pages.yml](./.github/workflows/pages.yml) on every push to `main` that touches it. Images aren't duplicated: [scripts/build-site.sh](./scripts/build-site.sh) assembles `_site/` at build time, pulling screenshots from `store-assets/screenshots/` and the icon from `public/images/`, so the store listing and the website can never drift apart.
+The project website (landing page, Help & FAQ, privacy policy) is live at [github.harsh.al/Walmart-Invoice-Exporter](https://github.harsh.al/Walmart-Invoice-Exporter/). It lives in [site/](./site/) and deploys to GitHub Pages automatically via [.github/workflows/pages.yml](./.github/workflows/pages.yml) on every push to `main` that touches it. Images aren't duplicated: [scripts/build-site.sh](./scripts/build-site.sh) assembles `_site/` at build time, pulling screenshots from `store-assets/screenshots/` and the icon from `public/images/`, so the store listing and the website can never drift apart.
 
 ```bash
 bash scripts/build-site.sh    # assemble into _site/
 npx serve _site               # preview locally
 ```
 
-One-time repo setup: **Settings → Pages → Build and deployment → Source → "GitHub Actions"**. (This replaces the old branch-based Pages source; the FAQ formerly served from `docs/` now lives at `/faq.html`.)
+The repo's Pages source is set to **"GitHub Actions"** (Settings → Pages → Build and deployment → Source — required once when forking). This replaces the old branch-based Pages source; the FAQ formerly served from `docs/` now lives at [/faq.html](https://github.harsh.al/Walmart-Invoice-Exporter/faq.html).
 
 ### Microsoft Edge
 
@@ -160,7 +160,8 @@ See [docs/PORTS.md](./docs/PORTS.md) for the full list of differences.
 ## What's New
 
 ### Unreleased
-- **Optional AI access (MCP)**: a new off-by-default Settings toggle lets local AI tools (Claude Code, Claude Desktop, any MCP client) read your saved orders through the [walmart-invoice-mcp](https://github.com/hppanpaliya/walmart-invoice-mcp) helper — read-only, localhost-only, token-paired
+- **Optional AI access (MCP)**: a new off-by-default Settings toggle lets local AI tools (Claude Code, Claude Desktop, any MCP client) read your saved orders through the [walmart-invoice-mcp](https://github.com/hppanpaliya/walmart-invoice-mcp) helper ([on npm](https://www.npmjs.com/package/walmart-invoice-mcp)) — read-only, localhost-only, token-paired
+- **Project website launched**: [github.harsh.al/Walmart-Invoice-Exporter](https://github.harsh.al/Walmart-Invoice-Exporter/) — landing page, Help & FAQ, and privacy policy
 - **Tooling moved to pnpm** with a 14-day supply-chain cooldown (`minimumReleaseAge`) on dependency updates
 
 ### Version 8.0 (July 19, 2026)
