@@ -92,7 +92,7 @@ test('full-page dashboard', async (t) => {
     await button.click();
     await page.waitForTimeout(300);
     const checked = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('tbody input[type="checkbox"]:checked'))
+      Array.from(document.querySelectorAll('tbody input[type="checkbox"][data-order]:checked'))
         .map((box) => box.closest('tr').querySelector('.onum').textContent.trim())
     );
     assert.strictEqual(checked.length, summaryOnly.length, 'selects every summary-only order');
@@ -106,12 +106,14 @@ test('full-page dashboard', async (t) => {
     // Clear the coverage selection with real clicks — the page mirrors
     // checkbox state into a Set on change events, so silent .checked
     // writes would desync it.
-    while (await page.locator('tbody input[type="checkbox"]:checked').count()) {
-      await page.locator('tbody input[type="checkbox"]:checked').first().click();
+    while (await page.locator('tbody input[type="checkbox"][data-order]:checked').count()) {
+      await page.locator('tbody input[type="checkbox"][data-order]:checked').first().click();
     }
     // Rows sort date-desc; the newest seeded orders are measured, so this
     // exercises the no-tab IndexedDB fast path inside the embedded panel.
-    const measuredBoxes = page.locator('tbody input[type="checkbox"]');
+    // [data-order] scopes to order rows — month-header select-all checkboxes
+    // (2026-07-19) also live in tbody now.
+    const measuredBoxes = page.locator('tbody input[type="checkbox"][data-order]');
     await measuredBoxes.nth(0).click();
     await measuredBoxes.nth(1).click();
     const downloadPromise = page.waitForEvent('download', { timeout: 20000 });

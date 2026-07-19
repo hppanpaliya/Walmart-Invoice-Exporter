@@ -328,19 +328,68 @@
   }
 
   /** Re-render the table body from the current scope, search, and sort. */
+  /** The month group label a table row belongs to (same as the panel list). */
+  function rowMonthGroup(row) {
+    return monthGroupLabel(row.normalizedDate);
+  }
+
+  /** Order numbers of the shown rows in one month group. */
+  function monthGroupOrderNumbers(group) {
+    return state.shownRows
+      .filter((row) => rowMonthGroup(row) === group)
+      .map((row) => String(row.orderNumber || ''));
+  }
+
+  /** One month header row: a select-all-in-month checkbox + the label. */
+  function monthRowHtml(group) {
+    return `<tr class="month-row"><td colspan="7"><label class="month-row-label">` +
+      `<input type="checkbox" class="month-check" data-month="${escapeHtml(group)}" aria-label="Select all orders in ${escapeHtml(group)}">` +
+      `<span>${escapeHtml(group)}</span></label></td></tr>`;
+  }
+
+  /** Reflect each month checkbox from its rows' live selection state. */
+  function updateMonthRowStates() {
+    $('orderRows').querySelectorAll('.month-check').forEach((box) => {
+      const numbers = monthGroupOrderNumbers(box.dataset.month);
+      const checkedCount = numbers.filter((n) => state.selected.has(n)).length;
+      const s = groupSelectionState(numbers.length, checkedCount);
+      box.checked = s.checked;
+      box.indeterminate = s.indeterminate;
+    });
+  }
+
   function renderTable(now) {
     const query = state.search.trim().toLowerCase();
     const rows = sortRows(buildRows(now).filter((row) => matchesSearch(row, query)));
     state.shownRows = rows;
 
+    // Month hierarchy (same as the panel list): under the date sort, group
+    // rows beneath month header rows carrying a select-the-month checkbox.
+    // The total sort stays flat — interleaved headers make no sense there.
+    let html = '';
+    if (rows.length && state.sortBy === 'date') {
+      let lastGroup = null;
+      rows.forEach((row) => {
+        const group = rowMonthGroup(row);
+        if (group !== lastGroup) {
+          html += monthRowHtml(group);
+          lastGroup = group;
+        }
+        html += rowHtml(row, now);
+      });
+    } else if (rows.length) {
+      html = rows.map((row) => rowHtml(row, now)).join('');
+    }
+
     const tbody = $('orderRows');
     tbody.innerHTML = rows.length
-      ? rows.map((row) => rowHtml(row, now)).join('')
+      ? html
       : `<tr class="table-empty"><td colspan="7">${query ? 'No orders match your search.' : 'No orders in this scope.'}</td></tr>`;
 
     $('tableCount').textContent = `${rows.length} shown`;
     updateSortHeaders();
     updateSelectionUi();
+    updateMonthRowStates();
   }
 
   /** Reflect sort state in the header arrows + aria-sort. */
@@ -1185,16 +1234,33 @@
   $('sortDateBtn').addEventListener('click', () => setSort('date'));
   $('sortTotalBtn').addEventListener('click', () => setSort('total'));
 
-  // Row-checkbox changes (delegated — rows re-render often).
+  // Row + month-header checkbox changes (delegated — rows re-render often).
   $('orderRows').addEventListener('change', (event) => {
     const checkbox = event.target;
-    if (!checkbox || checkbox.type !== 'checkbox' || !checkbox.dataset.order) return;
+    if (!checkbox || checkbox.type !== 'checkbox') return;
+
+    // Month header: select/clear every shown order in that month.
+    if (checkbox.classList.contains('month-check')) {
+      const numbers = monthGroupOrderNumbers(checkbox.dataset.month);
+      if (checkbox.checked) numbers.forEach((n) => state.selected.add(n));
+      else numbers.forEach((n) => state.selected.delete(n));
+      numbers.forEach((n) => {
+        const rowBox = $('orderRows').querySelector(`input[data-order="${CSS.escape(n)}"]`);
+        if (rowBox) rowBox.checked = checkbox.checked;
+      });
+      checkbox.indeterminate = false;
+      updateSelectionUi();
+      return;
+    }
+
+    if (!checkbox.dataset.order) return;
     if (checkbox.checked) {
       state.selected.add(checkbox.dataset.order);
     } else {
       state.selected.delete(checkbox.dataset.order);
     }
     updateSelectionUi();
+    updateMonthRowStates();
   });
 
   /** Send the selected+shown orders to the panel for export. */

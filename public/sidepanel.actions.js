@@ -202,6 +202,8 @@
     const pageLimitInput = document.getElementById("pageLimit");
     const startButton = document.getElementById("startCollection");
     const pageLimit = parseInt(pageLimitInput ? pageLimitInput.value : "0", 10);
+    // A fresh run invalidates last run's "no orders found" explanation.
+    view.clearStatusBanner("collectionEmptyResult");
     setCollectionButtonsState({ running: true });
     view.setButtonLoading(startButton, true);
     // Reveal the list/download sections the moment collection starts (spec
@@ -546,8 +548,20 @@
         setTimeout(updateProgress, 1000);
         setCheckboxesDisabled(true);
       } else {
+        const justFinished = app.collectionInProgress; // was collecting on the previous poll
         app.collectionInProgress = false;
         if (matches) view.updateProgressUI(response.currentPage, response.pageLimit, false);
+        // A collection that ran to completion and found NOTHING deserves an
+        // explanation, not a silent empty list — the usual cause is an
+        // over-narrow order-type/date filter in Options (2026-07-19).
+        if (justFinished && matches && (response.orderNumbers || []).length === 0) {
+          view.renderStatusBanner("collectionEmptyResult", {
+            variant: "warning",
+            message:
+              "No orders found. If you set an order type or date range in Options, try widening or clearing it.",
+            dismissible: true,
+          });
+        }
         // Chained (not fire-and-forget): setCollectionButtonsState's
         // default label reads state.app.hasOrders, which renderOrderList
         // only refreshes once its async DB read resolves — must run first.
