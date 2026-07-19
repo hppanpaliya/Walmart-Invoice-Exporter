@@ -237,13 +237,7 @@
       }
 
       try {
-        const current = await ChromeApi.tabsGet(downloadTab.id);
-        // Already parked on this URL (fast invoice reuses ONE list tab for every
-        // order) — don't re-navigate, which would needlessly reload the page.
-        if (current && normalizeUrl(current.url) === normalizeUrl(url)) {
-          downloadTab = current;
-          return downloadTab;
-        }
+        await ChromeApi.tabsGet(downloadTab.id);
         const { promise, cleanup } = createTabLoadWaiter(downloadTab.id, url);
         try {
           downloadTab = await ChromeApi.tabsUpdate(downloadTab.id, { url });
@@ -260,11 +254,32 @@
     };
 
     /**
+     * Ensure a single reusable tab for FAST invoice fetching. Unlike ensureTab,
+     * this never re-navigates: the fast path never loads a per-order page — it
+     * fetches each order's HTML in-page — so ANY already-open orders tab works
+     * (the content script + main-world bridge run on every walmart.com/orders*
+     * URL). Only opens a tab (on the orders list) when none exists yet.
+     */
+    const ensureFastTab = async (listUrl, timeoutMs) => {
+      if (downloadTab) {
+        try {
+          await ChromeApi.tabsGet(downloadTab.id);
+          return downloadTab; // reuse as-is — do NOT navigate it
+        } catch (error) {
+          downloadTab = null; // it was closed; fall through to create a new one
+        }
+      }
+      downloadTab = await ChromeApi.tabsCreate({ url: listUrl, active: false });
+      await waitForTabLoad(downloadTab, listUrl, timeoutMs);
+      return downloadTab;
+    };
+
+    /**
      * Fast invoice: fetch one order's full invoice from its detail HTML via the
      * content script's main-world bridge — NO per-order tab navigation. Reuses a
-     * single tab parked on the provider's orders list. Returns the invoice, or
-     * null to signal a fallback to the classic per-order page flow (which
-     * fetchOrderData then performs). Persists to IndexedDB on success.
+     * single tab (any open orders tab, else opens the orders list). Returns the
+     * invoice, or null to signal a fallback to the classic per-order page flow.
+     * Persists to IndexedDB on success.
      */
     const fetchViaFastInvoice = async (orderNumber, providerId, options = {}) => {
       const { timeoutMs = CONSTANTS.TIMING.DOWNLOAD_TIMEOUT } = options;
@@ -274,7 +289,7 @@
       if (!adapter || !adapter.supportsFastInvoice) return null;
 
       const listUrl = (adapter && adapter.ordersListUrl) || CONSTANTS.URLS.WALMART_ORDERS;
-      const tab = await ensureTab(listUrl, timeoutMs);
+      const tab = await ensureFastTab(listUrl, timeoutMs);
       // Give a freshly-opened list tab a beat to install its content script and
       // main-world bridge before the first message, so the first order doesn't
       // fall back to a full order-page load. Reused tab → no wait.
