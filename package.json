@@ -6,6 +6,8 @@
     "dev": "wxt",
     "build": "wxt build",
     "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox --mv3",
+    "build:firefox": "wxt build -b firefox --mv3",
     "test": "node --test tests/*.test.js",
     "test:e2e": "node --test --test-concurrency=1 tests/e2e/*.e2e.js",
     "test:all": "npm test && npm run test:e2e",
