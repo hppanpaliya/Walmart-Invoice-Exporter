@@ -102,6 +102,25 @@ test('computeDashboardStats measures ONLY fully downloaded invoices — no half 
   assert.equal(stats.totalDonations, 1);
 });
 
+test('computeDashboardStats falls back to the summary total when a measured invoice has no total (fast-path invoices)', () => {
+  const sandbox = loadDashboardSandbox();
+  // The fast (in-page fetch) invoice path stores line items but the SSR order
+  // node carries no price block, so invoice.orderTotal comes back empty even
+  // though the order IS a full, measured invoice. The purchase-history summary
+  // still has the total — measure with it instead of showing $0.
+  const stats = sandbox.computeDashboardStats([
+    {
+      orderNumber: '555',
+      orderDate: '2026-06-01T00:00:00.000Z',
+      summary: { orderDate: '2026-06-01T00:00:00.000Z', orderTotal: '$76.88' },
+      invoice: { schemaVersion: 3, orderTotal: '', items: [{ productName: 'X', quantity: 1 }] },
+    },
+  ]);
+  assert.equal(stats.invoiceCount, 1, 'still counts as a measured invoice');
+  assert.equal(stats.totalSpend, 76.88, 'total comes from the summary, not $0');
+  assert.equal(stats.monthly[0].total, 76.88, 'monthly bucket uses the fallback total too');
+});
+
 test('computeDashboardStats groups monthly spend by ISO month, sorted ascending', () => {
   const sandbox = loadDashboardSandbox();
   const stats = sandbox.computeDashboardStats(syntheticRecords());

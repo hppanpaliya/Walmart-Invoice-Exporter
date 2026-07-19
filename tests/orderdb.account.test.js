@@ -3,8 +3,10 @@
 /**
  * OrderDb per-account scoping (multi-account support): records are tagged with a
  * hashed account key at collection time, and getAllOrders(provider, accountKey)
- * returns only that account's records (plus untagged legacy, grandfathered).
- * stampUntaggedAccount migrates untagged records into an account.
+ * returns ONLY that account's records. Untagged legacy records live in their own
+ * bucket (selected via ACCOUNTS.UNTAGGED) and are never silently merged into a
+ * real account — the old grandfather/stamp behaviour leaked and erased data
+ * across accounts and has been removed.
  */
 
 const { test } = require('node:test');
@@ -35,23 +37,27 @@ test('getAllOrders scopes to one account; a different account is hidden', async 
   assert.deepEqual(all.map((r) => r.orderNumber).sort(), ['a1', 'b1']);
 });
 
-test('untagged (legacy) records are grandfathered — shown for any account until stamped', async () => {
+test('untagged (legacy) records are their own bucket — never leaked into a real account', async () => {
   const sandbox = loadDb();
   const OrderDb = evalIn(sandbox, 'OrderDb');
+  const UNTAGGED = evalIn(sandbox, 'CONSTANTS.ACCOUNTS.UNTAGGED');
 
   // Legacy record with no accountKey (4th arg omitted).
   await OrderDb.putSummaries({ old1: summ('2025-12-01T00:00:00.000Z') }, {}, 'WALMART_US');
   await OrderDb.putSummaries({ a1: summ('2026-01-01T00:00:00.000Z') }, {}, 'WALMART_US', 'ACCT_A');
 
-  // Filtering by A shows A's own + the untagged legacy one.
+  // Selecting account A shows ONLY A's orders — the untagged legacy one does
+  // NOT leak in (this is the bug fix: no cross-account grandfathering).
   const forA = await OrderDb.getAllOrders('WALMART_US', 'ACCT_A');
-  assert.deepEqual(forA.map((r) => r.orderNumber).sort(), ['a1', 'old1']);
+  assert.deepEqual(forA.map((r) => r.orderNumber), ['a1']);
 
-  // Grandfather untagged into A → now it belongs to A, hidden from B.
-  const tagged = await OrderDb.stampUntaggedAccount('WALMART_US', 'ACCT_A');
-  assert.equal(tagged, 1);
+  // ...and a different account sees neither A's nor the untagged orders.
   const forB = await OrderDb.getAllOrders('WALMART_US', 'ACCT_B');
-  assert.deepEqual(forB.map((r) => r.orderNumber), [], 'B sees nothing after legacy is absorbed into A');
+  assert.deepEqual(forB.map((r) => r.orderNumber), []);
+
+  // The untagged bucket is reachable on its own via the UNTAGGED sentinel.
+  const untagged = await OrderDb.getAllOrders('WALMART_US', UNTAGGED);
+  assert.deepEqual(untagged.map((r) => r.orderNumber), ['old1']);
 });
 
 test('clearAccount deletes ONE account; others untouched; null clears untagged', async () => {

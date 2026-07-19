@@ -70,7 +70,16 @@ function computeDashboardStats(records) {
     if (!invoice) return; // summary-only orders are NOT measured
     invoiceCount += 1;
 
-    const total = parseNumericValue(invoice.orderTotal);
+    // Prefer the downloaded invoice's grand total, but fall back to the
+    // summary total captured at collection time. The fast (in-page fetch)
+    // invoice path parses an order's SSR __NEXT_DATA__, which carries the
+    // line items but NOT the price block (Walmart loads pricing client-side
+    // after hydration) — so invoice.orderTotal is often empty even though the
+    // order IS a full, measured invoice. The purchase-history summary always
+    // has the order total, so use it rather than showing $0.
+    const total =
+      parseNumericValue(invoice.orderTotal) ||
+      parseNumericValue((record.summary && record.summary.orderTotal) || record.orderTotal || '');
     if (total) {
       totalSpend += total;
       totaledOrders += 1;

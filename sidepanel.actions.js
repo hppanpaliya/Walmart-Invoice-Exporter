@@ -303,13 +303,6 @@
       }
 
       await view.displayOrderNumbers(orderNumbers, titles);
-
-      if (!document.getElementById("cacheInfo")) {
-        view.renderStatusBanner("cacheInfo", {
-          variant: "info",
-          message: `Loaded ${orderNumbers.length} orders from the local database`,
-        });
-      }
       return true;
     } catch (error) {
       console.warn("Could not load orders from the DB:", error);
@@ -345,9 +338,152 @@
   }
 
   function loadCacheOnMainPage() {
-    chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.GET_PROGRESS }, function (response) {
-      renderOrderList(response);
+    // Resolve which account we're viewing FIRST (renderAccountSwitcher settles
+    // app.accountKey), so the list read below is scoped to the right account
+    // rather than briefly showing everything before snapping to one account.
+    renderAccountSwitcher().finally(() => {
+      chrome.runtime.sendMessage({ action: CONSTANTS.MESSAGES.GET_PROGRESS }, function (response) {
+        renderOrderList(response);
+      });
     });
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Multi-account switcher (side-panel side; the dashboard renders its
+   * own from the same shared storage keys, so switching/renaming in one
+   * surface reflects in the other). Shown only when ≥2 accounts have data.
+   * ------------------------------------------------------------------ */
+
+  let accountSwitcherRenaming = false;
+
+  function readAccountMaps() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(
+        [CONSTANTS.STORAGE_KEYS.ACCOUNT_LABELS, CONSTANTS.STORAGE_KEYS.ACCOUNT_ORDINALS],
+        (res) => {
+          resolve({
+            labels: (res && res[CONSTANTS.STORAGE_KEYS.ACCOUNT_LABELS]) || {},
+            ordinals: (res && res[CONSTANTS.STORAGE_KEYS.ACCOUNT_ORDINALS]) || {},
+          });
+        }
+      );
+    });
+  }
+
+  function wireAccountSwitcher() {
+    const select = document.getElementById("accountSelect");
+    const renameBtn = document.getElementById("accountRenameButton");
+    const input = document.getElementById("accountRenameInput");
+    if (select && !select.dataset.wired) {
+      select.dataset.wired = "1";
+      select.addEventListener("change", () => {
+        const value = select.value;
+        if (value === app.accountKey) return;
+        app.accountKey = value;
+        chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.CURRENT_ACCOUNT]: value });
+        loadCacheOnMainPage();
+      });
+    }
+    if (renameBtn && !renameBtn.dataset.wired) {
+      renameBtn.dataset.wired = "1";
+      renameBtn.addEventListener("click", beginAccountRename);
+    }
+    if (input && !input.dataset.wired) {
+      input.dataset.wired = "1";
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") commitAccountRename(true);
+        else if (event.key === "Escape") commitAccountRename(false);
+      });
+      input.addEventListener("blur", () => commitAccountRename(true));
+    }
+  }
+
+  function beginAccountRename() {
+    const select = document.getElementById("accountSelect");
+    const input = document.getElementById("accountRenameInput");
+    if (!select || !input || !app.accountKey) return;
+    const current = select.selectedOptions && select.selectedOptions[0];
+    accountSwitcherRenaming = true;
+    input.value = (current && current.dataset.name) || "";
+    input.hidden = false;
+    select.hidden = true;
+    input.focus();
+    input.select();
+  }
+
+  async function commitAccountRename(save) {
+    const select = document.getElementById("accountSelect");
+    const input = document.getElementById("accountRenameInput");
+    if (!input || !select || input.hidden) return; // already committed (guards Escape→blur)
+    accountSwitcherRenaming = false;
+    input.hidden = true;
+    select.hidden = false;
+    if (!save || !app.accountKey) {
+      renderAccountSwitcher();
+      return;
+    }
+    const { labels } = await readAccountMaps();
+    const name = String(input.value || "").trim();
+    const next = { ...labels };
+    if (name) next[app.accountKey] = name;
+    else delete next[app.accountKey]; // clearing the name falls back to "Account N"
+    chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.ACCOUNT_LABELS]: next }, () => renderAccountSwitcher());
+  }
+
+  /**
+   * Render (or hide) the account switcher and keep app.accountKey pointing at a
+   * real, still-present account. Persists newly-assigned ordinals and the
+   * resolved current account so the dashboard sees the same choice.
+   * @returns {Promise<void>}
+   */
+  async function renderAccountSwitcher() {
+    const host = document.getElementById("accountSwitcher");
+    if (!host) return;
+    if (accountSwitcherRenaming) return; // don't rebuild out from under the rename input
+    wireAccountSwitcher();
+
+    let summaries = [];
+    try {
+      summaries = (await OrderDb.getAccountSummaries()) || [];
+    } catch (_) {
+      summaries = [];
+    }
+
+    const { labels, ordinals: storedOrdinals } = await readAccountMaps();
+    const values = summaries.map((summary) => accountSelectionValue(summary.accountKey));
+    const ordinals = assignAccountOrdinals(values, storedOrdinals);
+    if (JSON.stringify(ordinals) !== JSON.stringify(storedOrdinals)) {
+      chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.ACCOUNT_ORDINALS]: ordinals });
+    }
+
+    const selected = resolveSelectedAccount(summaries, app.accountKey);
+    if (selected !== app.accountKey) {
+      app.accountKey = selected;
+      chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.CURRENT_ACCOUNT]: selected });
+    }
+
+    // Hide the control when there's nothing to switch between (single account
+    // behaves exactly as before), or when this panel is embedded in the
+    // dashboard — the dashboard renders its own switcher in the top bar, so we
+    // avoid showing two. The account is already resolved above either way.
+    if (summaries.length < 2 || window.self !== window.top) {
+      host.hidden = true;
+      return;
+    }
+
+    const select = document.getElementById("accountSelect");
+    if (select) {
+      select.innerHTML = "";
+      buildAccountOptions(summaries, { labels, ordinals, selected }).forEach((option) => {
+        const el = document.createElement("option");
+        el.value = option.value;
+        el.dataset.name = option.name;
+        el.textContent = `${option.name} · ${option.orderCount} order${option.orderCount === 1 ? "" : "s"}`;
+        if (option.selected) el.selected = true;
+        select.appendChild(el);
+      });
+    }
+    host.hidden = false;
   }
 
   function updateProgress() {
@@ -402,6 +538,7 @@
     displayOrdersFromDb,
     renderOrderList,
     loadCacheOnMainPage,
+    renderAccountSwitcher,
     updateProgress,
   };
 })();

@@ -1539,7 +1539,15 @@ function extractOrderDataFromNextData(providedOrderNode) {
     orderSubtotal: cleanText(priceDetails?.subTotal?.displayValue || ''),
     subtotalBeforeSavings: cleanText(priceDetails?.strikethroughSubTotal?.displayValue || ''),
     savings: cleanText(priceDetails?.savings?.displayValue || ''),
-    orderTotal: cleanText(priceDetails?.grandTotalWithTips?.displayValue || priceDetails?.grandTotal?.displayValue || ''),
+    orderTotal: cleanText(
+      priceDetails?.grandTotalWithTips?.displayValue ||
+        priceDetails?.grandTotal?.displayValue ||
+        // Purchase-history nodes (and some order-detail SSR payloads) expose the
+        // total as priceDetails.orderTotal instead of grandTotal — fall back to
+        // it so the fast path never stores an empty total.
+        priceDetails?.orderTotal?.displayValue ||
+        ''
+    ),
     deliveryCharges: getFeeAmount(feeBreakdown, 'delivery') || '',
     bagFee: getFeeAmount(feeBreakdown, 'bag fee') || getFeeAmount(feeBreakdown, 'bag') || '',
     tax: cleanText(priceDetails?.taxTotal?.displayValue || ''),

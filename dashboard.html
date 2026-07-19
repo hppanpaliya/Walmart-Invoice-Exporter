@@ -41,6 +41,19 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9"/><polyline points="21 3 21 9 15 9"/></svg>
                     Check for new orders
                 </button>
+                <!-- Multi-account switcher: populated by dashboard.page.js from
+                     OrderDb.getAccountSummaries() via buildAccountOptions(), and
+                     kept in sync with the shared CURRENT_ACCOUNT storage key (the
+                     side panel writes the same key). Hidden while there is only
+                     one account bucket. The pencil swaps the select for an inline
+                     rename input (accountRenameInput). -->
+                <div class="account-switcher" id="accountSwitcher" hidden>
+                    <select class="scope-select account-select" id="accountSelect" aria-label="Account"></select>
+                    <input type="text" class="scope-select account-rename-input" id="accountRenameInput" aria-label="Account name" maxlength="60" hidden>
+                    <button id="accountRenameBtn" class="btn btn-quiet account-rename" type="button" title="Rename this account" aria-label="Rename this account">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+                    </button>
+                </div>
                 <button id="settingsBtn" class="btn btn-quiet" type="button" title="Settings" aria-label="Settings">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                 </button>
@@ -136,9 +149,24 @@
                         </label>
                         <div class="selbar">
                             <span><strong id="selCount">0 selected</strong> · of <span id="tableCount">0 shown</span></span>
-                            <button class="btn" id="exportSingleBtn" type="button" disabled>Single file</button>
-                            <button class="btn btn-primary" id="exportMultipleBtn" type="button" disabled>Multiple files</button>
+                            <button class="btn" id="exportSingleBtn" type="button" disabled title="Download one file containing every selected order">Single file</button>
+                            <button class="btn btn-primary" id="exportMultipleBtn" type="button" disabled title="Download one file per selected order">Multiple files</button>
+                            <button class="btn" id="exportFetchBtn" type="button" disabled title="Fetch full invoice details into your library — no file downloaded">Fetch data</button>
                         </div>
+                    </div>
+                    <!-- Export format applies to the two file exports above; choose
+                         it before exporting rather than hunting for it below. -->
+                    <div class="fmt-row">
+                        <span>Export format:</span>
+                        <select class="scope-select" id="pageExportFormat" aria-label="Export format">
+                            <option value="xlsx">Excel (.xlsx)</option>
+                            <option value="csv">CSV (.csv)</option>
+                            <option value="json">JSON (.json)</option>
+                            <option value="receipt">Printable receipt (.html)</option>
+                            <option value="pdf">PDF receipt (.pdf)</option>
+                        </select>
+                        <label><input type="checkbox" id="pageIncludeThumbnails"> Include product thumbnails</label>
+                        <label><input type="checkbox" id="pageLegacyExcel"> Use legacy Excel layout</label>
                     </div>
                     <div class="table-wrap">
                         <table>
@@ -155,18 +183,6 @@
                             </thead>
                             <tbody id="orderRows"></tbody>
                         </table>
-                    </div>
-                    <div class="fmt-row">
-                        <span>Export format:</span>
-                        <select class="scope-select" id="pageExportFormat" aria-label="Export format">
-                            <option value="xlsx">Excel (.xlsx)</option>
-                            <option value="csv">CSV (.csv)</option>
-                            <option value="json">JSON (.json)</option>
-                            <option value="receipt">Printable receipt (.html)</option>
-                            <option value="pdf">PDF receipt (.pdf)</option>
-                        </select>
-                        <label><input type="checkbox" id="pageIncludeThumbnails"> Include product thumbnails</label>
-                        <label><input type="checkbox" id="pageLegacyExcel"> Use legacy Excel layout</label>
                     </div>
                 </section>
             </main>
