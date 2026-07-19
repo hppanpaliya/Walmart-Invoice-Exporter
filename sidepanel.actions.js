@@ -90,6 +90,21 @@
       const url = tab && tab.url;
       view.clearOffTabWarning();
 
+      // If this is a Walmart orders tab, ask its content script which account
+      // is logged in. If it differs from what the list is showing, switch the
+      // list to that account (so a logout/login instantly changes the view).
+      if (tab && url && /^https:\/\/www\.walmart\.(com|ca)\/orders/.test(url)) {
+        chrome.tabs.sendMessage(tab.id, { action: CONSTANTS.MESSAGES.GET_ACCOUNT_KEY }, (resp) => {
+          void chrome.runtime.lastError;
+          const key = resp && resp.accountKey;
+          if (key && key !== app.accountKey) {
+            app.accountKey = key;
+            chrome.storage.local.set({ currentAccountKey: key });
+            loadCacheOnMainPage();
+          }
+        });
+      }
+
       // The Walmart-on-its-own-tab experience is IDENTICAL to before:
       // single-order view on an order page, live filter notice and a
       // filter-scoped crawl URL on the list page. (Under the combined view
@@ -245,7 +260,8 @@
   async function displayOrdersFromDb(progress = null) {
     try {
       const scopeIds = await activeScopeIds();
-      const perProvider = await Promise.all(scopeIds.map((providerId) => OrderDb.getAllOrders(providerId)));
+      const acct = (app && app.accountKey) || null;
+      const perProvider = await Promise.all(scopeIds.map((providerId) => OrderDb.getAllOrders(providerId, acct)));
       const records = perProvider.flat();
       const withData = records.filter((record) => record.summary || record.invoice);
       withData.sort((a, b) => String(b.orderDate).localeCompare(String(a.orderDate)));

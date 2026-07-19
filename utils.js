@@ -1819,6 +1819,11 @@ const CONSTANTS = {
     CLICK_NEXT_BUTTON: 'clickNextButton',
     BLOCK_IMAGES: 'blockImagesForDownload',
     GET_ORDER_DATA: 'getOrderData',
+    // Returns a non-reversible key for the Walmart account logged into THIS
+    // page (SHA-256 of the CID cookie), so saved data can be scoped per account
+    // — a different account's orders don't show after a logout/login. The raw
+    // CID never leaves the page; only the hash is used, on-device.
+    GET_ACCOUNT_KEY: 'getAccountKey',
     // Fast invoice: fetch one order's full invoice by HTML-fetching its detail
     // page and parsing __NEXT_DATA__ — no tab navigation. Handled by adapters
     // that set supportsFastInvoice; used only when the fast setting is on.

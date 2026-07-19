@@ -164,6 +164,13 @@ document.addEventListener("DOMContentLoaded", async function () {
     });
   });
 
+  // Hydrate the account the list is scoped to (last one collected/detected), so
+  // the very first render already shows only that account's orders. A live
+  // Walmart orders tab refreshes it (actions.checkCurrentTab).
+  chrome.storage.local.get(["currentAccountKey"], (res) => {
+    app.accountKey = res.currentAccountKey || null;
+  });
+
   const incrementalToggle = document.getElementById("incrementalCollect");
   chrome.storage.local.get(["incrementalCollect", "fastFetch"], (res) => {
     app.incrementalCollect = Boolean(res.incrementalCollect);

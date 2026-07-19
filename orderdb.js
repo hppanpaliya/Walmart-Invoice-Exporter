@@ -116,7 +116,7 @@ const OrderDb = (() => {
    * @param {Object} additionalFields - orderNumber → title
    * @param {string} [provider] - provider partition (defaults to WALMART_US)
    */
-  async function putSummaries(orderSummaries = {}, additionalFields = {}, provider = DEFAULT_PROVIDER) {
+  async function putSummaries(orderSummaries = {}, additionalFields = {}, provider = DEFAULT_PROVIDER, accountKey = null) {
     const entries = Object.entries(orderSummaries || {});
     if (entries.length === 0) return 0;
 
@@ -142,6 +142,9 @@ const OrderDb = (() => {
           title: additionalFields[orderNumber] || existing?.title || '',
           summary: summaryToStore,
           invoice: existing?.invoice || null,
+          // Which Walmart account this order belongs to (null = untagged legacy).
+          // A known key always wins; never blank out an existing tag.
+          accountKey: accountKey || existing?.accountKey || null,
           firstSeenAt: existing?.firstSeenAt || now,
           updatedAt: now,
         });
@@ -156,7 +159,7 @@ const OrderDb = (() => {
    * @param {Object} invoice - order data from the content script
    * @param {string} [provider] - provider partition (defaults to WALMART_US)
    */
-  async function putInvoice(orderNumber, invoice, provider = DEFAULT_PROVIDER) {
+  async function putInvoice(orderNumber, invoice, provider = DEFAULT_PROVIDER, accountKey = null) {
     if (!orderNumber || !invoice) return;
 
     const now = Date.now();
@@ -171,6 +174,7 @@ const OrderDb = (() => {
         title: existing?.title || '',
         summary: existing?.summary || null,
         invoice,
+        accountKey: accountKey || existing?.accountKey || null,
         firstSeenAt: existing?.firstSeenAt || now,
         updatedAt: now,
       });
@@ -188,12 +192,44 @@ const OrderDb = (() => {
 
   /**
    * @param {string} [provider] - provider partition (defaults to WALMART_US)
-   * @returns {Promise<Object[]>} every record for the provider
+   * @param {string|null} [accountKey] - when set, return only this account's
+   *   records PLUS untagged legacy records (grandfathered until re-collected);
+   *   when null/absent, no account filter (we don't know the current account).
+   * @returns {Promise<Object[]>} matching records for the provider
    */
-  function getAllOrders(provider = DEFAULT_PROVIDER) {
+  function getAllOrders(provider = DEFAULT_PROVIDER, accountKey = null) {
     return withStore('readonly', async (store) => {
       const all = (await requestToPromise(store.getAll())) || [];
-      return all.filter((record) => record && record.provider === provider);
+      return all.filter((record) => {
+        if (!record || record.provider !== provider) return false;
+        if (!accountKey) return true; // current account unknown → show everything
+        return !record.accountKey || record.accountKey === accountKey;
+      });
+    });
+  }
+
+  /**
+   * Grandfather untagged records into an account: stamp `accountKey` on every
+   * record for `provider` that has none yet. Called once when a collection first
+   * learns the current account, so pre-existing (untagged) data becomes owned by
+   * that account and stops showing for a different one.
+   * @param {string} provider
+   * @param {string} accountKey
+   * @returns {Promise<number>} how many records were tagged
+   */
+  function stampUntaggedAccount(provider, accountKey) {
+    if (!accountKey) return Promise.resolve(0);
+    return withStore('readwrite', async (store) => {
+      const all = (await requestToPromise(store.getAll())) || [];
+      let tagged = 0;
+      all.forEach((record) => {
+        if (record && record.provider === provider && !record.accountKey) {
+          record.accountKey = accountKey;
+          store.put(record);
+          tagged += 1;
+        }
+      });
+      return tagged;
     });
   }
 
@@ -318,6 +354,7 @@ const OrderDb = (() => {
     getStats,
     clearAll,
     clearEverything,
+    stampUntaggedAccount,
     markUsed,
     enforceInactivityRetention,
   };
