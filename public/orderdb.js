@@ -365,7 +365,7 @@ const OrderDb = (() => {
     if (typeof lastUsed !== 'number') return 0;
 
     const spec = (typeof CONSTANTS !== 'undefined' && CONSTANTS.DATA_RETENTION) || {
-      defaultDays: 30,
+      defaultDays: 180,
       minDays: 1,
       maxDays: 3650,
     };

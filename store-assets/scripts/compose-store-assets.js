@@ -17,7 +17,7 @@ const WORK = path.join(__dirname, 'compose-work');
 for (const dir of [OUT_SHOTS, OUT_TILES, WORK]) fs.mkdirSync(dir, { recursive: true });
 
 const img = (name) => `file://${path.join(RAW, name)}`;
-const icon = (name) => `file://${path.join(REPO, 'images', name)}`;
+const icon = (name) => `file://${path.join(REPO, 'public', 'images', name)}`;
 
 const BASE_CSS = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -134,7 +134,14 @@ const SPECS = [
       img('dash-light.png')),
   },
   {
-    out: path.join(OUT_SHOTS, '02-export-formats-1280x800.png'), w: 1280, h: 800,
+    out: path.join(OUT_SHOTS, '02-invoice-drilldown-1280x800.png'), w: 1280, h: 800,
+    html: heroHtml('bg-light',
+      'Every order expands into<br><span class="accent">a full invoice</span>',
+      'Click any row: items, prices, savings, tax, and payment details — right in the table.',
+      img('dash-invoice.png')),
+  },
+  {
+    out: path.join(OUT_SHOTS, '03-export-formats-1280x800.png'), w: 1280, h: 800,
     html: splitHtml('bg-light',
       'Five formats.<br><span class="accent">Two clicks.</span>',
       `<div class="sub">One combined workbook or one file per order — with product photos if you want them.</div>
@@ -142,18 +149,11 @@ const SPECS = [
       img('panel-list.png')),
   },
   {
-    out: path.join(OUT_SHOTS, '03-month-drilldown-1280x800.png'), w: 1280, h: 800,
-    html: heroHtml('bg-light',
-      'Click any month to see<br><span class="accent">exactly where it went</span>',
-      'Totals, price watch, and most-bought all rescope together — then export just that month.',
-      img('dash-month.png')),
-  },
-  {
-    out: path.join(OUT_SHOTS, '04-dark-mode-1280x800.png'), w: 1280, h: 800,
+    out: path.join(OUT_SHOTS, '04-month-drilldown-dark-1280x800.png'), w: 1280, h: 800,
     html: heroHtml('bg-dark',
-      'Easy on the eyes',
-      'Automatic dark mode across the dashboard and the panel — or pick your own.',
-      img('dash-dark.png')),
+      'Click any month to see<br><span class="accent">exactly where it went</span>',
+      'Totals, insights, and most-bought all rescope together — shown in the built-in dark mode.',
+      img('dash-month-dark.png')),
   },
   {
     out: path.join(OUT_SHOTS, '05-privacy-1280x800.png'), w: 1280, h: 800,

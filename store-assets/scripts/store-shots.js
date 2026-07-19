@@ -1,6 +1,6 @@
 /**
- * Capture raw UI screenshots (v7.3, seeded PII-free data) for the Chrome Web
- * Store listing kit. Output: scratchpad/store-raw/*.png
+ * Capture raw UI screenshots (v8.x, seeded PII-free data) for the Chrome Web
+ * Store listing kit. Output: store-assets/scripts/store-raw/*.png
  */
 'use strict';
 
@@ -25,19 +25,25 @@ const raw = (name) => path.join(OUT, name);
     await frame.waitForSelector('.order-list .order-row', { timeout: 10000 });
     await dash.waitForTimeout(800);
 
-    // 1. Dashboard hero (light)
+    // 1. Dashboard hero (light): stats, chart, insights, embedded panel.
     await dash.screenshot({ path: raw('dash-light.png') });
     console.log('dash-light');
 
-    // 2. Month drill-down (pick a mid bar so the chart shows a highlight)
-    // Pick the richest visible month so the insight cards have content.
-    const bars = dash.locator('.cbar');
-    await bars.nth(0).click();
+    // 2. Expanded inline invoice (v8): open a fully-fetched order in the
+    // orders table so the item list + money breakdown render.
+    const invoiceRow = dash.locator('tr.order-row:has(.saved-chip)').first();
+    await invoiceRow.scrollIntoViewIfNeeded();
+    await invoiceRow.click();
+    await dash.waitForSelector('.detail-wrap', { timeout: 10000 });
+    // Frame the month rows + expanded detail nicely in the viewport.
+    await dash.locator('.detail-wrap').scrollIntoViewIfNeeded();
+    await dash.evaluate(() => window.scrollBy(0, -180));
+    await dash.waitForTimeout(500);
+    await dash.screenshot({ path: raw('dash-invoice.png') });
+    console.log('dash-invoice');
+    await invoiceRow.click(); // collapse again
+    await dash.evaluate(() => window.scrollTo(0, 0));
     await dash.waitForTimeout(400);
-    await dash.screenshot({ path: raw('dash-month.png') });
-    console.log('dash-month');
-    await dash.locator('#backChip').click();
-    await dash.waitForTimeout(300);
 
     // 3. Embedded panel close-up: select two orders so the export area is live
     const boxes = frame.locator('.order-list input[type="checkbox"]');
@@ -62,6 +68,15 @@ const raw = (name) => path.join(OUT, name);
     await dash.waitForTimeout(600);
     await dash.screenshot({ path: raw('dash-dark.png') });
     console.log('dash-dark');
+
+    // 6. Month drill-down, dark (drill-down + dark mode share one slot):
+    // click the richest visible bar so the insight cards have content.
+    await dash.locator('.cbar').nth(0).click();
+    await dash.waitForTimeout(500);
+    await dash.screenshot({ path: raw('dash-month-dark.png') });
+    console.log('dash-month-dark');
+    await dash.locator('#backChip').click();
+    await dash.waitForTimeout(300);
     await dash.evaluate(() => chrome.storage.local.set({ theme: 'system' }));
 
     // Overflow sanity

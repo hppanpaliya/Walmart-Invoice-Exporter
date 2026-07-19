@@ -1915,7 +1915,7 @@ const CONSTANTS = {
   // on the device. An active user's clock keeps resetting, so they never lose
   // anything. NOT per-order aging.
   DATA_RETENTION: {
-    defaultDays: 30,
+    defaultDays: 180,
     minDays: 1,
     maxDays: 3650,
   },

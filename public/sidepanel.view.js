@@ -424,8 +424,37 @@
     return orderNumber.length >= 20 ? `${baseUrl}?storePurchase=true` : baseUrl;
   }
 
+  /** Format a stored money value ("37", "23.7", "$4.91") in `currency` for display. Values with no digits pass through untouched — never fabricates "$0.00" for an unknown amount. */
+  function formatDisplayMoney(value, currency) {
+    const raw = String(value ?? "").trim();
+    if (!raw || !/\d/.test(raw)) return raw;
+    const amount = parseNumericValue(raw);
+    const code = String(currency || "USD").toUpperCase();
+    if (code === "USD") {
+      return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: code,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(amount);
+    } catch (error) {
+      return `${code} ${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+  }
+
+  /** Display currency for a row: its provider's, falling back to USD. */
+  function rowCurrency(row) {
+    const providerId = (row && row.providerId) || "WALMART_US";
+    return Sidepanel.providers && Sidepanel.providers.currencyFor
+      ? Sidepanel.providers.currencyFor(providerId)
+      : "USD";
+  }
+
   /** Build the "Name ×qty [price]" lines + "+ N more" for an expanded row's item list (spec §C). Values are page-derived — always escaped. */
-  function itemLinesHtml(items, withPrice) {
+  function itemLinesHtml(items, withPrice, currency) {
     const list = Array.isArray(items) ? items : [];
     const shown = list.slice(0, 3);
     const more = list.length - shown.length;
@@ -433,7 +462,7 @@
       .map((item) => {
         const name = escapeHtml(item.name || "");
         const qty = item.quantity !== "" && item.quantity !== undefined && item.quantity !== null ? ` ×${escapeHtml(String(item.quantity))}` : "";
-        const price = withPrice && item.price ? `<span class="mono">${escapeHtml(String(item.price))}</span>` : "";
+        const price = withPrice && item.price ? `<span class="mono">${escapeHtml(formatDisplayMoney(item.price, currency))}</span>` : "";
         return `<div class="order-detail-item"><span class="order-detail-item-name">${name}${qty}</span>${price}</div>`;
       })
       .join("");
@@ -444,10 +473,10 @@
   }
 
   /** Build ledger rows, skipping any pair whose value is empty — never fabricates a "$0.00" for an unknown amount (spec §C). */
-  function ledgerRowsHtml(pairs) {
+  function ledgerRowsHtml(pairs, currency) {
     return pairs
       .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "")
-      .map(([label, value]) => `<div class="order-ledger-row"><span>${escapeHtml(label)}</span><span class="mono">${escapeHtml(String(value))}</span></div>`)
+      .map(([label, value]) => `<div class="order-ledger-row"><span>${escapeHtml(label)}</span><span class="mono">${escapeHtml(formatDisplayMoney(value, currency))}</span></div>`)
       .join("");
   }
 
@@ -531,7 +560,8 @@
       itemsBox.className = "order-detail-items";
       itemsBox.innerHTML = itemLinesHtml(
         items.map((item) => ({ name: item?.productName, quantity: item?.quantity, price: item?.price })),
-        true
+        true,
+        rowCurrency(row)
       );
       detail.appendChild(itemsBox);
 
@@ -542,7 +572,7 @@
         ["Tax", row.invoice.tax],
         ["Tip", row.invoice.tip],
         ["Total", row.invoice.orderTotal],
-      ]);
+      ], rowCurrency(row));
       detail.appendChild(ledgerBox);
       detail.appendChild(buildOrderNumberRow(row.orderNumber));
 
@@ -566,7 +596,7 @@
         ["Subtotal", summary.subTotal],
         ["Tip", summary.driverTip],
         ["Total", summary.orderTotal],
-      ]);
+      ], rowCurrency(row));
       detail.appendChild(ledgerBox);
 
       const hint = document.createElement("p");
@@ -686,7 +716,7 @@
     right.className = "order-row-right";
     const totalEl = document.createElement("div");
     totalEl.className = "order-row-total mono";
-    totalEl.textContent = row.total || "";
+    totalEl.textContent = formatDisplayMoney(row.total, rowCurrency(row));
     right.appendChild(totalEl);
     if (row.hasInvoice) {
       right.appendChild(createCacheIndicator(row.orderNumber));
