@@ -68,6 +68,12 @@
         if (Sidepanel.view) Sidepanel.view.updateDownloadButtonLabels();
         break;
       }
+      case "csvPreset": {
+        app.csvPreset = value;
+        const select = document.getElementById("csvPreset");
+        if (select) select.value = value;
+        break;
+      }
       case "includeThumbnails": {
         app.includeThumbnails = value;
         const checkbox = document.getElementById("includeThumbnails");
@@ -144,7 +150,7 @@
     `;
   }
 
-  function exportDefaultsSectionHtml({ exportFormat, includeThumbnails, legacyExcel }) {
+  function exportDefaultsSectionHtml({ exportFormat, csvPreset, includeThumbnails, legacyExcel }) {
     const formatOptions = [
       [CONSTANTS.EXPORT_FORMATS.XLSX, "Excel (.xlsx)"],
       [CONSTANTS.EXPORT_FORMATS.CSV, "CSV (.csv)"],
@@ -155,6 +161,19 @@
       .map(([value, label]) => `<option value="${value}"${value === exportFormat ? " selected" : ""}>${label}</option>`)
       .join("");
 
+    // Same format-dependent controls as the main panel's export options
+    // (sidepanel.js syncExportFormatVisibility): CSV shows its preset,
+    // the two Excel-only toggles show for xlsx.
+    const presetOptions = [
+      [CONSTANTS.CSV_PRESETS.GENERIC, "Generic (orders + items)"],
+      [CONSTANTS.CSV_PRESETS.QUICKBOOKS, "QuickBooks (3-column bank)"],
+      [CONSTANTS.CSV_PRESETS.XERO, "Xero (bank statement)"],
+    ]
+      .map(([value, label]) => `<option value="${value}"${value === csvPreset ? " selected" : ""}>${label}</option>`)
+      .join("");
+    const isCsv = exportFormat === CONSTANTS.EXPORT_FORMATS.CSV;
+    const isXlsx = exportFormat === CONSTANTS.EXPORT_FORMATS.XLSX;
+
     return `
       <div class="settings-section">
         <h3 class="settings-section-title">Export defaults</h3>
@@ -162,11 +181,15 @@
           <label for="settingsExportFormat">Default format</label>
           <select id="settingsExportFormat">${formatOptions}</select>
         </div>
-        <div class="toggle-group">
+        <div class="input-group" id="settingsCsvPresetGroup"${isCsv ? "" : ' style="display:none"'}>
+          <label for="settingsCsvPreset">CSV preset</label>
+          <select id="settingsCsvPreset">${presetOptions}</select>
+        </div>
+        <div class="toggle-group" id="settingsThumbnailsGroup"${isXlsx ? "" : ' style="display:none"'}>
           <input type="checkbox" id="settingsIncludeThumbnails" ${includeThumbnails ? "checked" : ""}>
           <label for="settingsIncludeThumbnails" title="Embeds product images in Excel exports.">Include product photos</label>
         </div>
-        <div class="toggle-group toggle-group-minor">
+        <div class="toggle-group toggle-group-minor" id="settingsLegacyExcelGroup"${isXlsx ? "" : ' style="display:none"'}>
           <input type="checkbox" id="settingsLegacyExcel" ${legacyExcel ? "checked" : ""}>
           <label for="settingsLegacyExcel" title="Single-sheet workbook like older versions (before the Orders/Items split).">Legacy Excel layout</label>
         </div>
@@ -606,9 +629,29 @@
 
   function wireExportDefaultsControls(container) {
     const formatSelect = container.querySelector("#settingsExportFormat");
+    // Live show/hide of the format-dependent rows, mirroring the main panel.
+    const syncFormatVisibility = () => {
+      const value = formatSelect ? formatSelect.value : CONSTANTS.EXPORT_FORMATS.XLSX;
+      const isCsv = value === CONSTANTS.EXPORT_FORMATS.CSV;
+      const isXlsx = value === CONSTANTS.EXPORT_FORMATS.XLSX;
+      const presetGroup = container.querySelector("#settingsCsvPresetGroup");
+      const thumbsGroup = container.querySelector("#settingsThumbnailsGroup");
+      const legacyGroup = container.querySelector("#settingsLegacyExcelGroup");
+      if (presetGroup) presetGroup.style.display = isCsv ? "" : "none";
+      if (thumbsGroup) thumbsGroup.style.display = isXlsx ? "" : "none";
+      if (legacyGroup) legacyGroup.style.display = isXlsx ? "" : "none";
+    };
     if (formatSelect) {
       formatSelect.addEventListener("change", () => {
         persist("exportFormat", formatSelect.value);
+        syncFormatVisibility();
+      });
+    }
+
+    const presetSelect = container.querySelector("#settingsCsvPreset");
+    if (presetSelect) {
+      presetSelect.addEventListener("change", () => {
+        persist("csvPreset", presetSelect.value);
       });
     }
 
@@ -643,6 +686,7 @@
       "incrementalCollect",
       "fastFetch",
       "exportFormat",
+      "csvPreset",
       "includeThumbnails",
       CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL,
       ...CONSTANTS.TIMING_SETTINGS.map((spec) => spec.key),
@@ -656,6 +700,7 @@
     const incrementalCollect = Boolean(stored.incrementalCollect);
     const fastFetch = Boolean(stored.fastFetch);
     const exportFormat = stored.exportFormat || CONSTANTS.EXPORT_FORMATS.XLSX;
+    const csvPreset = stored.csvPreset || CONSTANTS.CSV_PRESETS.GENERIC;
     const includeThumbnails = Boolean(stored.includeThumbnails);
     const legacyExcel = Boolean(stored[CONSTANTS.STORAGE_KEYS.LEGACY_EXCEL]);
     const timings = {};
@@ -703,7 +748,7 @@
     container.innerHTML = [
       themeSectionHtml(theme),
       collectionSectionHtml(pageLimit, incrementalCollect, fastFetch),
-      exportDefaultsSectionHtml({ exportFormat, includeThumbnails, legacyExcel }),
+      exportDefaultsSectionHtml({ exportFormat, csvPreset, includeThumbnails, legacyExcel }),
       providersHtml,
       advancedSectionHtml(timings, retention),
       dataSectionHtml(stats, accounts, currentAccountKey, accountMaps),
