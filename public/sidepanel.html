@@ -131,6 +131,14 @@
         </div>
 
         <div id="progress"></div>
+        <!-- Static (spec §5.1): lives OUTSIDE #orderNumbersContainer so it
+             survives every re-render — an in-progress download's status/
+             progress/cancel controls are never wiped out from under the user
+             by an unrelated order-list refresh. Placed ABOVE the list
+             (2026-07 redesign): with the sticky bottom action bar, anything
+             below the list was invisible while a download ran. -->
+        <p class="action-hint" id="downloadDisabledReason">Select at least one order to download.</p>
+        <div id="downloadProgressArea" class="download-progress-area" hidden></div>
         <!-- Multi-account switcher (hidden unless ≥2 accounts have saved data).
              Populated by Sidepanel.actions.renderAccountSwitcher(); the <select>
              scopes the whole list/export to one account, and the pencil renames
@@ -160,13 +168,8 @@
             </div>
         </div>
 
-        <!-- Static (spec §5.1): survives every re-render of
-             #orderNumbersContainer above, so an in-progress download's
-             status/progress/cancel controls are never wiped out from under
-             the user by an unrelated order-list refresh. -->
+        <!-- Mode explainer for the two download buttons in the sticky bar. -->
         <p class="action-caption">Single = one file with every order. Multiple = one file per order.</p>
-        <p class="action-hint" id="downloadDisabledReason">Select at least one order to download.</p>
-        <div id="downloadProgressArea" class="download-progress-area" hidden></div>
 
         <!-- Format controls (spec §5.1/§5.3): always visible, directly below
              the two download buttons — no longer a collapsed "Export

@@ -1538,6 +1538,10 @@ function extractOrderDataFromNextData(providedOrderNode) {
   const shipmentDetails = extractNextDataShipmentDetails(orderNode);
 
   return {
+    // Same schema stamp as scrapeOrderData: WITHOUT it, putInvoice stores the
+    // fast-fetched invoice but hasInvoice/the dashboard treat it as a pre-v3
+    // record and ignore it — "saved but invisible" (bug fixed 2026-07-19).
+    schemaVersion: CONSTANTS.ORDER_SCHEMA_VERSION,
     orderNumber: normalizeOrderNumberValue(orderNode?.id || orderNode?.displayId),
     orderDate:
       formatOrderDateFromIsoString(orderNode?.orderDate) ||

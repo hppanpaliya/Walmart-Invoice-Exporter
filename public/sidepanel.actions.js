@@ -464,6 +464,19 @@
       summaries = [];
     }
 
+    // Account UI exists only with ≥2 REAL accounts (accountUiVisible,
+    // utils.js): a single-account user — even one with untagged pre-account
+    // data — sees no account chrome, and their view is UNFILTERED so untagged
+    // legacy orders keep showing alongside the tagged ones.
+    if (!accountUiVisible(summaries)) {
+      if (app.accountKey !== null) {
+        app.accountKey = null;
+        chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.CURRENT_ACCOUNT]: null });
+      }
+      host.hidden = true;
+      return;
+    }
+
     const { labels, ordinals: storedOrdinals } = await readAccountMaps();
     const values = summaries.map((summary) => accountSelectionValue(summary.accountKey));
     const ordinals = assignAccountOrdinals(values, storedOrdinals);
@@ -477,11 +490,9 @@
       chrome.storage.local.set({ [CONSTANTS.STORAGE_KEYS.CURRENT_ACCOUNT]: selected });
     }
 
-    // Hide the control when there's nothing to switch between (single account
-    // behaves exactly as before), or when this panel is embedded in the
-    // dashboard — the dashboard renders its own switcher in the top bar, so we
-    // avoid showing two. The account is already resolved above either way.
-    if (summaries.length < 2 || window.self !== window.top) {
+    // Embedded in the dashboard, the dashboard renders its own switcher in
+    // the top bar — don't show two. The account is already resolved above.
+    if (window.self !== window.top) {
       host.hidden = true;
       return;
     }

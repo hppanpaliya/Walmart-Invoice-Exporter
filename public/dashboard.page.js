@@ -808,7 +808,9 @@
       storageSet({ [KEYS.ACCOUNT_ORDINALS]: ordinals });
     }
 
-    const selected = resolveSelectedAccount(summaries, storedCurrent);
+    // Single real account (even alongside untagged legacy data) → no account
+    // UI anywhere and an UNFILTERED view (accountUiVisible, utils.js).
+    const selected = accountUiVisible(summaries) ? resolveSelectedAccount(summaries, storedCurrent) : null;
     if (selected !== storedCurrent) {
       storageSet({ [KEYS.CURRENT_ACCOUNT]: selected });
     }
@@ -829,7 +831,7 @@
     const wrap = $('accountSwitcher');
     if (!wrap) return;
     const summaries = state.accountSummaries || [];
-    if (summaries.length < 2) {
+    if (!accountUiVisible(summaries)) {
       wrap.hidden = true;
       return;
     }

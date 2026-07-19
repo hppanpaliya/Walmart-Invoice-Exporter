@@ -88,3 +88,20 @@ test('buildAccountOptions: renders name + meta + selection, MRU order preserved'
   assert.deepEqual(options.map((o) => o.selected), [false, true, false]);
   assert.equal(options[1].orderCount, 12);
 });
+
+test('accountUiVisible: needs ≥2 REAL accounts — the untagged bucket alone never counts', () => {
+  const sandbox = loadUtils();
+  assert.equal(sandbox.accountUiVisible([]), false, 'no data');
+  assert.equal(sandbox.accountUiVisible([{ accountKey: 'KEY_A' }]), false, 'one real account');
+  assert.equal(
+    sandbox.accountUiVisible([{ accountKey: 'KEY_A' }, { accountKey: null }]),
+    false,
+    'one real + untagged legacy is STILL a single-account user (bug fixed 2026-07-19)'
+  );
+  assert.equal(sandbox.accountUiVisible([{ accountKey: 'KEY_A' }, { accountKey: 'KEY_B' }]), true, 'two real accounts');
+  assert.equal(
+    sandbox.accountUiVisible([{ accountKey: 'KEY_A' }, { accountKey: 'KEY_B' }, { accountKey: null }]),
+    true,
+    'two real + untagged shows the UI (untagged appears as "Earlier orders")'
+  );
+});

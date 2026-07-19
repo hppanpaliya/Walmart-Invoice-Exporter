@@ -2335,6 +2335,19 @@ function accountSelectionValue(accountKey) {
 }
 
 /**
+ * Whether any account UI (switcher, per-account lists) should exist at all:
+ * only when TWO OR MORE real accounts have saved data. The untagged legacy
+ * bucket alone never counts — a single-account user with some pre-account
+ * data is still a single-account user and must see zero account chrome
+ * (their view shows everything, unfiltered).
+ * @param {Array<{accountKey: string|null}>} summaries - from getAccountSummaries()
+ * @returns {boolean}
+ */
+function accountUiVisible(summaries = []) {
+  return (summaries || []).filter((s) => s && s.accountKey).length >= 2;
+}
+
+/**
  * Assign stable "Account N" ordinals to any accounts that don't have one yet,
  * without ever renumbering the ones that do (so a new account never bumps an
  * existing account's number). The untagged bucket gets no ordinal — it's shown
