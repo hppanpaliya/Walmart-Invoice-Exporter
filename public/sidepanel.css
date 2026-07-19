@@ -586,7 +586,9 @@ body {
 .action-caption {
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
-  margin-top: var(--space-2);
+  /* Clear space under the sticky action bar so the caption never reads as
+     glued to (or under) it. */
+  margin-top: var(--space-4);
   text-align: center;
 }
 
@@ -638,7 +640,9 @@ body {
 #buttonGroup .btn {
   flex: 1;
   justify-content: center;
-  padding: 10px 16px;
+  /* Compact (user feedback 2026-07-19): the collect card was dominating the
+     panel — smaller button, quieter presence. */
+  padding: 8px 12px;
 }
 
 .collect-caption {
@@ -2128,9 +2132,12 @@ body.first-run .export-options-panel {
    e2e behavioral tests encode it. */
 .action-bar {
   position: sticky;
-  bottom: calc(var(--space-3) * -1);
+  bottom: 0;
   z-index: 20;
-  margin: var(--space-3) calc(var(--space-3) * -1) calc(var(--space-3) * -1);
+  /* Horizontal bleed to the panel edges; NO negative bottom margin — that
+     made the bar overlap whatever followed it (the mode caption and the
+     export-format panel). */
+  margin: var(--space-3) calc(var(--space-3) * -1) 0;
   padding: var(--space-3);
   background: var(--surface-raised);
   border-top: 1px solid var(--border-strong);
