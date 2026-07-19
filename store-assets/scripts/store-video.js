@@ -3,12 +3,14 @@
  * running in the e2e harness — synthetic, PII-free seeded data only (no real
  * orders, accounts, or names anywhere).
  *
- * Capture: 1920×1080. Chromium's screencast (which recordVideo uses) always
- * emits frames at CSS-viewport size — deviceScaleFactor does NOT raise the
- * recording resolution (verified: larger recordVideo sizes just letterbox).
- * The 8K upload master is built encode-side (lanczos) by
- * generate-store-video.sh; a high-res upload still buys YouTube's higher-
- * bitrate encode ladder.
+ * Capture: 1920×1080 via a raw CDP screencast (JPEG quality 100 per frame,
+ * real frame timestamps) written to video-raw/frames + concat.txt.
+ * Playwright's recordVideo is NOT used: it hard-codes a ~1 Mbps VP8 encode,
+ * which is visibly soft no matter how the mp4 is encoded afterwards. Also
+ * note: screencast frames always come at CSS-viewport size — a larger
+ * deviceScaleFactor/recordVideo size does not raise capture resolution
+ * (verified: it just letterboxes). The 4K master is built encode-side
+ * (lanczos) by generate-store-video.sh.
  *
  * DIRECTION (ad cut, ~80s) — structure: HOOK → REVEAL → MAKE IT YOURS →
  * PAYOFFS (in dark) → OBJECTIONS → CTA. No intro card: the store page
@@ -45,6 +47,41 @@ fs.mkdirSync(OUT, { recursive: true });
 
 const W = 1920;   // CSS layout size — the UI is designed/readable at this width
 const H = 1080;
+
+/**
+ * High-quality recorder: raw CDP screencast → JPEG q100 frames + a concat
+ * list with real per-frame durations (screencast only emits on paint, so
+ * static holds simply extend the previous frame — correct VFR timing).
+ */
+async function startCapture(page, dir) {
+  const framesDir = path.join(dir, 'frames');
+  fs.mkdirSync(framesDir, { recursive: true });
+  const session = await page.context().newCDPSession(page);
+  const frames = []; // { file, ts }
+  session.on('Page.screencastFrame', (event) => {
+    const file = path.join(framesDir, `f${String(frames.length).padStart(6, '0')}.jpg`);
+    fs.writeFileSync(file, Buffer.from(event.data, 'base64'));
+    frames.push({ file, ts: event.metadata.timestamp });
+    session.send('Page.screencastFrameAck', { sessionId: event.sessionId }).catch(() => {});
+  });
+  await session.send('Page.startScreencast', {
+    format: 'jpeg', quality: 100, maxWidth: W, maxHeight: H, everyNthFrame: 1,
+  });
+  return async function stop() {
+    await session.send('Page.stopScreencast').catch(() => {});
+    if (frames.length < 2) throw new Error(`screencast captured only ${frames.length} frame(s)`);
+    const lines = ["ffconcat version 1.0"];
+    for (let i = 0; i < frames.length; i += 1) {
+      const next = frames[i + 1];
+      const duration = next ? Math.max(0.001, next.ts - frames[i].ts) : 0.04;
+      lines.push(`file '${path.relative(dir, frames[i].file)}'`);
+      lines.push(`duration ${duration.toFixed(4)}`);
+    }
+    fs.writeFileSync(path.join(dir, 'concat.txt'), lines.join('\n') + '\n');
+    const span = frames[frames.length - 1].ts - frames[0].ts;
+    console.log(`captured ${frames.length} frames over ${span.toFixed(1)}s`);
+  };
+}
 
 /** Injected once into the dashboard page: cursor, captions, cards. */
 const TOUR_RUNTIME = () => {
@@ -160,7 +197,6 @@ const TOUR_RUNTIME = () => {
 (async () => {
   const { context, extensionId, panel, close } = await launch({
     viewport: { width: W, height: H },
-    recordVideo: { dir: OUT, size: { width: W, height: H } },
   });
   try {
     // Prefer the sanitized real-history fixture (sanitize-seed.js) when it
@@ -171,7 +207,7 @@ const TOUR_RUNTIME = () => {
       : null;
     console.log(records ? `seeding sanitized fixture (${records.length} orders)` : 'seeding synthetic data');
     await seedOrderHistory(panel, { months: 14, records });
-    await panel.close(); // its video file is discarded below
+    await panel.close();
 
     const dash = await context.newPage();
     await dash.goto(`chrome-extension://${extensionId}/dashboard.html`);
@@ -180,6 +216,7 @@ const TOUR_RUNTIME = () => {
     await frame.waitForSelector('.order-list .order-row', { timeout: 10000 });
     await dash.waitForTimeout(600);
     await dash.evaluate(TOUR_RUNTIME);
+    const stopCapture = await startCapture(dash, OUT); // roll camera on scene 1, not page load
 
     const hold = (ms) => dash.waitForTimeout(ms);
     const cap = (html) => dash.evaluate((h) => window.__tour.caption(h), html);
@@ -331,17 +368,9 @@ const TOUR_RUNTIME = () => {
     await dash.evaluate(() => chrome.storage.local.set({ theme: 'system' }));
     await hold(3800);
 
-    await dash.close(); // flush the recording
-    const video = dash.video();
-    const recorded = await video.path();
-    fs.copyFileSync(recorded, path.join(OUT, 'tour.webm'));
-    console.log('raw tour saved:', path.join(OUT, 'tour.webm'));
+    await stopCapture();
+    console.log('raw frames + concat saved in', OUT);
   } finally {
     await close();
-  }
-
-  // Drop Playwright's hash-named page videos, keep only tour.webm.
-  for (const file of fs.readdirSync(OUT)) {
-    if (file !== 'tour.webm') fs.rmSync(path.join(OUT, file));
   }
 })();
