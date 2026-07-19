@@ -187,6 +187,33 @@ document.addEventListener("DOMContentLoaded", async function () {
     });
   }
 
+  // Walmart order-history filters (Options): persisted like the other
+  // collection options so the choice survives panel reopens. Read fresh off
+  // the DOM at collection start (sidepanel.actions.js handleStartCollection).
+  const collectFilterSelect = document.getElementById("collectFilter");
+  const collectFromInput = document.getElementById("collectFrom");
+  const collectToInput = document.getElementById("collectTo");
+  chrome.storage.local.get(["collectFilterType", "collectFromDate", "collectToDate"], (res) => {
+    if (collectFilterSelect && res.collectFilterType) collectFilterSelect.value = res.collectFilterType;
+    if (collectFromInput && res.collectFromDate) collectFromInput.value = res.collectFromDate;
+    if (collectToInput && res.collectToDate) collectToInput.value = res.collectToDate;
+  });
+  if (collectFilterSelect) {
+    collectFilterSelect.addEventListener("change", () => {
+      chrome.storage.local.set({ collectFilterType: collectFilterSelect.value });
+    });
+  }
+  if (collectFromInput) {
+    collectFromInput.addEventListener("change", () => {
+      chrome.storage.local.set({ collectFromDate: collectFromInput.value });
+    });
+  }
+  if (collectToInput) {
+    collectToInput.addEventListener("change", () => {
+      chrome.storage.local.set({ collectToDate: collectToInput.value });
+    });
+  }
+
   // Default page limit (spec §5.4 Settings "Collection" section) — same
   // "pageLimit" storage key Settings reads/writes; this is the first phase
   // this value is persisted at all (previously read fresh off the DOM at

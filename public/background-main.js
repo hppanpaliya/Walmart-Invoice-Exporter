@@ -514,7 +514,15 @@ function collectAllFast() {
 
     sendTabMessageWithTimeout(
       CollectionState.tabId,
-      { action: CONSTANTS.MESSAGES.COLLECT_ALL_FAST, pageLimit: CollectionState.pageLimit },
+      {
+        action: CONSTANTS.MESSAGES.COLLECT_ALL_FAST,
+        pageLimit: CollectionState.pageLimit,
+        // Incremental ("only new orders"): hand the fast pager what the DB
+        // already knows so it can stop at the first all-known page — the
+        // classic crawl's rule, previously ignored by fast mode.
+        incremental: CollectionState.incremental,
+        knownOrderNumbers: Array.from(CollectionState.knownAtStart || []),
+      },
       FAST_COLLECT_MS,
       (response) => {
         if (chrome.runtime.lastError || !response) {

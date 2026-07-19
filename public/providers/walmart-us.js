@@ -812,10 +812,20 @@ const PurchaseHistoryDataSource = (() => {
    *   additionalFields, orderSummaries, pages, hasNextPage:false, fast:true}),
    *   or { fallbackToClassic: true } when the hash cannot be resolved.
    */
-  async function collectAllViaFetch({ pageLimit = 0 } = {}) {
+  async function collectAllViaFetch({ pageLimit = 0, incremental = false, knownOrderNumbers = [] } = {}) {
     const isTest = typeof globalThis !== "undefined" && globalThis.__WIE_TEST_SANDBOX__;
     const seen = new Set();
     const merged = { orderNumbers: [], additionalFields: {}, orderSummaries: {}, pages: 0 };
+
+    // Incremental ("only new orders"): stop paging once a WHOLE page consists
+    // of already-stored orders — same rule as the classic crawl. The page
+    // itself is still absorbed (refreshes those orders' summaries).
+    const knownSet = new Set(knownOrderNumbers || []);
+    const pageAllKnown = (snapshot) =>
+      Boolean(incremental) &&
+      Boolean(snapshot) &&
+      snapshot.orderNumbers.length > 0 &&
+      snapshot.orderNumbers.every((num) => knownSet.has(num));
 
     // Tell the panel (via the background) about each page the moment it lands,
     // so the order count, the page number, and the list update live instead of
@@ -870,6 +880,10 @@ const PurchaseHistoryDataSource = (() => {
     if (firstSnapshot && cursor === null) {
       return finalize(); // single page, nothing more to fetch
     }
+    if (pageAllKnown(firstSnapshot)) {
+      console.log("[WIE] Fast Collect (incremental): page 1 is all known orders — done.");
+      return finalize();
+    }
 
     // SEED (real runtime): trigger ONE genuine "Next" so the page makes its own
     // PurchaseHistoryV3 request. The main-world bridge captures BOTH page 2's
@@ -892,6 +906,10 @@ const PurchaseHistoryDataSource = (() => {
         const page2 = getFreshUnconsumedNetworkSnapshot();
         if (page2) {
           cursor = absorb(page2); // page 2 collected (dated) + advance the cursor
+          if (pageAllKnown(page2)) {
+            console.log("[WIE] Fast Collect (incremental): page 2 is all known orders — done.");
+            return finalize();
+          }
         }
       }
     }
@@ -915,7 +933,12 @@ const PurchaseHistoryDataSource = (() => {
         );
         break; // keep everything collected so far
       }
-      cursor = absorb(buildSnapshot(purchaseHistory, "fetch"));
+      const snapshot = buildSnapshot(purchaseHistory, "fetch");
+      cursor = absorb(snapshot);
+      if (pageAllKnown(snapshot)) {
+        console.log("[WIE] Fast Collect (incremental): page of all-known orders — stopping.");
+        break;
+      }
     }
 
     if (merged.orderNumbers.length === 0) {
@@ -2537,6 +2560,8 @@ async function checkForNextPage() {
   async function collectAllFast(ctx) {
     return PurchaseHistoryDataSource.collectAllViaFetch({
       pageLimit: Number((ctx && ctx.pageLimit) || 0),
+      incremental: Boolean(ctx && ctx.incremental),
+      knownOrderNumbers: (ctx && ctx.knownOrderNumbers) || [],
     });
   }
 

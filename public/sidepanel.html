@@ -127,6 +127,28 @@
                     <input type="checkbox" id="incrementalCollect">
                     <label for="incrementalCollect" title="Stops paginating when a whole page of already-stored orders is reached. Uses the local order database, which persists across sessions.">Only collect new orders (stop at known)</label>
                 </div>
+                <!-- Walmart's own order-history filters (filterIds / date
+                     range), applied to the collection URL via
+                     buildOrdersFilterUrl (utils.js). -->
+                <div class="input-group" id="collectFilterGroup">
+                    <label for="collectFilter">Order type</label>
+                    <select id="collectFilter">
+                        <option value="all">All orders</option>
+                        <option value="online">Online</option>
+                        <option value="in-store">In store</option>
+                        <option value="in-progress">In progress</option>
+                        <option value="completed">Completed</option>
+                        <option value="returned">Returned</option>
+                    </select>
+                </div>
+                <div class="input-group" id="collectDateGroup">
+                    <label for="collectFrom">Date range (optional)</label>
+                    <div class="collect-date-range">
+                        <input type="date" id="collectFrom" aria-label="Collect from date">
+                        <span aria-hidden="true">–</span>
+                        <input type="date" id="collectTo" aria-label="Collect to date">
+                    </div>
+                </div>
             </details>
         </div>
 

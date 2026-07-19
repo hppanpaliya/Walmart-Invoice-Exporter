@@ -301,7 +301,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           if (typeof provider.collectAllFast !== "function") {
             return { fallbackToClassic: true };
           }
-          const result = await provider.collectAllFast({ ...ctx, pageLimit: Number(req.pageLimit || 0) });
+          const result = await provider.collectAllFast({
+            ...ctx,
+            pageLimit: Number(req.pageLimit || 0),
+            // Incremental ("only new orders"): the background sends what the
+            // DB already knows so the fast pager can stop at all-known pages.
+            incremental: Boolean(req.incremental),
+            knownOrderNumbers: req.knownOrderNumbers || [],
+          });
           if (result && result.fallbackToClassic) return result;
           return { ...result, accountKey: await computeAccountKey() };
         }),

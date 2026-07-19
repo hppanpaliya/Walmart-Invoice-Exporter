@@ -188,6 +188,14 @@
     }
     if (!collectionUrl) collectionUrl = CONSTANTS.URLS.WALMART_ORDERS;
 
+    // Walmart's own order-history filters from the Options disclosure (order
+    // type + optional date range) — applied with the site's exact query
+    // grammar so both crawl modes just collect what the filter shows.
+    const typeFilter = document.getElementById("collectFilter")?.value || "all";
+    const fromDate = document.getElementById("collectFrom")?.value || "";
+    const toDate = document.getElementById("collectTo")?.value || "";
+    collectionUrl = buildOrdersFilterUrl(collectionUrl, { typeFilter, fromDate, toDate });
+
     // Scope this run's progress to its provider (progressMatchesActiveScope).
     app.collectionProvider = providerId;
 
