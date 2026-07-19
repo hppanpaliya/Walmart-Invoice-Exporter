@@ -3,12 +3,31 @@
  * running in the e2e harness — synthetic, PII-free seeded data only (no real
  * orders, accounts, or names anywhere).
  *
- * Output: store-assets/scripts/video-raw/tour.webm (raw Playwright capture)
- * Encode + trim happens in generate-store-video.sh (ffmpeg).
+ * Capture: 1920×1080. Chromium's screencast (which recordVideo uses) always
+ * emits frames at CSS-viewport size — deviceScaleFactor does NOT raise the
+ * recording resolution (verified: larger recordVideo sizes just letterbox).
+ * The 8K upload master is built encode-side (lanczos) by
+ * generate-store-video.sh; a high-res upload still buys YouTube's higher-
+ * bitrate encode ladder.
  *
- * The tour is fully in-page: an injected fake cursor (tweened, click pulses),
- * bottom caption pills, and intro/outro cards — so the recording needs no
- * post-production editing.
+ * DIRECTION (ad cut, ~72s) — structure: HOOK → REVEAL → PAYOFFS → OBJECTIONS
+ * → CTA. No intro card: the store page already shows the name and icon, so
+ * the first frame is the product doing its core verb, live.
+ *
+ *   1. Cold open   — "Check for new orders" clicked on camera; real progress,
+ *                    two new orders join the list. Hook: "one click".
+ *   2. Reveal      — the dashboard turns that click into answers (stats, chart).
+ *   3. Drill       — click a month, whole page rescopes.
+ *   4. Montage     — Items (personal inflation), Trends (habits) — fast beats.
+ *   5. Receipts    — Orders view, a row expands into a full invoice.
+ *   6. Take it     — select orders, cycle formats, "tax season in two clicks".
+ *   7. Yours       — Settings walk; dark mode via the real Appearance control.
+ *   8. Trust       — privacy beat on the "Delete all saved data" button.
+ *   9. Kicker      — Year in review, in dark.
+ *  10. CTA card    — "Add to Chrome — it's free".
+ *
+ * The tour is fully in-page (injected cursor, caption pills, outro card), so
+ * the recording needs no post-production editing.
  */
 'use strict';
 
@@ -20,7 +39,7 @@ const OUT = path.join(__dirname, 'video-raw'); // gitignored scratch output
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
 
-const W = 1920;
+const W = 1920;   // CSS layout size — the UI is designed/readable at this width
 const H = 1080;
 
 /** Injected once into the dashboard page: cursor, captions, cards. */
@@ -58,7 +77,7 @@ const TOUR_RUNTIME = () => {
     #tourCard .s { color:#dcecff; font-size:30px; font-weight:600; max-width:900px; line-height:1.4; }
     #tourCard .s b { color:#ffc220; }
     #tourCard .chips { display:flex; gap:14px; margin-top:6px; }
-    #tourCard .chip { font-size:22px; font-weight:700; border-radius:999px; padding:10px 24px;
+    #tourCard .chip { font-size:24px; font-weight:800; border-radius:999px; padding:14px 34px;
       background:rgba(255,255,255,.16); color:#fff; border:1.5px solid rgba(255,255,255,.35); }
     #tourCard .chip.gold { background:#ffc220; color:#23304a; border-color:#ffc220; }
   `;
@@ -180,82 +199,6 @@ const TOUR_RUNTIME = () => {
       await hold(120);
       await dash.mouse.click(x, y);
     };
-
-    /* ---------- Scene 0: intro card (page loads behind it) ---------- */
-    await dash.evaluate((icon) => window.__tour.card({
-      iconUrl: icon,
-      title: 'Walmart Invoice Exporter',
-      sub: 'Your entire Walmart order history — <b>collected, exported, understood</b>.',
-      chips: ['Excel', 'CSV', 'JSON', 'PDF', 'Receipts'],
-    }), `chrome-extension://${extensionId}/images/icon128.png`);
-    await hold(3200);
-    await dash.evaluate(() => window.__tour.hideCard());
-    await hold(700);
-
-    /* ---------- Scene 1: overview hero ---------- */
-    await cap('Every order — <b>on one dashboard</b>, stored only on your device');
-    await hold(2600);
-    await scrollTo(430, 1100);      // chart in full view
-    await hold(1400);
-
-    /* ---------- Scene 2: month drill-down ---------- */
-    await cap('Click any month to see <b>exactly where it went</b>');
-    await click(dash.locator('.cbar').first(), 800);
-    await hold(1800);
-    await scrollTo(0, 900);
-    await hold(1500);
-    await cap('');
-    await click(dash.locator('#backChip'));
-    await hold(900);
-
-    /* ---------- Scene 3: items ---------- */
-    await cap('Every item you have ever bought — <b>searchable</b>');
-    await click(dash.locator('[data-nav="items"]'));
-    await hold(2600);
-    await scrollTo(320, 1000);
-    await hold(1500);
-
-    /* ---------- Scene 4: trends ---------- */
-    await cap('Price watch &amp; <b>spending trends</b>');
-    await click(dash.locator('[data-nav="trends"]'));
-    await hold(2600);
-    await scrollTo(360, 1000);
-    await hold(1500);
-    await scrollTo(0, 600);
-
-    /* ---------- Scene 5: orders + inline invoice ---------- */
-    await cap('Every order expands into <b>a full invoice</b>');
-    await click(dash.locator('[data-nav="orders"]'));
-    await hold(1600);
-    const invoiceRow = dash.locator('tr.order-row:has(.saved-chip)').first();
-    await invoiceRow.scrollIntoViewIfNeeded();
-    await hold(500);
-    await click(invoiceRow, 700);
-    await dash.waitForSelector('.detail-wrap', { timeout: 10000 });
-    await hold(600);
-    await dash.locator('.detail-wrap').scrollIntoViewIfNeeded();
-    await dash.evaluate(() => window.scrollBy({ top: -140, behavior: 'smooth' }));
-    await hold(2600);
-
-    /* ---------- Scene 6: export from the embedded panel ---------- */
-    await cap('Select orders, pick a format — <b>export in two clicks</b>');
-    await click(dash.locator('[data-nav="overview"]'));
-    await hold(900);
-    const boxes = frame.locator('.order-list input[type="checkbox"]');
-    await click(boxes.nth(0), 700);
-    await hold(350);
-    await click(boxes.nth(1), 450);
-    await hold(700);
-    // Cycle the export format so the download buttons visibly re-label.
-    await curTo(frame.locator('#exportFormat'), 500);
-    for (const fmt of ['csv', 'pdf', 'xlsx']) {
-      await frame.selectOption('#exportFormat', fmt).catch(() => {});
-      await hold(650);
-    }
-    await curTo(frame.locator('#singleFileDownload'), 500);
-    await hold(1200);
-
-    /* ---------- Scene 7: settings deep-dive ---------- */
     // Smooth-scroll a settings section title into view inside the panel iframe.
     const frameScrollToSection = async (title, ms = 1200) => {
       await frame.evaluate((wanted) => {
@@ -265,43 +208,115 @@ const TOUR_RUNTIME = () => {
       }, title);
       await hold(ms);
     };
+
+    /* ---- 1. Cold open: the core verb, live. No title card. ---- */
+    await cap('Your entire Walmart history — <b>one click</b>');
+    await hold(500);
+    await click(frame.locator('#startCollection'), 900);
+    // Real collection against the harness's mock walmart.com: progress line
+    // ticks, then two new orders join the list without the "saved" chip.
+    await frame.waitForFunction(
+      () => /completed/i.test((document.querySelector('#progress') || {}).textContent || ''),
+      { timeout: 15000 }
+    ).catch(() => {});
+    await hold(2400);
+
+    /* ---- 2. Reveal: the click becomes answers. ---- */
+    await cap('…turned into <b>answers</b>');
+    await hold(2200);
+    await scrollTo(430, 1100);      // chart in full view
+    await hold(1600);
+
+    /* ---- 3. Drill: click a month, everything rescopes. ---- */
+    await cap('Click any month — see <b>exactly where it went</b>');
+    await click(dash.locator('.cbar').first(), 800);
+    await hold(1900);
+    await scrollTo(0, 900);
+    await hold(1400);
+    await cap('');
+    await click(dash.locator('#backChip'));
+    await hold(800);
+
+    /* ---- 4. Montage: fast payoff beats. ---- */
+    await cap('Every price hike, <b>caught</b>');
+    await click(dash.locator('[data-nav="items"]'));
+    await hold(2900);
+
+    await cap('Your habits, <b>charted</b>');
+    await click(dash.locator('[data-nav="trends"]'));
+    await hold(1600);
+    await scrollTo(360, 1000);
+    await hold(1200);
+    await scrollTo(0, 600);
+
+    /* ---- 5. Receipts: a row becomes a full invoice. ---- */
+    await cap('Every order, down to <b>the last cent</b>');
+    await click(dash.locator('[data-nav="orders"]'));
+    await hold(1500);
+    const invoiceRow = dash.locator('tr.order-row:has(.saved-chip)').first();
+    await invoiceRow.scrollIntoViewIfNeeded();
+    await hold(500);
+    await click(invoiceRow, 700);
+    await dash.waitForSelector('.detail-wrap', { timeout: 10000 });
+    await hold(600);
+    await dash.locator('.detail-wrap').scrollIntoViewIfNeeded();
+    await dash.evaluate(() => window.scrollBy({ top: -140, behavior: 'smooth' }));
+    await hold(2500);
+
+    /* ---- 6. Take it with you: formats + two clicks. ---- */
+    await cap('Excel, CSV, PDF, receipts — <b>tax season in two clicks</b>');
+    await click(dash.locator('[data-nav="overview"]'));
+    await hold(800);
+    const boxes = frame.locator('.order-list input[type="checkbox"]');
+    await click(boxes.nth(0), 700);
+    await hold(300);
+    await click(boxes.nth(1), 450);
+    await hold(600);
+    // Cycle the export format so the download buttons visibly re-label.
+    await curTo(frame.locator('#exportFormat'), 500);
+    for (const fmt of ['csv', 'pdf', 'xlsx']) {
+      await frame.selectOption('#exportFormat', fmt).catch(() => {});
+      await hold(650);
+    }
+    await curTo(frame.locator('#singleFileDownload'), 500);
+    await hold(1300);
+
+    /* ---- 7. Yours: settings walk + dark via the real control. ---- */
     await cap('Make it yours — <b>every default is a setting</b>');
     await click(frame.locator('#settingsButton'), 700);
-    await hold(1600);
+    await hold(1500);
     await frameScrollToSection('Collection', 1500);
     await frameScrollToSection('Export', 1500);
-
-    // Dark mode via the REAL control in Appearance — the whole app flips.
     await frameScrollToSection('Appearance', 1100);
     await cap('Light, dark, or follow your system — <b>one tap</b>');
     await click(frame.locator('#themeControl [data-theme-choice="dark"]'), 700);
     await hold(2000);
 
-    /* ---------- Scene 8: privacy (still in Settings, now dark) ---------- */
-    await cap('No accounts. No servers. <b>Your data never leaves your device.</b>');
+    /* ---- 8. Trust: the objection killer, right before the ask. ---- */
+    await cap('No accounts. No servers. <b>Nothing leaves your device.</b>');
     await frameScrollToSection('Data on this device', 1300);
     await curTo(frame.locator('#deleteAllDataButton'), 700); // point, never click
-    await hold(2600);
+    await hold(2500);
 
-    /* ---------- Scene 8b: year in review, in dark mode ---------- */
-    await cap('Year in review — <b>your year at Walmart</b>');
+    /* ---- 9. Kicker: year in review, in dark. ---- */
+    await cap('Your year at Walmart — <b>yours to keep</b>');
     await click(dash.locator('[data-nav="review"]'));
-    await hold(2400);
+    await hold(2300);
     await scrollTo(380, 1000);
-    await hold(1400);
+    await hold(1300);
 
-    /* ---------- Scene 9: outro card ---------- */
+    /* ---- 10. CTA card. ---- */
     await cap('');
     await dash.evaluate(() => window.__tour.hideCursor(true));
     await dash.evaluate((icon) => window.__tour.card({
       iconUrl: icon,
       title: 'Walmart Invoice Exporter',
       sub: 'Free · Open source · <b>Private by design</b>',
-      chips: ['Get it on the Chrome Web Store'],
+      chips: ['Add to Chrome — it’s free'],
     }), `chrome-extension://${extensionId}/images/icon128.png`);
     // Reset the theme behind the opaque outro card (no visible flash).
     await dash.evaluate(() => chrome.storage.local.set({ theme: 'system' }));
-    await hold(3600);
+    await hold(3800);
 
     await dash.close(); // flush the recording
     const video = dash.video();
