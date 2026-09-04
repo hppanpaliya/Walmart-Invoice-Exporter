@@ -1271,19 +1271,42 @@ function collectItemsFromNextDataGroups(groups, pushItem) {
   groups.forEach((group) => {
     const groupStatus = extractTextFromNextData(group?.status?.message) || extractTextFromNextData(group?.status);
 
-    if (Array.isArray(group?.items) && group.items.length > 0) {
-      group.items.forEach((item) => pushItem(item, groupStatus));
+    // Charged-truth traversal. The flat group.items list is the ORDERED view:
+    // it still contains UNAVAILABLE items (listed but never charged), so
+    // summing it overstates what the card was charged. The categories tree is
+    // what Walmart's own printed invoice renders, and its non-UNAVAILABLE
+    // linePrice values sum exactly to priceDetails.subTotal (verified against
+    // real invoices to the penny). Note group.subGroups[].categories is a
+    // DUPLICATE copy of group.categories on multi-fulfillment orders —
+    // traverse exactly one of the two, never both.
+    const categories = Array.isArray(group?.categories) && group.categories.length > 0
+      ? group.categories
+      : (Array.isArray(group?.subGroups) ? group.subGroups : []).flatMap((subGroup) =>
+          Array.isArray(subGroup?.categories) ? subGroup.categories : []
+        );
+
+    if (categories.length > 0) {
+      categories.forEach((category) => {
+        const categoryType = String(category?.type || '').toUpperCase();
+        // UNAVAILABLE / CANCELED lines were never charged; RETURNED lines
+        // were charged (the refund is its own transaction), so they stay.
+        if (categoryType === 'UNAVAILABLE' || categoryType.indexOf('CANCEL') === 0) {
+          return;
+        }
+        const items = Array.isArray(category?.items) ? category.items : [];
+        // Each category line is one charged line — real orders legitimately
+        // contain identical duplicate lines (same product, same price, two
+        // lines), and item ids are NOT unique across an order, so no
+        // dedup key can be trusted here. The either/or traversal above is
+        // single-pass, so nothing can be visited twice.
+        items.forEach((item) => pushItem(item, groupStatus, { noDedup: true }));
+      });
       return;
     }
 
-    const subGroups = Array.isArray(group?.subGroups) ? group.subGroups : [];
-    subGroups.forEach((subGroup) => {
-      const categories = Array.isArray(subGroup?.categories) ? subGroup.categories : [];
-      categories.forEach((category) => {
-        const items = Array.isArray(category?.items) ? category.items : [];
-        items.forEach((item) => pushItem(item, groupStatus));
-      });
-    });
+    if (Array.isArray(group?.items) && group.items.length > 0) {
+      group.items.forEach((item) => pushItem(item, groupStatus));
+    }
   });
 }
 
@@ -1291,7 +1314,7 @@ function extractItemsFromNextData(orderNode) {
   const items = [];
   const seen = new Set();
 
-  const pushItem = (item, groupStatus = '') => {
+  const pushItem = (item, groupStatus = '', opts = null) => {
     const productName = cleanText(item?.productInfo?.name || item?.name || '');
     const quantity = item?.quantity === 0 || item?.quantity
       ? String(item.quantity)
@@ -1308,11 +1331,16 @@ function extractItemsFromNextData(orderNode) {
       return;
     }
 
-    const key = `${normalizeLookupText(productName)}|${quantity}|${price}`;
-    if (seen.has(key)) {
-      return;
+    // The categories traversal is single-pass and its duplicate lines are
+    // real (see collectItemsFromNextDataGroups); only the legacy flat-list
+    // fallbacks still need the name|quantity|price guard.
+    if (!(opts && opts.noDedup)) {
+      const key = `${normalizeLookupText(productName)}|${quantity}|${price}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
     }
-    seen.add(key);
 
     const canonicalUrl = cleanText(item?.productInfo?.canonicalUrl || item?.canonicalUrl || '');
     // Walmart dropped canonicalUrl from the order payload (live-verified
