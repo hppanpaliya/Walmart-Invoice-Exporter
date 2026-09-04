@@ -132,7 +132,7 @@ test('golden: convertMultipleOrdersToXlsx produces the current Orders+Items work
     'Order Number', 'Order Date', 'Order Type', 'Data', 'Items',
     'Subtotal (Before Savings)', 'Savings', 'Subtotal', 'Delivery Charges', 'Bag Fee',
     'Tax', 'Tip', 'Refund', 'Donations', 'Order Total',
-    'Payment Method', 'Payment Split', 'Payment Messages', 'Seller(s)', 'Fulfillment',
+    'Payment Method', 'Payment Split', 'Card Amount', 'Non-card Tender Amount', 'Card Refunds', 'Payment Messages', 'Seller(s)', 'Fulfillment',
     'Delivered Date', 'Tracking Numbers', 'Ship To', 'Delivery Instructions', 'Receipt Barcode',
   ]);
   assert.equal(orders.rowCount, 3, 'header + one row per order');
@@ -142,7 +142,7 @@ test('golden: convertMultipleOrdersToXlsx produces the current Orders+Items work
     20.53, 2, 18.53, 0, 0.25,
     1.14, 4, 3.98, 1, 28.11,
     'VISA - ending in 1234 | Amount: $20.00 || GIFTCARD - Gift Card | Amount: $6.84',
-    'VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84', 'Charged Jul 2',
+    'VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84', '', '', '', 'Charged Jul 2',
     'Walmart.com; Acme Marketplace LLC', 'DELIVERY, SHIPPING', 'Jul 02, 2026',
     '1Z999AA10123456784; 1Z999AA10123456785', 'Test Customer, 123 Main St, Springfield IL 62704',
     'Leave at door', { text: 'Barcode', hyperlink: 'https://receipts-query.edge.walmart.com/barcode?data=sanitized' },
@@ -225,7 +225,7 @@ test('golden: convertOrdersToCsv produces the current accounting-friendly CSV pa
   assert.equal(
     ordersLines[0],
     'Order Number,Order Date,Items,Address Recipient,Shipping Address,Delivery Instructions,'
-      + 'Payment Method,Payment Messages,Payment Split,Subtotal (Before Savings),Savings,Subtotal,'
+      + 'Payment Method,Payment Messages,Payment Split,Card Amount,Non-card Tender Amount,Card Refunds,Subtotal (Before Savings),Savings,Subtotal,'
       + 'Delivery Charges,Bag Fee,Tax,Tip,Refund,Donations,Order Total,Seller(s),Fulfillment,'
       + 'Delivered Date,Tracking Numbers,Receipt Barcode URL,Order Type'
   );
@@ -233,7 +233,7 @@ test('golden: convertOrdersToCsv produces the current accounting-friendly CSV pa
     ordersLines[1],
     '200010000000042,"Jul 01, 2026",3,Test Customer,"Test Customer, 123 Main St, Springfield IL 62704",'
       + 'Leave at door,VISA - ending in 1234 | Amount: $20.00 || GIFTCARD - Gift Card | Amount: $6.84,'
-      + 'Charged Jul 2,VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84,20.53,2,18.53,0,0.25,1.14,4,'
+      + 'Charged Jul 2,VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84,,,,20.53,2,18.53,0,0.25,1.14,4,'
       + '3.98,1,28.11,Walmart.com; Acme Marketplace LLC,"DELIVERY, SHIPPING","Jul 02, 2026",'
       + '1Z999AA10123456784; 1Z999AA10123456785,https://receipts-query.edge.walmart.com/barcode?data=sanitized,GLASS'
   );
@@ -242,7 +242,7 @@ test('golden: convertOrdersToCsv produces the current accounting-friendly CSV pa
   // existing, pinned quirk (Refund/Donations DO stay blank, at the end).
   assert.equal(
     ordersLines[2],
-    '77501234567890123456,"Jun 15, 2026",1,,,,,,,0,0,8.88,0,0,0.54,0,,,9.42,Walmart.com,IN_STORE,,,,In-store'
+    '77501234567890123456,"Jun 15, 2026",1,,,,,,,,,,0,0,8.88,0,0,0.54,0,,,9.42,Walmart.com,IN_STORE,,,,In-store'
   );
 
   const itemLines = csvLines(blobText(downloads[1].blob));

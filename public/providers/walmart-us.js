@@ -552,6 +552,9 @@ const PurchaseHistoryDataSource = (() => {
   // Fast invoice protocol — must match walmart-mainworld.js.
   const ORDER_REQ = "WIE_FETCH_ORDER";
   const ORDER_RES = "WIE_FETCH_ORDER_RESULT";
+  // Ledger protocol — must match walmart-mainworld.js.
+  const LEDGER_REQ = "WIE_FETCH_LEDGER";
+  const LEDGER_RES = "WIE_FETCH_LEDGER_RESULT";
   let replayCounter = 0;
 
   /**
@@ -579,6 +582,38 @@ const PurchaseHistoryDataSource = (() => {
       }, timeoutMs);
       window.addEventListener("message", onMessage);
       window.postMessage({ source: MESSAGE_SOURCE, type: ORDER_REQ, reqId, orderNumber }, "*");
+    });
+  }
+
+  /**
+   * Ask the MAIN-world bridge for one order's charge-history ledger
+   * (getOrderLedger): the per-tender FINAL amounts — card charges, refunds,
+   * gift-card tender. Resolves to the ledger node, or null on any failure
+   * (no captured headers yet, bot challenge, or a rotated persisted-query
+   * hash — the bridge reports those loudly; callers leave amounts blank).
+   */
+  function fetchOrderLedgerViaMainWorld(orderNumber, timeoutMs = 15000) {
+    return new Promise((resolve) => {
+      const reqId = `wie-ledger-${replayCounter++}`;
+      const onMessage = (event) => {
+        if (event.source !== window) return;
+        const msg = event.data;
+        if (!msg || msg.source !== MESSAGE_SOURCE || msg.type !== LEDGER_RES || msg.reqId !== reqId) {
+          return;
+        }
+        window.removeEventListener("message", onMessage);
+        clearTimeout(timer);
+        if (msg && !msg.ok && msg.reason === "ledger-query-rejected") {
+          console.warn(`Card Amount unavailable for #${orderNumber} — Walmart's ledger query changed or was challenged.`);
+        }
+        resolve(msg && msg.ok ? msg.ledger || null : null);
+      };
+      const timer = setTimeout(() => {
+        window.removeEventListener("message", onMessage);
+        resolve(null);
+      }, timeoutMs);
+      window.addEventListener("message", onMessage);
+      window.postMessage({ source: MESSAGE_SOURCE, type: LEDGER_REQ, reqId, orderNumber }, "*");
     });
   }
 
@@ -871,6 +906,7 @@ const PurchaseHistoryDataSource = (() => {
     getLatestSnapshotTimestamp,
     collectAllViaFetch,
     fetchOrderNodeViaMainWorld,
+    fetchOrderLedgerViaMainWorld,
     noteCursor,
     replayPage,
   };
@@ -1261,6 +1297,78 @@ function buildPaymentSplit(paymentMethodDetails) {
     })
     .filter(Boolean)
     .join('; ');
+}
+
+/**
+ * Reduce a getOrderLedger node to the three amounts the export carries.
+ * FINAL_CHARGES only (temporary holds are noise): positive card lines sum
+ * to cardAmount — the amount(s) the bank actually charged, which is what
+ * an order's card charge reconciles against; negative card lines are
+ * refunds (they arrive as their own bank credits); positive non-card
+ * lines (Walmart Cash / gift cards) sum to nonCardTenderAmount.
+ * Returns null when the node isn't ledger-shaped (rotated query, error
+ * payload) — callers must leave the amounts blank, never guess.
+ * @param {Object} ledgerNode - data.getOrderLedger
+ * @returns {{cardAmount:number, nonCardTenderAmount:number, cardRefunds:number}|null}
+ */
+function summarizeOrderLedger(ledgerNode) {
+  const ledgers = ledgerNode?.paymentMethodsLedgers;
+  if (!Array.isArray(ledgers)) {
+    return null;
+  }
+  let card = 0;
+  let nonCard = 0;
+  let refunds = 0;
+  const amountOf = (rowLine) => {
+    const raw = Array.isArray(rowLine?.displayValues) ? rowLine.displayValues[0] : null;
+    const m = /(-?)\$([\d,]+\.\d{2})/.exec(String(raw || ''));
+    if (!m) return null;
+    return Math.round(parseFloat(m[2].replace(/,/g, '')) * 100) * (m[1] ? -1 : 1);
+  };
+  ledgers.forEach((ledger) => {
+    const isCard = String(ledger?.paymentType || '').toUpperCase() === 'CREDITCARD';
+    (Array.isArray(ledger?.transactions) ? ledger.transactions : []).forEach((transaction) => {
+      if (String(transaction?.chargeType || '') !== 'FINAL_CHARGES') return;
+      (Array.isArray(transaction?.transactionLines) ? transaction.transactionLines : []).forEach((line) => {
+        (Array.isArray(line?.rowLines) ? line.rowLines : []).forEach((rowLine) => {
+          const cents = amountOf(rowLine);
+          if (cents === null) return;
+          if (isCard) {
+            if (cents > 0) card += cents;
+            else refunds += -cents;
+          } else if (cents > 0) {
+            nonCard += cents;
+          }
+        });
+      });
+    });
+  });
+  return {
+    cardAmount: card / 100,
+    nonCardTenderAmount: nonCard / 100,
+    cardRefunds: refunds / 100,
+  };
+}
+
+/**
+ * The card amount as the payment section states it, when it states one.
+ * Walmart omits per-tender amounts exactly when the order was adjusted
+ * after checkout (refunds/tips) — the case the ledger covers.
+ * @param {Array} paymentMethodDetails
+ * @returns {number|null} dollars, or null when no card amount is stated
+ */
+function cardAmountFromPaymentDetails(paymentMethodDetails) {
+  const details = Array.isArray(paymentMethodDetails) ? paymentMethodDetails : [];
+  let total = 0;
+  let found = false;
+  details.forEach((method) => {
+    if (!/ending in\s*\d{4}/i.test(String(method?.ending || ''))) return;
+    const m = /(-?)\$?\s*([\d,]+\.\d{2})/.exec(String(method?.amount || ''));
+    if (!m || m[1]) return;
+    total += Math.round(parseFloat(m[2].replace(/,/g, '')) * 100);
+    found = true;
+  });
+  return found && total > 0 ? total / 100 : null;
 }
 
 function collectItemsFromNextDataGroups(groups, pushItem) {
@@ -2478,6 +2586,24 @@ async function checkForNextPage() {
     if (!orderNode) return null;
     const data = extractOrderDataFromNextData(orderNode);
     if (!data) return null;
+    // Card amount: prefer what the payment section states (clean orders);
+    // when it states nothing — Walmart drops the amounts exactly on orders
+    // adjusted after checkout (refunds/tips) — fetch the charge-history
+    // ledger for the bank-final per-tender amounts. Any ledger failure
+    // (rotated query hash, challenge) leaves the columns blank: loud in
+    // the console, never guessed.
+    const statedCard = cardAmountFromPaymentDetails(data.paymentMethodDetails);
+    if (statedCard !== null) {
+      data.cardAmount = statedCard;
+    } else {
+      const ledgerNode = await PurchaseHistoryDataSource.fetchOrderLedgerViaMainWorld(orderNumber);
+      const summary = ledgerNode ? summarizeOrderLedger(ledgerNode) : null;
+      if (summary) {
+        if (summary.cardAmount > 0) data.cardAmount = summary.cardAmount;
+        if (summary.nonCardTenderAmount > 0) data.nonCardTenderAmount = summary.nonCardTenderAmount;
+        if (summary.cardRefunds > 0) data.cardRefunds = summary.cardRefunds;
+      }
+    }
     data.extractionWarnings = computeExtractionWarnings(data);
     return data;
   }
@@ -2518,6 +2644,8 @@ async function checkForNextPage() {
       extractOrderDataFromNextData,
       scrapeOrderData,
       mergeOrderItems,
+      summarizeOrderLedger,
+      cardAmountFromPaymentDetails,
       extractPrintItem,
       computeExtractionWarnings,
       formatOrderDateFromIsoString,
