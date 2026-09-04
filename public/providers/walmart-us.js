@@ -1265,8 +1265,13 @@ function buildPaymentSplit(paymentMethodDetails) {
 
 function collectItemsFromNextDataGroups(groups, pushItem) {
   if (!Array.isArray(groups)) {
-    return;
+    return false;
   }
+
+  // Reported to the caller so the DOM merge knows the payload is charged
+  // truth (see mergeOrderItems): true when any group was read through its
+  // categories tree rather than a flat legacy list.
+  let usedCategories = false;
 
   groups.forEach((group) => {
     const groupStatus = extractTextFromNextData(group?.status?.message) || extractTextFromNextData(group?.status);
@@ -1286,6 +1291,7 @@ function collectItemsFromNextDataGroups(groups, pushItem) {
         );
 
     if (categories.length > 0) {
+      usedCategories = true;
       categories.forEach((category) => {
         const categoryType = String(category?.type || '').toUpperCase();
         // UNAVAILABLE / CANCELED lines were never charged; RETURNED lines
@@ -1308,6 +1314,8 @@ function collectItemsFromNextDataGroups(groups, pushItem) {
       group.items.forEach((item) => pushItem(item, groupStatus));
     }
   });
+
+  return usedCategories;
 }
 
 function extractItemsFromNextData(orderNode) {
@@ -1367,14 +1375,22 @@ function extractItemsFromNextData(orderNode) {
     });
   };
 
-  collectItemsFromNextDataGroups(orderNode?.groups_2101, pushItem);
+  let usedCategories = collectItemsFromNextDataGroups(orderNode?.groups_2101, pushItem) === true;
 
   if (items.length === 0) {
-    collectItemsFromNextDataGroups(orderNode?.groups, pushItem);
+    usedCategories = collectItemsFromNextDataGroups(orderNode?.groups, pushItem) === true;
   }
 
   if (items.length === 0 && Array.isArray(orderNode?.items)) {
     orderNode.items.forEach((item) => pushItem(item, ''));
+    usedCategories = false;
+  }
+
+  // Tag (non-index array property; invisible to JSON/iteration) so
+  // mergeOrderItems knows these items are the charged-truth set and must
+  // not be "completed" with DOM rows the traversal deliberately excluded.
+  if (usedCategories && items.length > 0) {
+    items.fromChargedCategories = true;
   }
 
   return items;
@@ -1398,6 +1414,14 @@ function mergeOrderItems(domItems, nextDataItems) {
     return scrapedItems;
   }
 
+  // When the payload came from the charged-truth categories traversal it is
+  // COMPLETE: a DOM row with no payload match is a row the traversal
+  // deliberately excluded (an UNAVAILABLE/CANCELED line the print bill still
+  // renders, with a price) or a name-variant duplicate — appending it would
+  // resurrect exactly what was excluded. DOM rows then only backfill fields,
+  // never add lines. Legacy flat-list payloads keep the historic append.
+  const payloadIsChargedTruth = Boolean(nextDataItems && nextDataItems.fromChargedCategories);
+
   // The payload is the primary source (extraction order: payload → DOM).
   // MULTISET semantics: each payload line absorbs at most ONE matching DOM
   // line, so two genuinely distinct lines with the same name+quantity (e.g.
@@ -1418,6 +1442,9 @@ function mergeOrderItems(domItems, nextDataItems) {
       remaining.set(key, available - 1);
       // Remember one DOM copy per key for backfill below.
       if (!scrapedByKey.has(key)) scrapedByKey.set(key, item);
+      return;
+    }
+    if (payloadIsChargedTruth) {
       return;
     }
     mergedItems.push(item);

@@ -108,6 +108,43 @@ test('categories traversal: unavailable excluded, duplicates kept, no double cou
   assert.equal(sum.toFixed(2), '33.40');
 });
 
+test('merge never resurrects DOM rows the charged-truth traversal excluded', () => {
+  const sandbox = loadSandbox({ nextData: orderNodeWithCategories() });
+  const payloadItems = sandbox.extractOrderDataFromNextData().items;
+  assert.equal(payloadItems.fromChargedCategories, true);
+
+  // The print bill still renders the UNAVAILABLE line (with a price) and a
+  // name-variant copy of a charged item — the classic tab path scrapes both.
+  const domItems = [
+    { productName: 'Milk, 1 Gallon', quantity: 'Qty 1', price: '$3.97', productLink: 'https://www.walmart.com/ip/91' },
+    { productName: 'String Cheese, 12-Count', quantity: 'Qty 1', price: '$4.94' }, // unavailable — never charged
+    { productName: 'Milk 1 Gallon (name variant)', quantity: 'Qty 1', price: '$3.97' },
+  ];
+  const merged = sandbox.mergeOrderItems(domItems, payloadItems);
+
+  assert.equal(merged.length, payloadItems.length); // nothing appended
+  assert.ok(!merged.some((i) => /String Cheese/.test(i.productName)));
+  assert.ok(!merged.some((i) => /name variant/.test(i.productName)));
+  // Field backfill from the matched DOM copy still works.
+  assert.equal(merged.find((i) => i.productName === 'Milk, 1 Gallon').productLink, 'https://www.walmart.com/ip/91');
+});
+
+test('legacy flat-list payloads keep the historic DOM append', () => {
+  const node = orderNodeWithCategories();
+  const order = node.props.pageProps.initialData.data.order;
+  order.groups_2101 = [
+    { fulfillmentType: 'SC_PICKUP', items: [item(1, 'Milk, 1 Gallon', 1, 3.97)] },
+  ];
+  const sandbox = loadSandbox({ nextData: node });
+  const payloadItems = sandbox.extractOrderDataFromNextData().items;
+  assert.equal(payloadItems.fromChargedCategories, undefined);
+  const merged = sandbox.mergeOrderItems(
+    [{ productName: 'DOM-only extra', quantity: 'Qty 1', price: '$1.00' }],
+    payloadItems
+  );
+  assert.equal(merged.length, 2); // unmatched DOM row still appended
+});
+
 test('flat-items fallback still works when no categories exist anywhere', () => {
   const node = orderNodeWithCategories();
   const order = node.props.pageProps.initialData.data.order;
