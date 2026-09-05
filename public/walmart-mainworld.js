@@ -248,18 +248,12 @@
         reply({ ok: false, reason: "bad-order" });
         return;
       }
-      fetch(`/orders/${orderNumber}`, { credentials: "include", headers: { accept: "text/html" } })
-        .then(async (r) => {
-          if (!r.ok) {
-            reply({ ok: false, status: r.status });
-            return;
-          }
+      const fetchOrderNode = (url) =>
+        fetch(url, { credentials: "include", headers: { accept: "text/html" } }).then(async (r) => {
+          if (!r.ok) return { status: r.status, order: null, reason: "http-" + r.status };
           const html = await r.text();
           const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-          if (!m) {
-            reply({ ok: false, reason: "no-next-data", status: r.status });
-            return;
-          }
+          if (!m) return { status: r.status, order: null, reason: "no-next-data" };
           let order = null;
           try {
             const nd = JSON.parse(m[1]);
@@ -269,11 +263,27 @@
               (pp && pp.order) ||
               null;
           } catch (_) {}
-          if (!order) {
-            reply({ ok: false, reason: "no-order-node", status: r.status });
+          return { status: r.status, order, reason: order ? "" : "no-order-node" };
+        });
+      // In-store purchases resolve only under the store-purchase route:
+      // GET /orders/{id} renders "cannot be found" for them (the page's
+      // getOrder GraphQL needs orderIsInStore=true, which the query params
+      // select). Try the plain route first, then retry as a store purchase —
+      // covers both without the caller having to know the order's type.
+      fetchOrderNode(`/orders/${orderNumber}`)
+        .then(async (first) => {
+          if (first.order) {
+            reply({ ok: true, status: first.status, order: first.order });
             return;
           }
-          reply({ ok: true, status: r.status, order });
+          const retry = await fetchOrderNode(
+            `/orders/${orderNumber}?groupId=0&storePurchase=true`
+          );
+          if (retry.order) {
+            reply({ ok: true, status: retry.status, order: retry.order });
+            return;
+          }
+          reply({ ok: false, status: first.status, reason: first.reason || retry.reason });
         })
         .catch((err) => reply({ ok: false, reason: String(err && err.message) }));
       return;

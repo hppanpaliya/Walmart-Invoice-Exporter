@@ -1265,33 +1265,64 @@ function buildPaymentSplit(paymentMethodDetails) {
 
 function collectItemsFromNextDataGroups(groups, pushItem) {
   if (!Array.isArray(groups)) {
-    return;
+    return false;
   }
+
+  // Reported to the caller so the DOM merge knows the payload is charged
+  // truth (see mergeOrderItems): true when any group was read through its
+  // categories tree rather than a flat legacy list.
+  let usedCategories = false;
 
   groups.forEach((group) => {
     const groupStatus = extractTextFromNextData(group?.status?.message) || extractTextFromNextData(group?.status);
 
-    if (Array.isArray(group?.items) && group.items.length > 0) {
-      group.items.forEach((item) => pushItem(item, groupStatus));
+    // Charged-truth traversal. The flat group.items list is the ORDERED view:
+    // it still contains UNAVAILABLE items (listed but never charged), so
+    // summing it overstates what the card was charged. The categories tree is
+    // what Walmart's own printed invoice renders, and its non-UNAVAILABLE
+    // linePrice values sum exactly to priceDetails.subTotal (verified against
+    // real invoices to the penny). Note group.subGroups[].categories is a
+    // DUPLICATE copy of group.categories on multi-fulfillment orders —
+    // traverse exactly one of the two, never both.
+    const categories = Array.isArray(group?.categories) && group.categories.length > 0
+      ? group.categories
+      : (Array.isArray(group?.subGroups) ? group.subGroups : []).flatMap((subGroup) =>
+          Array.isArray(subGroup?.categories) ? subGroup.categories : []
+        );
+
+    if (categories.length > 0) {
+      usedCategories = true;
+      categories.forEach((category) => {
+        const categoryType = String(category?.type || '').toUpperCase();
+        // UNAVAILABLE / CANCELED lines were never charged; RETURNED lines
+        // were charged (the refund is its own transaction), so they stay.
+        if (categoryType === 'UNAVAILABLE' || categoryType.indexOf('CANCEL') === 0) {
+          return;
+        }
+        const items = Array.isArray(category?.items) ? category.items : [];
+        // Each category line is one charged line — real orders legitimately
+        // contain identical duplicate lines (same product, same price, two
+        // lines), and item ids are NOT unique across an order, so no
+        // dedup key can be trusted here. The either/or traversal above is
+        // single-pass, so nothing can be visited twice.
+        items.forEach((item) => pushItem(item, groupStatus, { noDedup: true }));
+      });
       return;
     }
 
-    const subGroups = Array.isArray(group?.subGroups) ? group.subGroups : [];
-    subGroups.forEach((subGroup) => {
-      const categories = Array.isArray(subGroup?.categories) ? subGroup.categories : [];
-      categories.forEach((category) => {
-        const items = Array.isArray(category?.items) ? category.items : [];
-        items.forEach((item) => pushItem(item, groupStatus));
-      });
-    });
+    if (Array.isArray(group?.items) && group.items.length > 0) {
+      group.items.forEach((item) => pushItem(item, groupStatus));
+    }
   });
+
+  return usedCategories;
 }
 
 function extractItemsFromNextData(orderNode) {
   const items = [];
   const seen = new Set();
 
-  const pushItem = (item, groupStatus = '') => {
+  const pushItem = (item, groupStatus = '', opts = null) => {
     const productName = cleanText(item?.productInfo?.name || item?.name || '');
     const quantity = item?.quantity === 0 || item?.quantity
       ? String(item.quantity)
@@ -1308,11 +1339,16 @@ function extractItemsFromNextData(orderNode) {
       return;
     }
 
-    const key = `${normalizeLookupText(productName)}|${quantity}|${price}`;
-    if (seen.has(key)) {
-      return;
+    // The categories traversal is single-pass and its duplicate lines are
+    // real (see collectItemsFromNextDataGroups); only the legacy flat-list
+    // fallbacks still need the name|quantity|price guard.
+    if (!(opts && opts.noDedup)) {
+      const key = `${normalizeLookupText(productName)}|${quantity}|${price}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
     }
-    seen.add(key);
 
     const canonicalUrl = cleanText(item?.productInfo?.canonicalUrl || item?.canonicalUrl || '');
     // Walmart dropped canonicalUrl from the order payload (live-verified
@@ -1339,14 +1375,22 @@ function extractItemsFromNextData(orderNode) {
     });
   };
 
-  collectItemsFromNextDataGroups(orderNode?.groups_2101, pushItem);
+  let usedCategories = collectItemsFromNextDataGroups(orderNode?.groups_2101, pushItem) === true;
 
   if (items.length === 0) {
-    collectItemsFromNextDataGroups(orderNode?.groups, pushItem);
+    usedCategories = collectItemsFromNextDataGroups(orderNode?.groups, pushItem) === true;
   }
 
   if (items.length === 0 && Array.isArray(orderNode?.items)) {
     orderNode.items.forEach((item) => pushItem(item, ''));
+    usedCategories = false;
+  }
+
+  // Tag (non-index array property; invisible to JSON/iteration) so
+  // mergeOrderItems knows these items are the charged-truth set and must
+  // not be "completed" with DOM rows the traversal deliberately excluded.
+  if (usedCategories && items.length > 0) {
+    items.fromChargedCategories = true;
   }
 
   return items;
@@ -1370,6 +1414,14 @@ function mergeOrderItems(domItems, nextDataItems) {
     return scrapedItems;
   }
 
+  // When the payload came from the charged-truth categories traversal it is
+  // COMPLETE: a DOM row with no payload match is a row the traversal
+  // deliberately excluded (an UNAVAILABLE/CANCELED line the print bill still
+  // renders, with a price) or a name-variant duplicate — appending it would
+  // resurrect exactly what was excluded. DOM rows then only backfill fields,
+  // never add lines. Legacy flat-list payloads keep the historic append.
+  const payloadIsChargedTruth = Boolean(nextDataItems && nextDataItems.fromChargedCategories);
+
   // The payload is the primary source (extraction order: payload → DOM).
   // MULTISET semantics: each payload line absorbs at most ONE matching DOM
   // line, so two genuinely distinct lines with the same name+quantity (e.g.
@@ -1390,6 +1442,9 @@ function mergeOrderItems(domItems, nextDataItems) {
       remaining.set(key, available - 1);
       // Remember one DOM copy per key for backfill below.
       if (!scrapedByKey.has(key)) scrapedByKey.set(key, item);
+      return;
+    }
+    if (payloadIsChargedTruth) {
       return;
     }
     mergedItems.push(item);
