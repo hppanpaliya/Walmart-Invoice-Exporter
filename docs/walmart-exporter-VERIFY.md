@@ -95,18 +95,16 @@ what the extension would now export, next to what it exports today.
 
 Only needed if you want to see the amounts land in an actual `.xlsx`.
 
-```powershell
-cd X:\Personal\walmart-invoice-exporter
-npm install -g pnpm          # not currently installed
-pnpm install --frozen-lockfile
-pnpm exec wxt build          # writes .output\chrome-mv3
+```bash
+pnpm install
+pnpm exec wxt build          # writes .output/chrome-mv3
 ```
 
 Then in Edge or Chrome:
 
 1. `edge://extensions` (or `chrome://extensions`)
 2. Turn on **Developer mode**
-3. **Load unpacked** → `X:\Personal\walmart-invoice-exporter\.output\chrome-mv3`
+3. **Load unpacked** → `.output/chrome-mv3`
 4. **Disable the Web Store copy** first, or two of them will both act on the page
 5. Re-export a split-tender order and check the `Payment Split` column
 
@@ -116,7 +114,7 @@ Turn the store version back on afterwards.
 
 ## Orders to test with
 
-Known split-tender, from `X:\Finance\personal\reports\receipt-gaps.md`:
+Known split-tender examples:
 
 | Order | Total | Expected split |
 |---|---:|---|
