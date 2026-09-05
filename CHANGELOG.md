@@ -1,5 +1,11 @@
 # Changelog
 
+## [8.3] - September 5, 2026
+
+### Added
+- Charged‑invoice line extraction with exclusion of unavailable/cancelled items, duplicate handling, and in‑store order retry. (PR #23)
+- Split‑tender extraction improvements: robust payment row amount parsing, tidy tender label building, and missing‑tender warning. (PR #21)
+
 ## [8.2] - July 19, 2026
 
 ### Added
