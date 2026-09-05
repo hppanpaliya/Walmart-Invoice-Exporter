@@ -1244,6 +1244,29 @@ function extractNextDataShipmentDetails(orderNode) {
 }
 
 /**
+ * One tender's label, without saying the brand twice.
+ *
+ * `brand` comes from the row's `img[alt]` and `ending` from its card-description text.
+ * For a card those differ usefully ("Visa" + "Ending in 4122"), but for Walmart Cash and
+ * gift cards both read "Walmart Cash", so joining them yields "Walmart Cash Walmart Cash".
+ * The same happens whenever the description already contains the brand, e.g.
+ * "Visa" + "Walmart Visa ending in 8527".
+ *
+ * Latent until now: paymentSplit was always empty, so nothing ever rendered these labels.
+ *
+ * @param {string} brand
+ * @param {string} ending
+ * @returns {string}
+ */
+function buildTenderLabel(brand, ending) {
+  const b = cleanText(brand || '');
+  const e = cleanText(ending || '');
+  if (!b) return e;
+  if (!e) return b;
+  return e.toLowerCase().includes(b.toLowerCase()) ? e : `${b} ${e}`;
+}
+
+/**
  * Format the per-card charge split, e.g. "VISA ending in 1234: $10.00; Gift Card: $5.00".
  * Works for both payload- and DOM-sourced payment method details.
  * @param {Array} paymentMethodDetails - Entries with brand/ending/amount
@@ -1256,7 +1279,7 @@ function buildPaymentSplit(paymentMethodDetails) {
       if (!method?.amount) {
         return '';
       }
-      const label = [method.brand, method.ending].filter(Boolean).join(' ');
+      const label = buildTenderLabel(method.brand, method.ending);
       return label ? `${label}: ${method.amount}` : method.amount;
     })
     .filter(Boolean)
@@ -1672,6 +1695,48 @@ function getFeeAmount(feeBreakdown, keyword) {
   return fee?.amount || '';
 }
 
+/**
+ * The amount charged to one payment method, from its row in the payment card.
+ *
+ * Walmart moved `flex-auto` off the amount and onto the label beside it, so the
+ * long-standing `.tr.flex-auto` matches nothing on current order pages. The amount
+ * still carries `tr` (right-aligned); it is the sibling label that is now
+ * `div.flex.flex-column.flex-auto`:
+ *
+ *   div.flex.items-center.mb3
+ *     div.flex.flex-column.flex-auto  > span…b            "Ending in 8527"
+ *     span.ld_Ee.ld_Ek.ld_Eh.tr       > div               "$75.29"
+ *
+ * Because that selector silently returned nothing, EVERY split-tender order exported
+ * with an empty `paymentSplit` — and a split tender is exactly the case where the card
+ * is charged less than the order total, so the loss is the figure a bank feed shows.
+ *
+ * `.tr.flex-auto` is still tried first so older pages keep working, and the fallback is
+ * scoped to the row, where `tr` marks the right-aligned money column.
+ *
+ * @param {Element} row - one `.flex.items-center.mb3` payment row
+ * @returns {string} e.g. "$75.29", or '' when the row shows no amount
+ */
+function readPaymentRowAmount(row) {
+  // `.tr` is a utility class (text-align: right), so a different layout could carry one
+  // that is not the amount. A candidate is accepted only when its WHOLE text is an
+  // amount — anchored, not merely containing a number, so a date ("12.31.25") or a
+  // version ("v1.25") cannot slip through. A wrong amount is worse than none, because it
+  // would flow into paymentSplit as fact; returning '' instead lets the extraction
+  // warning below say so.
+  const candidates = [
+    row?.querySelector('.tr.flex-auto'),
+    ...(row?.querySelectorAll ? Array.from(row.querySelectorAll('.tr')) : []),
+  ];
+  for (const candidate of candidates) {
+    const text = cleanText(candidate?.textContent || '');
+    if (/^-?\$?\s*[\d,]+(\.\d{2})?$/.test(text)) {
+      return text;
+    }
+  }
+  return '';
+}
+
 function extractPaymentDetailsFromOrderPage() {
   const methods = [];
   const seen = new Set();
@@ -1687,7 +1752,7 @@ function extractPaymentDetailsFromOrderPage() {
     }
 
     const brand = cleanText(row.querySelector('img[alt]')?.alt || '');
-    const amount = cleanText(row.querySelector('.tr.flex-auto')?.textContent || '');
+    const amount = readPaymentRowAmount(row);
     const message = cleanText(row.parentElement?.querySelector('.mt3')?.textContent || '');
 
     const key = `${cardId}|${brand}|${ending}|${amount}|${message}`;
@@ -2042,6 +2107,36 @@ function computeExtractionWarnings(data) {
 
     if (!data?.orderNumber) {
       warnings.push("Order number is missing");
+    }
+
+    // Split tender with no per-tender amounts (#20). When part of an order is
+    // paid with Walmart Cash / rewards / a gift card, the card is charged LESS
+    // than the order total — and that smaller figure is the one a bank feed
+    // shows. With no amounts, `paymentSplit` is empty and the export looks
+    // exactly like a single-tender order, so a downstream consumer silently
+    // mis-reconciles instead of knowing to ask.
+    //
+    // On in-store orders the amounts are genuinely absent from every source
+    // this extension can read: the payment box names both tenders without
+    // figures, `.print-bill-payment-section` carries only subtotal/tax/total,
+    // and the order page's __NEXT_DATA__ has no order node at all. The real
+    // split lives solely in the printed receipt, which Walmart serves as an
+    // IMAGE. So this reports the gap rather than pretending to fill it.
+    //
+    // Only for 2+ methods: with a single tender the amount IS the order total,
+    // so nothing is lost and a warning would be noise.
+    const paymentMethods = Array.isArray(data?.paymentMethodDetails)
+      ? data.paymentMethodDetails
+      : [];
+    if (
+      paymentMethods.length > 1 &&
+      paymentMethods.every((method) => !cleanText(method?.amount || ""))
+    ) {
+      warnings.push(
+        `Split tender across ${paymentMethods.length} payment methods, but no ` +
+          "per-tender amounts were extracted — the amount charged to each " +
+          "method is missing"
+      );
     }
   } catch (error) {
     // Validation is best-effort; never let it interfere with extraction.
@@ -2517,11 +2612,13 @@ async function checkForNextPage() {
     Object.assign(globalThis, {
       extractOrderDataFromNextData,
       scrapeOrderData,
+      readPaymentRowAmount,
       mergeOrderItems,
       extractPrintItem,
       computeExtractionWarnings,
       formatOrderDateFromIsoString,
       buildPaymentSplit,
+      buildTenderLabel,
       buildDomOrderSummary,
       PurchaseHistoryDataSource,
     });

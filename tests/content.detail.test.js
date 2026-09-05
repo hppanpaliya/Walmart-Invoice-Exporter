@@ -116,6 +116,112 @@ test('computeExtractionWarnings trips on blank data and stays quiet on healthy d
   assert.equal(warnings.length, 3);
 });
 
+test('computeExtractionWarnings flags split tender with no per-tender amounts', () => {
+  const sandbox = loadDetailSandbox();
+  const base = { orderNumber: '582515916131486157579', orderTotal: '$204.26',
+    items: [{ productName: 'Fresh Strawberries, 1 lb Container', price: '$4.34' }] };
+
+  // A real in-store export (#20): both tenders named, neither carrying an
+  // amount, so paymentSplit is empty and the card was charged less than the
+  // order total. Nothing else in the payload says so.
+  const splitTender = sandbox.computeExtractionWarnings({
+    ...base,
+    paymentMethodDetails: [
+      { cardId: 'card-description-0', brand: '', ending: 'Ending in 2043', amount: '' },
+      { cardId: 'card-description-1', brand: '', ending: 'Walmart Visa ending in 8527', amount: '' },
+    ],
+  });
+  assert.equal(splitTender.length, 1);
+  assert.match(toPlain(splitTender)[0], /Split tender across 2 payment methods/);
+
+  // One tender: its amount IS the order total, so nothing is lost — stay quiet.
+  assert.deepEqual(toPlain(sandbox.computeExtractionWarnings({
+    ...base,
+    paymentMethodDetails: [{ brand: 'VISA', ending: 'ending in 1234', amount: '' }],
+  })), []);
+
+  // Amounts present — the healthy split-tender case, also quiet.
+  assert.deepEqual(toPlain(sandbox.computeExtractionWarnings({
+    ...base,
+    paymentMethodDetails: [
+      { brand: 'VISA', ending: 'ending in 1234', amount: '$20.00' },
+      { brand: 'GIFTCARD', ending: 'Gift Card', amount: '$6.84' },
+    ],
+  })), []);
+
+  // Partial extraction is not a silent loss: one known amount plus the order
+  // total gives the other, so this stays quiet too.
+  assert.deepEqual(toPlain(sandbox.computeExtractionWarnings({
+    ...base,
+    paymentMethodDetails: [
+      { brand: 'VISA', ending: 'ending in 1234', amount: '$200.51' },
+      { brand: '', ending: 'Ending in 2043', amount: '' },
+    ],
+  })), []);
+});
+
+test('readPaymentRowAmount reads the 2026 payment row (flex-auto moved off the amount)', () => {
+  const sandbox = loadDetailSandbox();
+  // `row` fakes an element: `.tr.flex-auto` via querySelector, `.tr` via querySelectorAll.
+  const row = (map) => ({
+    querySelector: (sel) => (map[sel] !== undefined ? { textContent: map[sel] } : null),
+    querySelectorAll: (sel) => (Array.isArray(map[sel]) ? map[sel] : map[sel] !== undefined
+      ? [{ textContent: map[sel] }] : []).map((v) => (typeof v === 'string' ? { textContent: v } : v)),
+  });
+
+  // Live markup, captured from an online order page 2026-08-11. The amount span carries
+  // `tr` only; `flex-auto` now sits on the sibling label div, so the old `.tr.flex-auto`
+  // matched nothing and every split-tender amount was dropped.
+  assert.equal(sandbox.readPaymentRowAmount(row({ '.tr': '$107.75' })), '$107.75');
+  assert.equal(sandbox.readPaymentRowAmount(row({ '.tr': '$8.00' })), '$8.00');
+
+  // Older pages put both classes on the amount — keep working.
+  assert.equal(
+    sandbox.readPaymentRowAmount(row({ '.tr.flex-auto': '$20.00', '.tr': '$20.00' })),
+    '$20.00');
+
+  // The specific selector wins when the two disagree.
+  assert.equal(
+    sandbox.readPaymentRowAmount(row({ '.tr.flex-auto': '$9.99', '.tr': '$1.00' })),
+    '$9.99');
+
+  // `.tr` is a text-align utility, so a row may hold one that is NOT the amount. Skip
+  // anything that does not look like money rather than exporting a label as a figure.
+  assert.equal(sandbox.readPaymentRowAmount(row({ '.tr': ['Ending in 8527', '$75.29'] })),
+               '$75.29');
+  assert.equal(sandbox.readPaymentRowAmount(row({ '.tr': 'Ending in 8527' })), '');
+
+
+  // Anchored, so text that merely CONTAINS a number is rejected.
+  assert.equal(sandbox.readPaymentRowAmount(row({ '.tr': '12.31.25' })), '');
+  assert.equal(sandbox.readPaymentRowAmount(row({ '.tr': '$75.29 charged' })), '');
+  assert.equal(sandbox.readPaymentRowAmount(row({ '.tr': '3 hours or less' })), '');
+  // Real formats that must still pass.
+  assert.equal(sandbox.readPaymentRowAmount(row({ '.tr': '$1,234.56' })), '$1,234.56');
+  assert.equal(sandbox.readPaymentRowAmount(row({ '.tr': '-$12.50' })), '-$12.50');
+  // In-store rows show no amount at all — empty, never undefined.
+  assert.equal(sandbox.readPaymentRowAmount(row({})), '');
+  assert.equal(sandbox.readPaymentRowAmount(null), '');
+});
+
+test('buildTenderLabel does not say the brand twice', () => {
+  const sandbox = loadDetailSandbox();
+  const label = sandbox.buildTenderLabel;
+
+  // Live case (order 200014610875731, 2026-08-11): the Walmart Cash row has the same
+  // text in img[alt] and in the card description, which used to render as
+  // "Walmart Cash Walmart Cash: $6.00".
+  assert.equal(label('Walmart Cash', 'Walmart Cash'), 'Walmart Cash');
+  // Description already carries the brand.
+  assert.equal(label('Visa', 'Walmart Visa ending in 8527'), 'Walmart Visa ending in 8527');
+  // Genuinely complementary — keep both.
+  assert.equal(label('Visa', 'Ending in 4122'), 'Visa Ending in 4122');
+  // Either side missing.
+  assert.equal(label('', 'Ending in 2043'), 'Ending in 2043');
+  assert.equal(label('GIFTCARD', ''), 'GIFTCARD');
+  assert.equal(label('', ''), '');
+});
+
 test('extractPrintItem parses the 2026 Walmart print view (Qty label, double-price string)', () => {
   const sandbox = loadDetailSandbox();
   const el = (text) => ({ textContent: text });
