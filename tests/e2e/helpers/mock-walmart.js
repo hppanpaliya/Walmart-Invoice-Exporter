@@ -102,6 +102,8 @@ async function startMockWalmart() {
   return {
     proxyPort: proxy.address().port,
     close: async () => {
+      proxy.closeAllConnections?.();
+      origin.closeAllConnections?.();
       await new Promise((resolve) => proxy.close(resolve));
       await new Promise((resolve) => origin.close(resolve));
       fs.rmSync(dir, { recursive: true, force: true });

@@ -2645,6 +2645,11 @@ async function checkForNextPage() {
     scrapeOrderById,
     clickNextPage,
     collectAllFast,
+    readPaymentRowAmount,
+    buildTenderLabel,
+    extractItemsFromNextData,
+    mergeOrderItems,
+    computeExtractionWarnings,
     // Fast invoice fetching (HTML-fetch + __NEXT_DATA__ parse, no tab per order)
     // is available for this provider; used only when the fast setting is on.
     supportsFastInvoice: true,
