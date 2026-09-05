@@ -1244,6 +1244,29 @@ function extractNextDataShipmentDetails(orderNode) {
 }
 
 /**
+ * One tender's label, without saying the brand twice.
+ *
+ * `brand` comes from the row's `img[alt]` and `ending` from its card-description text.
+ * For a card those differ usefully ("Visa" + "Ending in 4122"), but for Walmart Cash and
+ * gift cards both read "Walmart Cash", so joining them yields "Walmart Cash Walmart Cash".
+ * The same happens whenever the description already contains the brand, e.g.
+ * "Visa" + "Walmart Visa ending in 8527".
+ *
+ * Latent until now: paymentSplit was always empty, so nothing ever rendered these labels.
+ *
+ * @param {string} brand
+ * @param {string} ending
+ * @returns {string}
+ */
+function buildTenderLabel(brand, ending) {
+  const b = cleanText(brand || '');
+  const e = cleanText(ending || '');
+  if (!b) return e;
+  if (!e) return b;
+  return e.toLowerCase().includes(b.toLowerCase()) ? e : `${b} ${e}`;
+}
+
+/**
  * Format the per-card charge split, e.g. "VISA ending in 1234: $10.00; Gift Card: $5.00".
  * Works for both payload- and DOM-sourced payment method details.
  * @param {Array} paymentMethodDetails - Entries with brand/ending/amount
@@ -1256,7 +1279,7 @@ function buildPaymentSplit(paymentMethodDetails) {
       if (!method?.amount) {
         return '';
       }
-      const label = [method.brand, method.ending].filter(Boolean).join(' ');
+      const label = buildTenderLabel(method.brand, method.ending);
       return label ? `${label}: ${method.amount}` : method.amount;
     })
     .filter(Boolean)
@@ -1265,33 +1288,64 @@ function buildPaymentSplit(paymentMethodDetails) {
 
 function collectItemsFromNextDataGroups(groups, pushItem) {
   if (!Array.isArray(groups)) {
-    return;
+    return false;
   }
+
+  // Reported to the caller so the DOM merge knows the payload is charged
+  // truth (see mergeOrderItems): true when any group was read through its
+  // categories tree rather than a flat legacy list.
+  let usedCategories = false;
 
   groups.forEach((group) => {
     const groupStatus = extractTextFromNextData(group?.status?.message) || extractTextFromNextData(group?.status);
 
-    if (Array.isArray(group?.items) && group.items.length > 0) {
-      group.items.forEach((item) => pushItem(item, groupStatus));
+    // Charged-truth traversal. The flat group.items list is the ORDERED view:
+    // it still contains UNAVAILABLE items (listed but never charged), so
+    // summing it overstates what the card was charged. The categories tree is
+    // what Walmart's own printed invoice renders, and its non-UNAVAILABLE
+    // linePrice values sum exactly to priceDetails.subTotal (verified against
+    // real invoices to the penny). Note group.subGroups[].categories is a
+    // DUPLICATE copy of group.categories on multi-fulfillment orders —
+    // traverse exactly one of the two, never both.
+    const categories = Array.isArray(group?.categories) && group.categories.length > 0
+      ? group.categories
+      : (Array.isArray(group?.subGroups) ? group.subGroups : []).flatMap((subGroup) =>
+          Array.isArray(subGroup?.categories) ? subGroup.categories : []
+        );
+
+    if (categories.length > 0) {
+      usedCategories = true;
+      categories.forEach((category) => {
+        const categoryType = String(category?.type || '').toUpperCase();
+        // UNAVAILABLE / CANCELED lines were never charged; RETURNED lines
+        // were charged (the refund is its own transaction), so they stay.
+        if (categoryType === 'UNAVAILABLE' || categoryType.indexOf('CANCEL') === 0) {
+          return;
+        }
+        const items = Array.isArray(category?.items) ? category.items : [];
+        // Each category line is one charged line — real orders legitimately
+        // contain identical duplicate lines (same product, same price, two
+        // lines), and item ids are NOT unique across an order, so no
+        // dedup key can be trusted here. The either/or traversal above is
+        // single-pass, so nothing can be visited twice.
+        items.forEach((item) => pushItem(item, groupStatus, { noDedup: true }));
+      });
       return;
     }
 
-    const subGroups = Array.isArray(group?.subGroups) ? group.subGroups : [];
-    subGroups.forEach((subGroup) => {
-      const categories = Array.isArray(subGroup?.categories) ? subGroup.categories : [];
-      categories.forEach((category) => {
-        const items = Array.isArray(category?.items) ? category.items : [];
-        items.forEach((item) => pushItem(item, groupStatus));
-      });
-    });
+    if (Array.isArray(group?.items) && group.items.length > 0) {
+      group.items.forEach((item) => pushItem(item, groupStatus));
+    }
   });
+
+  return usedCategories;
 }
 
 function extractItemsFromNextData(orderNode) {
   const items = [];
   const seen = new Set();
 
-  const pushItem = (item, groupStatus = '') => {
+  const pushItem = (item, groupStatus = '', opts = null) => {
     const productName = cleanText(item?.productInfo?.name || item?.name || '');
     const quantity = item?.quantity === 0 || item?.quantity
       ? String(item.quantity)
@@ -1308,11 +1362,16 @@ function extractItemsFromNextData(orderNode) {
       return;
     }
 
-    const key = `${normalizeLookupText(productName)}|${quantity}|${price}`;
-    if (seen.has(key)) {
-      return;
+    // The categories traversal is single-pass and its duplicate lines are
+    // real (see collectItemsFromNextDataGroups); only the legacy flat-list
+    // fallbacks still need the name|quantity|price guard.
+    if (!(opts && opts.noDedup)) {
+      const key = `${normalizeLookupText(productName)}|${quantity}|${price}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
     }
-    seen.add(key);
 
     const canonicalUrl = cleanText(item?.productInfo?.canonicalUrl || item?.canonicalUrl || '');
     // Walmart dropped canonicalUrl from the order payload (live-verified
@@ -1339,14 +1398,22 @@ function extractItemsFromNextData(orderNode) {
     });
   };
 
-  collectItemsFromNextDataGroups(orderNode?.groups_2101, pushItem);
+  let usedCategories = collectItemsFromNextDataGroups(orderNode?.groups_2101, pushItem) === true;
 
   if (items.length === 0) {
-    collectItemsFromNextDataGroups(orderNode?.groups, pushItem);
+    usedCategories = collectItemsFromNextDataGroups(orderNode?.groups, pushItem) === true;
   }
 
   if (items.length === 0 && Array.isArray(orderNode?.items)) {
     orderNode.items.forEach((item) => pushItem(item, ''));
+    usedCategories = false;
+  }
+
+  // Tag (non-index array property; invisible to JSON/iteration) so
+  // mergeOrderItems knows these items are the charged-truth set and must
+  // not be "completed" with DOM rows the traversal deliberately excluded.
+  if (usedCategories && items.length > 0) {
+    items.fromChargedCategories = true;
   }
 
   return items;
@@ -1370,6 +1437,14 @@ function mergeOrderItems(domItems, nextDataItems) {
     return scrapedItems;
   }
 
+  // When the payload came from the charged-truth categories traversal it is
+  // COMPLETE: a DOM row with no payload match is a row the traversal
+  // deliberately excluded (an UNAVAILABLE/CANCELED line the print bill still
+  // renders, with a price) or a name-variant duplicate — appending it would
+  // resurrect exactly what was excluded. DOM rows then only backfill fields,
+  // never add lines. Legacy flat-list payloads keep the historic append.
+  const payloadIsChargedTruth = Boolean(nextDataItems && nextDataItems.fromChargedCategories);
+
   // The payload is the primary source (extraction order: payload → DOM).
   // MULTISET semantics: each payload line absorbs at most ONE matching DOM
   // line, so two genuinely distinct lines with the same name+quantity (e.g.
@@ -1390,6 +1465,9 @@ function mergeOrderItems(domItems, nextDataItems) {
       remaining.set(key, available - 1);
       // Remember one DOM copy per key for backfill below.
       if (!scrapedByKey.has(key)) scrapedByKey.set(key, item);
+      return;
+    }
+    if (payloadIsChargedTruth) {
       return;
     }
     mergedItems.push(item);
@@ -1617,6 +1695,48 @@ function getFeeAmount(feeBreakdown, keyword) {
   return fee?.amount || '';
 }
 
+/**
+ * The amount charged to one payment method, from its row in the payment card.
+ *
+ * Walmart moved `flex-auto` off the amount and onto the label beside it, so the
+ * long-standing `.tr.flex-auto` matches nothing on current order pages. The amount
+ * still carries `tr` (right-aligned); it is the sibling label that is now
+ * `div.flex.flex-column.flex-auto`:
+ *
+ *   div.flex.items-center.mb3
+ *     div.flex.flex-column.flex-auto  > span…b            "Ending in 8527"
+ *     span.ld_Ee.ld_Ek.ld_Eh.tr       > div               "$75.29"
+ *
+ * Because that selector silently returned nothing, EVERY split-tender order exported
+ * with an empty `paymentSplit` — and a split tender is exactly the case where the card
+ * is charged less than the order total, so the loss is the figure a bank feed shows.
+ *
+ * `.tr.flex-auto` is still tried first so older pages keep working, and the fallback is
+ * scoped to the row, where `tr` marks the right-aligned money column.
+ *
+ * @param {Element} row - one `.flex.items-center.mb3` payment row
+ * @returns {string} e.g. "$75.29", or '' when the row shows no amount
+ */
+function readPaymentRowAmount(row) {
+  // `.tr` is a utility class (text-align: right), so a different layout could carry one
+  // that is not the amount. A candidate is accepted only when its WHOLE text is an
+  // amount — anchored, not merely containing a number, so a date ("12.31.25") or a
+  // version ("v1.25") cannot slip through. A wrong amount is worse than none, because it
+  // would flow into paymentSplit as fact; returning '' instead lets the extraction
+  // warning below say so.
+  const candidates = [
+    row?.querySelector('.tr.flex-auto'),
+    ...(row?.querySelectorAll ? Array.from(row.querySelectorAll('.tr')) : []),
+  ];
+  for (const candidate of candidates) {
+    const text = cleanText(candidate?.textContent || '');
+    if (/^-?\$?\s*[\d,]+(\.\d{2})?$/.test(text)) {
+      return text;
+    }
+  }
+  return '';
+}
+
 function extractPaymentDetailsFromOrderPage() {
   const methods = [];
   const seen = new Set();
@@ -1632,7 +1752,7 @@ function extractPaymentDetailsFromOrderPage() {
     }
 
     const brand = cleanText(row.querySelector('img[alt]')?.alt || '');
-    const amount = cleanText(row.querySelector('.tr.flex-auto')?.textContent || '');
+    const amount = readPaymentRowAmount(row);
     const message = cleanText(row.parentElement?.querySelector('.mt3')?.textContent || '');
 
     const key = `${cardId}|${brand}|${ending}|${amount}|${message}`;
@@ -1987,6 +2107,36 @@ function computeExtractionWarnings(data) {
 
     if (!data?.orderNumber) {
       warnings.push("Order number is missing");
+    }
+
+    // Split tender with no per-tender amounts (#20). When part of an order is
+    // paid with Walmart Cash / rewards / a gift card, the card is charged LESS
+    // than the order total — and that smaller figure is the one a bank feed
+    // shows. With no amounts, `paymentSplit` is empty and the export looks
+    // exactly like a single-tender order, so a downstream consumer silently
+    // mis-reconciles instead of knowing to ask.
+    //
+    // On in-store orders the amounts are genuinely absent from every source
+    // this extension can read: the payment box names both tenders without
+    // figures, `.print-bill-payment-section` carries only subtotal/tax/total,
+    // and the order page's __NEXT_DATA__ has no order node at all. The real
+    // split lives solely in the printed receipt, which Walmart serves as an
+    // IMAGE. So this reports the gap rather than pretending to fill it.
+    //
+    // Only for 2+ methods: with a single tender the amount IS the order total,
+    // so nothing is lost and a warning would be noise.
+    const paymentMethods = Array.isArray(data?.paymentMethodDetails)
+      ? data.paymentMethodDetails
+      : [];
+    if (
+      paymentMethods.length > 1 &&
+      paymentMethods.every((method) => !cleanText(method?.amount || ""))
+    ) {
+      warnings.push(
+        `Split tender across ${paymentMethods.length} payment methods, but no ` +
+          "per-tender amounts were extracted — the amount charged to each " +
+          "method is missing"
+      );
     }
   } catch (error) {
     // Validation is best-effort; never let it interfere with extraction.
@@ -2462,11 +2612,13 @@ async function checkForNextPage() {
     Object.assign(globalThis, {
       extractOrderDataFromNextData,
       scrapeOrderData,
+      readPaymentRowAmount,
       mergeOrderItems,
       extractPrintItem,
       computeExtractionWarnings,
       formatOrderDateFromIsoString,
       buildPaymentSplit,
+      buildTenderLabel,
       buildDomOrderSummary,
       PurchaseHistoryDataSource,
     });
@@ -2493,6 +2645,11 @@ async function checkForNextPage() {
     scrapeOrderById,
     clickNextPage,
     collectAllFast,
+    readPaymentRowAmount,
+    buildTenderLabel,
+    extractItemsFromNextData,
+    mergeOrderItems,
+    computeExtractionWarnings,
     // Fast invoice fetching (HTML-fetch + __NEXT_DATA__ parse, no tab per order)
     // is available for this provider; used only when the fast setting is on.
     supportsFastInvoice: true,

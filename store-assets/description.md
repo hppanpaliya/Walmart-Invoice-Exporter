@@ -66,7 +66,9 @@ Walmart Invoice Exporter collects every order from walmart.com/orders, saves it 
 
 ☆ Need to merge multiple Excel files afterwards? https://hppanpaliya.github.io/excel-merger
 
-★ WHAT'S NEW IN 8.2
+★ WHAT'S NEW IN 8.3
+• Charged‑invoice line extraction, duplicate handling and in‑store order retry (PR #23)
+• Split‑tender extraction improvements and missing‑tender warning (PR #21)
 • Full-app dashboard: expandable inline invoices, interactive monthly chart, and a new insights card
 • Fast collection with "only new orders" support and automatic classic fallback
 • Walmart's own order filters (type + date range) as collection options

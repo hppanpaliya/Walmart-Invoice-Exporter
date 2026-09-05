@@ -50,7 +50,7 @@ export default defineConfig({
 
   manifest: ({ browser }) => ({
     name: 'Walmart Invoice Exporter',
-    version: '8.2',
+    version: '8.3',
     description:
       'Export your Walmart order history to Excel, CSV, or PDF — and see where the money went on a built-in spending dashboard.',
     default_locale: 'en',
