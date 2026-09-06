@@ -1904,7 +1904,7 @@ const CONSTANTS = {
   URLS: {
     WALMART_ORDERS: 'https://www.walmart.com/orders',
     WALMART_REVIEWS: 'https://chromewebstore.google.com/detail/walmart-invoice-exporter/bndkihecbbkoligeekekdgommmdllfpe/reviews',
-    GITHUB_ISSUES: 'https://github.com/amruta-chaudhari/Walmart-Invoice-Exporter/issues/new',
+    GITHUB_ISSUES: 'https://github.com/hppanpaliya/Walmart-Invoice-Exporter/issues/new',
   },
 
   // User-configurable timings (Settings → Advanced). Single source of
