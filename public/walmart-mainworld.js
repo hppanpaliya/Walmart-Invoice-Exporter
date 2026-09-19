@@ -35,6 +35,18 @@
   // panel can build invoices without opening a tab per order.
   const ORDER_REQ = "WIE_FETCH_ORDER";
   const ORDER_RES = "WIE_FETCH_ORDER_RESULT";
+  // Ledger protocol: fetch one order's charge history (getOrderLedger) —
+  // the per-tender FINAL amounts (card charges, refunds, gift-card tender)
+  // that exist nowhere in the order node or the payment section for orders
+  // adjusted after checkout (refunds/tips).
+  const LEDGER_REQ = "WIE_FETCH_LEDGER";
+  const LEDGER_RES = "WIE_FETCH_LEDGER_RESULT";
+  // Persisted-query hash for getOrderLedger, captured from walmart.com
+  // 2026-09. If Walmart rotates it, the fetch returns JSON without a
+  // data.getOrderLedger node and the reply is ok:false reason
+  // "ledger-query-rejected" — callers must treat that as "amount unknown"
+  // (blank columns), never guess.
+  const LEDGER_QUERY_HASH = "1813d08a5de3816062208e82378486f17ccf761dce194b1fe91cf8a465339b95";
 
   // Guard against double-install (e.g. SPA soft-navigations re-running scripts).
   if (window.__wiePurchaseHistoryBridgeInstalled) return;
@@ -45,6 +57,13 @@
   // accepts the page's real, sensor-signed headers but 429-challenges a request
   // built from synthesized headers. We reuse EXACTLY what the page just sent.
   let lastRequestHeaders = null;
+
+  // Headers from the page's most recent orchestra GraphQL request of ANY
+  // operation. getOrderLedger needs the same sensor-signed header set the
+  // page sends (a bare fetch gets the bot challenge), and order-detail
+  // pages fire several orchestra calls on load, so these are available in
+  // both the fast tab and classic per-order tabs.
+  let lastOrchestraHeaders = null;
 
   const captureHeaders = (input, init) => {
     const headers = {};
@@ -150,6 +169,10 @@
       if (requestUrl.indexOf("PurchaseHistoryV3") > -1) {
         const captured = captureHeaders(args[0], args[1]);
         if (captured && Object.keys(captured).length) lastRequestHeaders = captured;
+      }
+      if (requestUrl.indexOf("/orchestra/") > -1 && requestUrl.indexOf("/graphql/") > -1) {
+        const captured = captureHeaders(args[0], args[1]);
+        if (captured && Object.keys(captured).length) lastOrchestraHeaders = captured;
       }
       return originalFetch(...args).then((response) => {
         try {
@@ -284,6 +307,45 @@
             return;
           }
           reply({ ok: false, status: first.status, reason: first.reason || retry.reason });
+        })
+        .catch((err) => reply({ ok: false, reason: String(err && err.message) }));
+      return;
+    }
+
+    // --- Ledger: fetch one order's charge history (per-tender final amounts) ---
+    if (msg.type === LEDGER_REQ) {
+      const reply = (body) =>
+        window.postMessage({ source: SOURCE, type: LEDGER_RES, reqId: msg.reqId, ...body }, "*");
+      const orderNumber = String(msg.orderNumber || "").replace(/[^\d]/g, "");
+      if (!orderNumber) {
+        reply({ ok: false, reason: "bad-order" });
+        return;
+      }
+      const headers = lastOrchestraHeaders || lastRequestHeaders;
+      if (!headers) {
+        // Same contract as Fast Collect: we never fabricate a request the
+        // page hasn't proven it can make — without captured headers the
+        // fetch would just get the bot challenge.
+        reply({ ok: false, reason: "no-headers" });
+        return;
+      }
+      const url =
+        `/orchestra/orders/graphql/getOrderLedger/${LEDGER_QUERY_HASH}?variables=` +
+        encodeURIComponent(JSON.stringify({ orderId: orderNumber, args: null }));
+      fetch(url, { credentials: "include", headers })
+        .then(async (r) => {
+          let ledger = null;
+          try {
+            const j = await r.json();
+            ledger = (j && j.data && j.data.getOrderLedger) || null;
+          } catch (_) {
+            // Bot challenge or non-JSON — fall through to the loud failure.
+          }
+          if (!ledger) {
+            reply({ ok: false, status: r.status, reason: "ledger-query-rejected" });
+            return;
+          }
+          reply({ ok: true, status: r.status, ledger });
         })
         .catch((err) => reply({ ok: false, reason: String(err && err.message) }));
       return;
