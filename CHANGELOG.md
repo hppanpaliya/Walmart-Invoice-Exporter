@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Fixed
+- Restrict embedded dashboard commands to the actual parent frame. Spreadsheet exports reject active/local/credential-bearing product links, and CSV exports neutralize formula prefixes hidden behind whitespace or control characters.
 - Dashboard money fallbacks preserve explicit zero amounts, include zero-total orders in averages, and show invoice totals consistently in order rows. Existing-invoice updates refresh the dashboard. Invalid dates fall through to valid stored dates, and rolling date ranges clamp to the last day of shorter months.
 - Support the redesigned Walmart invoice layout observed on the live site: read current item and total rows, exclude unavailable and canceled item sections, and recover matching order metadata from `phRedesignInitialData`. Delivery fees use current amounts rather than crossed-out prices, and temporary authorization totals are excluded.
 - Incomplete invoices are no longer saved or exported as successful downloads. The panel rechecks the page once, then tries the alternate order URL; orders still missing usable items, a valid total, or the requested order number are listed as failed with a retry action. The same checks apply to cached and fast-fetched invoices. (#36)

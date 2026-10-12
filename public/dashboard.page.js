@@ -1757,7 +1757,7 @@
   // …plus any same-origin postMessage from the embedded panel (future
   // panel→dashboard notifications land here without a contract change).
   window.addEventListener('message', (event) => {
-    if (event.origin !== location.origin) return;
+    if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
     const source = event.data && event.data.source;
     if (typeof source === 'string' && source.startsWith('wie-') && source !== 'wie-dashboard') {
       scheduleRefresh();

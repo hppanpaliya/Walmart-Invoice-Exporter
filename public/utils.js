@@ -38,6 +38,15 @@ function resolveMoneyValue(...values) {
   return 0;
 }
 
+/** Only ordinary web links may become clickable spreadsheet hyperlinks. */
+function safeExportUrl(value) {
+  try {
+    const url = new URL(String(value ?? ''));
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) return '';
+    return url.href;
+  } catch (_) { return ''; }
+}
+
 /**
  * Format detailed payment method metadata into a readable string
  * @param {Object} orderDetails - Order details containing payment info
@@ -242,13 +251,13 @@ function buildSummaryItemRows(orderNumbers, orderSummaries = {}, invoiceByOrder 
 function addItemsToWorksheet(worksheet, items) {
   items.forEach((item) => {
     const productName = item.productName || "";
-    const productLink = item.productLink || "";
+    const productLink = safeExportUrl(item.productLink);
     const row = worksheet.addRow({
       productName,
-      productLink: {
+      productLink: productLink ? {
         text: truncateText(productName),
         hyperlink: productLink
-      },
+      } : '',
       quantity: excelNumber(item.quantity),
       price: excelNumber(item.price),
       deliveryStatus: item.deliveryStatus,
@@ -671,7 +680,7 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
     (orderDetails.items || []).forEach((item) => {
       allItems.push({ orderDetails, item });
       const productName = item.productName || '';
-      const productLink = item.productLink || '';
+      const productLink = safeExportUrl(item.productLink);
       itemsSheet.addRow({
         orderNumber: orderDetails.orderNumber || '',
         orderDate: orderDetails.orderDate || '',
@@ -773,7 +782,7 @@ function configureMultipleOrdersColumnsLegacy(worksheet, options = {}) {
 function addMultipleOrderItemsToWorksheetLegacy(worksheet, items) {
   items.forEach((item) => {
     const productName = item.productName || "";
-    const productLink = item.productLink || "";
+    const productLink = safeExportUrl(item.productLink);
     worksheet.addRow({
       orderNumber: item.orderNumber || '',
       orderDate: item.orderDate || '',
@@ -789,10 +798,10 @@ function addMultipleOrderItemsToWorksheetLegacy(worksheet, items) {
       quantity: parseNumericValue(item.quantity),
       price: parseNumericValue(item.price),
       deliveryStatus: item.deliveryStatus || '',
-      productLink: {
+      productLink: productLink ? {
         text: truncateText(productName),
         hyperlink: productLink
-      },
+      } : '',
       deliveryCharges: parseNumericValue(item.deliveryCharges),
       bagFee: parseNumericValue(item.bagFee),
       tax: parseNumericValue(item.tax),
@@ -960,7 +969,7 @@ function csvEscape(value) {
     return String(value);
   }
   let text = String(value ?? '');
-  if (/^[=+\-@\t\r]/.test(text)) {
+  if (/^[\u0000-\u0020\u00a0]*[=+\-@]|^[\t\r\n]/.test(text)) {
     text = `'${text}`;
   }
   if (/[",\r\n]/.test(text)) {
@@ -1047,7 +1056,7 @@ const ITEM_CSV_COLUMNS = [
   ['Quantity', (o, item) => parseNumericValue(item.quantity)],
   ['Price', (o, item) => parseNumericValue(item.price)],
   ['Delivery Status', (o, item) => item.deliveryStatus || ''],
-  ['Product Link', (o, item) => item.productLink || ''],
+  ['Product Link', (o, item) => safeExportUrl(item.productLink)],
 ];
 
 /**
