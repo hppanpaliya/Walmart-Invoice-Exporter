@@ -41,6 +41,8 @@ The built extension was then loaded into isolated Chromium with Walmart requests
 
 Validation completed: 278 Node tests, 268 Vitest tests, and 22 Chromium integration/end-to-end tests passed. Chrome and Firefox builds succeeded. `git diff --check` passed.
 
+The subsequent dashboard, export, dependency, and reusable capture work is documented in [hardening-2026-10-12.md](hardening-2026-10-12.md), with the expanded final validation results and remaining security finding.
+
 Reproduction: `node --test tests/e2e/live-invoice.e2e.js` runs the packaged extension against the checked-in anonymized capture. `node scripts/verify-invoice-capture.cjs /path/to/saved-invoice.html [baseline-ref]` sanitizes a new local capture and compares the providers (default baseline `faae6af27e38e46dc6ed189b0924aa7a3e9a875e`); its assertions intentionally describe this particular invoice. The latter writes `output/playwright/Verified_Invoice.xlsx`.
 
 Remaining limits:

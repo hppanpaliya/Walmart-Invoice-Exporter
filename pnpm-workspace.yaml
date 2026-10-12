@@ -14,3 +14,17 @@ allowBuilds:
 #   minimumReleaseAgeExclude:
 #     - some-package@1.2.3
 minimumReleaseAge: 20160
+# Exact security fixes inside the cooldown; no broad package exemption.
+minimumReleaseAgeExclude:
+  - source-map-js@1.2.2
+  - shell-quote@1.11.0
+
+# Pin audited patched transitive versions until upstream tools update their
+# ranges. Keep the release-age policy and install-script allowlist intact.
+overrides:
+  shell-quote: 1.11.0
+  tmp: 0.2.7
+  adm-zip: 0.6.1
+  esbuild: 0.28.1
+  source-map-js: 1.2.2
+  uuid: 11.1.1
