@@ -35,7 +35,7 @@
 
   /** Invoice→summary money fallback, both fields optional (moneyOf pairing). */
   function money(invoiceValue, summaryValue) {
-    return parseNumericValue(invoiceValue) || parseNumericValue(summaryValue);
+    return resolveMoneyValue(invoiceValue, summaryValue);
   }
 
   /** A measured record's best grand total (invoice→summary→record fallback). */

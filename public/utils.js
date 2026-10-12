@@ -17,8 +17,25 @@ const STYLES = {
  * @returns {number} The parsed number value
  */
 function parseNumericValue(value) {
-  if (typeof value === 'number') return value;
-  return Number(String(value || '').replace(/[^0-9.-]+/g, '')) || 0;
+  return parseOptionalNumericValue(value) ?? 0;
+}
+
+/** Preserve the distinction between a missing money value and an explicit zero. */
+function parseOptionalNumericValue(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const numeric = String(value ?? '').replace(/[^0-9.-]+/g, '');
+  if (!/\d/.test(numeric)) return null;
+  const parsed = Number(numeric);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** First available finite amount, including zero (invoice before summary). */
+function resolveMoneyValue(...values) {
+  for (const value of values) {
+    const amount = parseOptionalNumericValue(value);
+    if (amount !== null) return amount;
+  }
+  return 0;
 }
 
 /**
@@ -2052,8 +2069,16 @@ function isPayloadQualitySummary(summary) {
  * share it with sidepanel.dashboard.js.
  */
 function normalizeDashboardDate(rawDate) {
-  const text = String(rawDate || '');
-  if (/^\d{4}-\d{2}/.test(text)) return text.slice(0, 10);
+  const text = String(rawDate || '').trim();
+  if (/^\d{4}-\d{2}/.test(text)) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})(?:$|[T\s])/.exec(text);
+    if (!match) return '';
+    const [, year, month, day] = match.map(Number);
+    const date = new Date(0);
+    date.setUTCFullYear(year, month - 1, day);
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+      ? text.slice(0, 10) : '';
+  }
   if (!text) return '';
   const parsed = new Date(text);
   if (isNaN(parsed.getTime())) return '';
@@ -2098,7 +2123,7 @@ function parseWalmartTitleDate(text) {
   const day = Number(match[2]);
   const year = Number(match[3]);
   if (monthIndex < 0 || day < 1 || day > 31) return '';
-  return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return normalizeDashboardDate(`${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
 }
 
 /**
@@ -2122,7 +2147,8 @@ function buildOrderRowModel(orderNumber, record, sessionTitle) {
   const invoice = (record && record.invoice) || null;
 
   let rawDate = (summary && summary.orderDate) || (record && record.orderDate) || (invoice && invoice.orderDate) || '';
-  let normalizedDate = normalizeDashboardDate(rawDate);
+  let normalizedDate = [summary?.orderDate, record?.orderDate, invoice?.orderDate]
+    .map(normalizeDashboardDate).find(Boolean) || '';
   if (!normalizedDate) {
     // The delivery date Walmart shows ("Delivered on …") — stored on list
     // summaries (ISO) and on downloaded invoices ('Jul 02, 2026', possibly
@@ -2160,9 +2186,9 @@ function buildOrderRowModel(orderNumber, record, sessionTitle) {
     (invoice && Array.isArray(invoice.items) ? invoice.items.length : '') ??
     '';
 
-  const total = (summary && summary.orderTotal) || (invoice && invoice.orderTotal) || '';
-
   const hasInvoice = Boolean(invoice) && Number(invoice.schemaVersion || 0) >= CONSTANTS.ORDER_SCHEMA_VERSION;
+  const total = [hasInvoice ? invoice.orderTotal : null, summary?.orderTotal, invoice?.orderTotal]
+    .find((value) => parseOptionalNumericValue(value) !== null) ?? '';
 
   const summaryItems =
     summary && Array.isArray(summary.items)
@@ -2223,6 +2249,16 @@ const LIST_RANGE_OPTIONS = [
  * @param {string} [customTo] - 'YYYY-MM-DD', only used when rangeValue === 'custom'
  * @returns {{from: string|null, to: string|null}}
  */
+function shiftCalendarMonths(date, months) {
+  const shifted = new Date(date);
+  const day = shifted.getDate();
+  shifted.setDate(1);
+  shifted.setMonth(shifted.getMonth() + months);
+  const lastDay = new Date(shifted.getFullYear(), shifted.getMonth() + 1, 0).getDate();
+  shifted.setDate(Math.min(day, lastDay));
+  return shifted;
+}
+
 function getRangeBounds(rangeValue, now = new Date(), customFrom = '', customTo = '') {
   const pad = (n) => String(n).padStart(2, '0');
   const isoOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -2231,13 +2267,11 @@ function getRangeBounds(rangeValue, now = new Date(), customFrom = '', customTo 
 
   switch (rangeValue) {
     case 'last3': {
-      const from = new Date(now);
-      from.setMonth(from.getMonth() - 3);
+      const from = shiftCalendarMonths(now, -3);
       return { from: isoOf(from), to: today };
     }
     case 'last6': {
-      const from = new Date(now);
-      from.setMonth(from.getMonth() - 6);
+      const from = shiftCalendarMonths(now, -6);
       return { from: isoOf(from), to: today };
     }
     case 'thisYear':

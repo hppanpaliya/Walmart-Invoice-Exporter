@@ -572,7 +572,7 @@
 
   /** Invoice→summary money fallback, both fields optional. */
   function moneyOf(invoiceValue, summaryValue) {
-    return parseNumericValue(invoiceValue) || parseNumericValue(summaryValue);
+    return resolveMoneyValue(invoiceValue, summaryValue);
   }
 
   /** "Jul 12, 2025" for a 'YYYY-MM-DD' date, else ''. */
@@ -629,7 +629,7 @@
       ['Refund', -moneyOf(invoice.refund, summary.refund), 'neg'],
     ].filter(([, value]) => Math.abs(value) >= 0.005);
     const total = moneyOf(invoice.orderTotal, summary.orderTotal || (record && record.orderTotal));
-    if (total) lines.push(['Total', total, 'total']);
+    if ([invoice.orderTotal, summary.orderTotal, record?.orderTotal].some((value) => parseOptionalNumericValue(value) !== null)) lines.push(['Total', total, 'total']);
     return lines;
   }
 
@@ -1658,7 +1658,7 @@
         const invoice = record && record.invoice;
         const measured = invoice && Number(invoice.schemaVersion || 0) >= CONSTANTS.ORDER_SCHEMA_VERSION ? 1 : 0;
         const summary = record && record.summary;
-        return `${record.orderNumber}:${measured}:${invoice ? 1 : 0}:${summary ? 1 : 0}:${dashboardRecordDate(record)}:${summary ? summary.orderTotal || '' : ''}`;
+        return `${record.updatedAt || 0}:${record.orderNumber}:${measured}:${invoice ? 1 : 0}:${summary ? 1 : 0}:${dashboardRecordDate(record)}:${summary ? summary.orderTotal || '' : ''}`;
       })
       .join('|');
   }

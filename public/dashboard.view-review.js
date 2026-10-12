@@ -40,7 +40,7 @@
 
   /** Invoice→summary money fallback (mirrors dashboard.page.js's moneyOf). */
   function moneyOf(invoiceValue, summaryValue) {
-    return parseNumericValue(invoiceValue) || parseNumericValue(summaryValue || '');
+    return resolveMoneyValue(invoiceValue, summaryValue);
   }
 
   /**
