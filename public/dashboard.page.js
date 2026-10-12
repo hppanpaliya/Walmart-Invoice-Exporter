@@ -628,7 +628,7 @@
       ['Donations', moneyOf(invoice.donations, summary.donations), ''],
       ['Refund', -moneyOf(invoice.refund, summary.refund), 'neg'],
     ].filter(([, value]) => Math.abs(value) >= 0.005);
-    const total = moneyOf(invoice.orderTotal, summary.orderTotal || (record && record.orderTotal));
+    const total = resolveMoneyValue(invoice.orderTotal, summary.orderTotal, record && record.orderTotal);
     if ([invoice.orderTotal, summary.orderTotal, record?.orderTotal].some((value) => parseOptionalNumericValue(value) !== null)) lines.push(['Total', total, 'total']);
     return lines;
   }

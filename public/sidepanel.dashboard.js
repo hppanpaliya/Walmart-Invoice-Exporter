@@ -83,8 +83,10 @@ function computeDashboardStats(records) {
     const summary = record.summary || {};
     const money = resolveMoneyValue;
 
-    const total = money(invoice.orderTotal, summary.orderTotal || record.orderTotal);
-    if ([invoice.orderTotal, summary.orderTotal, record.orderTotal].some((value) => parseOptionalNumericValue(value) !== null)) {
+    const total = money(invoice.orderTotal, summary.orderTotal, record.orderTotal);
+    const hasTotal = [invoice.orderTotal, summary.orderTotal, record.orderTotal]
+      .some((value) => parseOptionalNumericValue(value) !== null);
+    if (hasTotal) {
       totalSpend += total;
       totaledOrders += 1;
     }
@@ -100,7 +102,7 @@ function computeDashboardStats(records) {
     // Month from any date format we may have stored (ISO or human).
     const normalized = dashboardRecordDate(record);
     const month = normalized.slice(0, 7);
-    if (month && [invoice.orderTotal, summary.orderTotal, record.orderTotal].some((value) => parseOptionalNumericValue(value) !== null)) {
+    if (month && hasTotal) {
       const bucket = monthlyTotals.get(month) || { total: 0, orders: 0 };
       bucket.total += total;
       bucket.orders += 1;

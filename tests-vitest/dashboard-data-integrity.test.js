@@ -32,6 +32,10 @@ test('zero-total orders count in the average; missing totals still use summary d
   const records = [base, { ...base, invoice: { ...base.invoice, orderTotal: '$0.00' } },
     { ...base, summary: { orderTotal: '$20' }, invoice: { ...base.invoice, orderTotal: '' } }];
   assert.equal(s.computeDashboardStats(records).avgOrder, 10);
+  const summaryZero = [{ ...base, orderTotal: '$99', summary: { orderTotal: 0 }, invoice: { ...base.invoice, orderTotal: '' } }];
+  assert.equal(s.computeDashboardStats(summaryZero).totalSpend, 0);
+  assert.equal(s.window.TrendStats.calendarHeatmap(summaryZero, new Date(2026, 5, 1)).days[0].total, 0);
+  assert.equal(s.ReviewStats.computeYearReview(summaryZero, 2026).totalSpent, 0);
 });
 
 test('invalid stored dates fall through to a valid summary or invoice date', () => {
