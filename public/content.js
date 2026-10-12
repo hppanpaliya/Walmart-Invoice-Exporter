@@ -12,6 +12,20 @@ const ImageBlocker = (() => {
   const originalSetAttribute = HTMLImageElement.prototype.setAttribute;
   const CSP_META_SELECTOR = 'meta[data-wie-img-csp="true"]';
 
+  function removeImage(img) {
+    // Card logos carry the tender brand in alt text. Preserve that text for
+    // extraction without retaining a loadable image or changing the layout.
+    const alt = img.getAttribute('alt');
+    if (alt) {
+      const label = document.createElement('span');
+      label.hidden = true;
+      label.setAttribute('data-wie-image-alt', alt);
+      img.replaceWith(label);
+    } else {
+      img.remove();
+    }
+  }
+
   function removeAllImages() {
     // Remove background images from elements
     const allElements = document.getElementsByTagName("*");
@@ -24,7 +38,7 @@ const ImageBlocker = (() => {
     // Remove all img elements
     const images = document.querySelectorAll("img");
     images.forEach((img) => {
-      img.remove();
+      removeImage(img);
     });
 
     // Remove picture elements
@@ -99,13 +113,16 @@ const ImageBlocker = (() => {
     observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
-          if (node.nodeName === "IMG" || node.nodeName === "PICTURE") {
+          if (node.nodeName === "IMG") {
+            removeImage(node);
+          } else if (node.nodeName === "PICTURE") {
+            Array.from(node.getElementsByTagName('img')).forEach(removeImage);
             node.remove();
           }
           if (node.getElementsByTagName) {
             const images = node.getElementsByTagName("img");
             const pictures = node.getElementsByTagName("picture");
-            Array.from(images).forEach((img) => img.remove());
+            Array.from(images).forEach(removeImage);
             Array.from(pictures).forEach((pic) => pic.remove());
           }
         });

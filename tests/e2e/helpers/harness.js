@@ -44,9 +44,10 @@ async function launch(contextOptions = {}) {
 
   // Browser-level mock: tabs the EXTENSION opens bypass Playwright's route
   // API, so interception must happen at the network layer via a proxy.
-  const mock = await startMockWalmart();
+  const { mockOptions = {}, ...browserContextOptions } = contextOptions;
+  const mock = await startMockWalmart(mockOptions);
 
-  const { args: extraArgs = [], ...extraOptions } = contextOptions;
+  const { args: extraArgs = [], ...extraOptions } = browserContextOptions;
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wie-e2e-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
     channel: 'chromium', // new headless mode — supports extensions

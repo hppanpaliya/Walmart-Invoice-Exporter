@@ -350,3 +350,24 @@ test('sandbox exposes PurchaseHistoryDataSource without a list payload', () => {
   // Detail payload has no purchaseHistory node — snapshot must be null.
   assert.equal(evalIn(sandbox, 'PurchaseHistoryDataSource.getBestSnapshot({ currentPage: 1 })'), null);
 });
+
+
+test('redesigned detail payload matches only the URL order in embedded purchase history', () => {
+  const original = JSON.parse(JSON.stringify(detailPayload.props.pageProps.initialData.data.order));
+  const nextData = { props: { pageProps: { phRedesignInitialData: { data: { purchaseHistory: { orders: [
+    { id: '200010000000099', priceDetails: { orderTotal: { displayValue: '$999.00' } } },
+    original,
+  ] } } } } } };
+  const sandbox = loadSandbox({ nextData, url: 'https://www.walmart.com/orders/200010000000042?groupId=0' });
+  const data = sandbox.extractOrderDataFromNextData();
+  assert.equal(data.orderNumber, '200010000000042');
+  assert.equal(data.orderTotal, '$28.11');
+});
+
+test('redesigned detail payload never borrows an unrelated order summary', () => {
+  const nextData = { props: { pageProps: { phRedesignInitialData: { data: { purchaseHistory: { orders: [
+    { id: '200010000000099', priceDetails: { orderTotal: { displayValue: '$999.00' } } },
+  ] } } } } } };
+  const sandbox = loadSandbox({ nextData, url: 'https://www.walmart.com/orders/200010000000042' });
+  assert.equal(sandbox.extractOrderDataFromNextData(), null);
+});

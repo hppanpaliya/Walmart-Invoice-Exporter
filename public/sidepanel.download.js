@@ -56,28 +56,39 @@
 
       return data.items.some((item) => {
         const productName = String(item?.productName || "").trim();
-        const quantity = String(item?.quantity || "").trim();
-        const price = String(item?.price || "").trim();
+        const quantity = String(item?.quantity ?? "").trim();
+        const price = String(item?.price ?? "").trim();
         return Boolean(productName) && (Boolean(quantity) || Boolean(price));
       });
     };
 
-    // Valid under any schema version — used to decide whether stale cached
-    // data is still worth returning when a forced re-fetch fails.
-    const isUsableInvoiceData = (data) => {
+    // A truthy scrape can still be an unhydrated page or a different order.
+    // Use the same minimum requirements for live, cached and stale invoices
+    // so an incomplete result cannot be persisted or exported as a success.
+    const invoiceProblems = (data, orderNumber) => {
       if (!data || typeof data !== "object") {
-        return false;
+        return ["no invoice data"];
       }
-
+      const problems = [];
       const normalizedOrderNumber = String(data.orderNumber || "").replace(/[^\d]/g, "");
-      const orderTotal = String(data.orderTotal || "").trim();
-
-      return hasUsableOrderItems(data) && (Boolean(normalizedOrderNumber) || Boolean(orderTotal));
+      const expectedOrderNumber = String(orderNumber).replace(/[^\d]/g, "");
+      if (!normalizedOrderNumber || normalizedOrderNumber !== expectedOrderNumber) {
+        problems.push("missing or mismatched order number");
+      }
+      if (!hasUsableOrderItems(data)) problems.push("no usable items");
+      const orderTotal = String(data.orderTotal ?? "").trim();
+      const numericTotal = orderTotal.replace(/[^0-9.-]/g, "");
+      if (!/\d/.test(numericTotal) || !Number.isFinite(Number(numericTotal))) {
+        problems.push("missing or invalid order total");
+      }
+      return problems;
     };
 
-    const isValidInvoiceData = (data) => {
+    const isUsableInvoiceData = (data, orderNumber) => invoiceProblems(data, orderNumber).length === 0;
+
+    const isValidInvoiceData = (data, orderNumber) => {
       const schemaVersion = Number(data?.schemaVersion || 0);
-      return schemaVersion >= MIN_ORDER_SCHEMA_VERSION && isUsableInvoiceData(data);
+      return schemaVersion >= MIN_ORDER_SCHEMA_VERSION && isUsableInvoiceData(data, orderNumber);
     };
 
     /** The adapter driving the current export (defaults to WALMART_US). */
@@ -331,7 +342,7 @@
         return null; // fall back to the order page
       }
 
-      if (!response || response.fallback || !response.data) {
+      if (!response || response.fallback || !isUsableInvoiceData(response.data, orderNumber)) {
         return null; // adapter couldn't fast-fetch this one — fall back
       }
 
@@ -356,14 +367,24 @@
 
       await delay(stabilizeDelayMs);
 
-      const response = await promiseWithTimeout(
-        ChromeApi.tabsSendMessage(tab.id, { method: CONSTANTS.MESSAGES.GET_ORDER_DATA }),
-        timeoutMs,
-        `Timeout getting data for order #${orderNumber}`
-      );
-
-      if (!response || !response.data) {
-        throw new Error(`No data received for order #${orderNumber}`);
+      let response;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        response = await promiseWithTimeout(
+          ChromeApi.tabsSendMessage(tab.id, { method: CONSTANTS.MESSAGES.GET_ORDER_DATA }),
+          timeoutMs,
+          `Timeout getting data for order #${orderNumber}`
+        );
+        if (!response || !response.data) {
+          throw new Error(`No data received for order #${orderNumber}`);
+        }
+        const problems = invoiceProblems(response.data, orderNumber);
+        if (problems.length === 0) break;
+        if (attempt === 1) {
+          throw new Error(`Incomplete invoice for order #${orderNumber}: ${problems.join(", ")}`);
+        }
+        // Re-read the same page once: load-complete does not guarantee that
+        // Walmart has populated the invoice. A second miss tries the next URL.
+        await delay(Math.max(stabilizeDelayMs, CONSTANTS.TIMING.RETRY_DELAY));
       }
 
       // IndexedDB is the only durable store for invoices now (spec §4.1) —
@@ -398,7 +419,7 @@
         console.warn(`Order DB unavailable for fast-path lookup of #${orderNumber}:`, error);
       }
 
-      if (storedInvoice && isValidInvoiceData(storedInvoice)) {
+      if (storedInvoice && isValidInvoiceData(storedInvoice, orderNumber)) {
         view.updateOrderCacheStatus(orderNumber);
         return storedInvoice;
       }
@@ -426,9 +447,10 @@
       } catch (error) {
         console.error(`Primary fetch failed for order #${orderNumber}:`, error);
         try {
+          if (!fallbackUrl || fallbackUrl === primaryUrl) throw error;
           return await fetchFromUrl(orderNumber, fallbackUrl, options, providerId);
         } catch (fallbackError) {
-          if (isUsableInvoiceData(storedInvoice)) {
+          if (isUsableInvoiceData(storedInvoice, orderNumber)) {
             console.warn(
               `Both fetches failed for order #${orderNumber}; falling back to stale stored data`
             );
@@ -775,17 +797,19 @@
             view.showExtractionWarning();
           }
 
-          try {
-            // Filename carries the active "Showing" filter (spec v7.1 §D)
-            // — '' (no suffix) when the filter is All time, matching the
-            // pre-redesign filename exactly and keeping the golden export
-            // tests (which never touch the filter) byte-stable.
-            const baseName = "Walmart_Orders" + (view.getActiveRangeLabelSuffix ? view.getActiveRangeLabelSuffix() : "");
-            await exportCombinedOrders(collectedOrdersData, baseName, exportOptions);
-          } catch (e) {
-            console.error("Failed to export to XLSX:", e);
-            showDownloadResultBanner({ variant: "danger", message: `Export failed: ${escapeHtml(e.message)}` });
-            return;
+          if (collectedOrdersData.length > 0) {
+            try {
+              // Filename carries the active "Showing" filter (spec v7.1 §D)
+              // — '' (no suffix) when the filter is All time, matching the
+              // pre-redesign filename exactly and keeping the golden export
+              // tests (which never touch the filter) byte-stable.
+              const baseName = "Walmart_Orders" + (view.getActiveRangeLabelSuffix ? view.getActiveRangeLabelSuffix() : "");
+              await exportCombinedOrders(collectedOrdersData, baseName, exportOptions);
+            } catch (e) {
+              console.error("Failed to export to XLSX:", e);
+              showDownloadResultBanner({ variant: "danger", message: `Export failed: ${escapeHtml(e.message)}` });
+              return;
+            }
           }
 
           if (failedOrders.length === 0) {

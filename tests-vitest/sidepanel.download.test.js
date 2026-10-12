@@ -243,3 +243,134 @@ test('legacy toggle routing: legacyExcel=true is ignored for non-Excel formats (
     assert.match(download.filename, /\.csv$/, 'CSV format must ignore the Excel-only legacy toggle');
   });
 });
+
+// Regression coverage for incomplete invoices (#36). Exercise the real fetch,
+// persistence and queue paths; only the browser/content-script boundary is mocked.
+function mockInvoiceResponses(sandbox, respond) {
+  sandbox.delay = async () => {};
+  const calls = [];
+  sandbox.chrome.tabs.sendMessage = (tabId, message, callback) => {
+    const action = message.method || message.action;
+    const isInvoice = action === 'getOrderData' || action === 'getOrderDataFast';
+    if (isInvoice) calls.push({ action, url: sandbox.chrome.tabs._tabsById.get(tabId).url });
+    const response = isInvoice ? { data: respond(calls.length, action) } : {};
+    if (callback) queueMicrotask(() => callback(response));
+  };
+  return calls;
+}
+
+const FETCH_OPTIONS = { timeoutMs: 2000, stabilizeDelayMs: 0 };
+
+test('incomplete invoice: re-reads the same page before saving delayed invoice content', async () => {
+  const sandbox = loadDownloadSandbox();
+  const OrderDb = evalIn(sandbox, 'OrderDb');
+  const writes = [];
+  const putInvoice = OrderDb.putInvoice;
+  OrderDb.putInvoice = async (...args) => { writes.push(args[1]); return putInvoice(...args); };
+  const calls = mockInvoiceResponses(sandbox, (n) => sampleInvoice(n === 1 ? { items: [], orderTotal: '' } : {}));
+
+  const data = await fetchOrderData(sandbox, ORDER_NUMBER, FETCH_OPTIONS);
+
+  assert.equal(data.items.length, 1);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, calls[1].url, 'wait for hydration before navigating away');
+  assert.equal(sandbox.chrome.tabs._calls.update.length, 0);
+  assert.equal(writes.length, 1, 'never persist the incomplete first response');
+  assert.equal(writes[0].items.length, 1);
+});
+
+test('incomplete invoice: tries the alternate URL after two incomplete responses', async () => {
+  const sandbox = loadDownloadSandbox();
+  const calls = mockInvoiceResponses(sandbox, (n) => sampleInvoice(n <= 2 ? { items: [] } : {}));
+
+  const data = await fetchOrderData(sandbox, ORDER_NUMBER, FETCH_OPTIONS);
+
+  assert.equal(data.items.length, 1);
+  assert.equal(calls.length, 3);
+  assert.match(calls[2].url, /storePurchase=true/);
+});
+
+for (const [reason, overrides] of [
+  ['no usable items', { items: [] }],
+  ['missing or invalid order total', { orderTotal: '' }],
+  ['missing or invalid order total', { orderTotal: 'Unknown' }],
+  ['missing or mismatched order number', { orderNumber: '200010000000099' }],
+]) {
+  test(`incomplete invoice: rejects ${JSON.stringify(overrides)} without caching it`, async () => {
+    const sandbox = loadDownloadSandbox();
+    const calls = mockInvoiceResponses(sandbox, () => sampleInvoice(overrides));
+
+    await assert.rejects(() => fetchOrderData(sandbox, ORDER_NUMBER, FETCH_OPTIONS), new RegExp(reason));
+
+    assert.equal(calls.length, 4, 'at most two reads per URL');
+    const record = await evalIn(sandbox, 'OrderDb').getOrder(ORDER_NUMBER);
+    assert.ok(!record?.invoice, 'failed extraction must not create an invoice');
+  });
+}
+
+test('incomplete invoice: a cached missing total is refetched, never returned as a stale fallback', async () => {
+  const sandbox = loadDownloadSandbox();
+  const OrderDb = evalIn(sandbox, 'OrderDb');
+  await OrderDb.putInvoice(ORDER_NUMBER, sampleInvoice({ orderTotal: '' }));
+  mockInvoiceResponses(sandbox, () => sampleInvoice({ items: [] }));
+
+  await assert.rejects(() => fetchOrderData(sandbox, ORDER_NUMBER, FETCH_OPTIONS), /Incomplete invoice/);
+
+  const stored = await OrderDb.getOrder(ORDER_NUMBER);
+  assert.equal(stored.invoice.items.length, 1, 'failed live fetch leaves the old record intact');
+  assert.equal(stored.invoice.orderTotal, '');
+});
+
+test('incomplete invoice: a bad fast-fetch response falls back to the page without being stored', async () => {
+  const sandbox = loadDownloadSandbox();
+  sandbox.ProviderRegistry = { getById: () => ({ supportsFastInvoice: true, ordersListUrl: 'https://www.walmart.com/orders' }) };
+  sandbox.window.Sidepanel.state.app.fastFetch = true;
+  const writes = [];
+  const OrderDb = evalIn(sandbox, 'OrderDb');
+  const putInvoice = OrderDb.putInvoice;
+  OrderDb.putInvoice = async (...args) => { writes.push(args[1]); return putInvoice(...args); };
+  const calls = mockInvoiceResponses(sandbox, (_n, action) => sampleInvoice(action === 'getOrderDataFast' ? { items: [] } : {}));
+
+  const data = await fetchOrderData(sandbox, ORDER_NUMBER, FETCH_OPTIONS);
+
+  assert.equal(calls[0].action, 'getOrderDataFast');
+  assert.equal(calls[1].action, 'getOrderData');
+  assert.equal(data.items.length, 1);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].items.length, 1);
+});
+
+test('incomplete invoice: accepts matching long in-store IDs and a real numeric zero total', async () => {
+  const sandbox = loadDownloadSandbox();
+  const inStoreId = '999999999999999999999';
+  mockInvoiceResponses(sandbox, () => sampleInvoice({ orderNumber: inStoreId, orderTotal: 0, items: [{ productName: 'Free sample', quantity: 1, price: 0 }] }));
+
+  const data = await fetchOrderData(sandbox, inStoreId, FETCH_OPTIONS);
+
+  assert.equal(data.orderNumber, inStoreId);
+  assert.equal(data.orderTotal, 0);
+});
+
+for (const mode of ['multiple', 'single']) {
+  test(`incomplete invoice: ${mode} export reports the failed order with Retry failed and produces no empty files`, async () => {
+    const sandbox = loadDownloadSandbox();
+    const downloads = captureDownloads(sandbox);
+    const banners = [];
+    const view = sandbox.window.Sidepanel.view;
+    for (const name of ['clearStatusBanner', 'showDownloadProgress', 'updateDownloadProgress', 'hideDownloadProgress', 'setButtonLoading', 'updateDownloadButtonsState']) view[name] = () => {};
+    view.renderStatusBanner = (id, options) => { banners.push({ id, ...options }); return null; };
+    sandbox.window.Sidepanel.state.app.exportFormat = 'csv';
+    sandbox.window.Sidepanel.state.app.orderSettleMs = 0;
+    mockInvoiceResponses(sandbox, () => sampleInvoice({ items: [] }));
+
+    await sandbox.window.Sidepanel.download.downloadSelectedOrders(mode, [ORDER_NUMBER]);
+
+    assert.equal(downloads.length, 0);
+    const result = banners.find((banner) => banner.id === 'downloadResultBanner');
+    assert.equal(result.variant, 'danger');
+    assert.match(result.message, /0 of 1 exported/);
+    assert.ok(result.message.includes(ORDER_NUMBER));
+    assert.match(result.actionHtml, /Retry failed/);
+    assert.equal(sandbox.window.Sidepanel.state.app.downloadInProgress, false);
+  });
+}

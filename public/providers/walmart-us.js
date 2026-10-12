@@ -1019,7 +1019,7 @@ function getOrderNodeFromNextDataPayload(payload) {
     return null;
   }
 
-  return (
+  const detail = (
     payload?.props?.pageProps?.initialData?.data?.order ||
     payload?.pageProps?.initialData?.data?.order ||
     payload?.props?.pageProps?.order ||
@@ -1027,6 +1027,68 @@ function getOrderNodeFromNextDataPayload(payload) {
     payload?.order ||
     null
   );
+  if (detail) return detail;
+
+  // The redesigned detail page embeds purchase-history summaries rather than
+  // initialData.data.order. Use only the summary for the requested order; its
+  // items may have no prices, so the rendered invoice remains the line source.
+  const orderNumber = normalizeOrderNumberValue(window.location.pathname?.match(/\/orders\/([\d-]+)/)?.[1]);
+  if (!orderNumber) return null;
+  const pageProps = payload?.props?.pageProps || payload?.pageProps;
+  const orders = pageProps?.phRedesignInitialData?.data?.purchaseHistory?.orders;
+  return (Array.isArray(orders) && orders.find((order) =>
+    normalizeOrderNumberValue(order?.id || order?.displayId) === orderNumber
+  )) || null;
+}
+
+function extractRedesignedInvoiceItems() {
+  return Array.from(document.querySelectorAll('[data-testid="itemtile-stack"]')).flatMap((tile) => {
+    if (!tile.querySelector('.print-item-title')) return [];
+    // Unavailable items still have prices and quantities. Their accordion's
+    // preceding heading, not the price, identifies them as uncharged.
+    for (let node = tile; node && !node.classList.contains('print-bill-group'); node = node.parentElement) {
+      const heading = cleanText(node.previousElementSibling?.textContent || '');
+      if (/^(?:\d+\s+)?(?:unavailable|cancel(?:ed|led))(?:\s|$)/i.test(heading)) return [];
+    }
+    const productName = cleanText(tile.querySelector('[data-testid="productName"]')?.textContent || '');
+    const quantity = cleanText(tile.querySelector('.bill-item-quantity')?.textContent || '').match(/\d+(?:\.\d+)?/)?.[0] || '';
+    const price = getLastCurrencyValue(tile.querySelector('[data-testid="line-price"]')?.textContent || '');
+    if (!productName || !quantity || !price) return [];
+    const href = tile.querySelector('a[link-identifier="itemClick"]')?.getAttribute('href');
+    return [{
+      productName, quantity, price,
+      productLink: href ? new URL(href, window.location.origin).href : 'N/A',
+      deliveryStatus: cleanText(tile.closest('[data-testid="orderInfoCard"]')?.querySelector('h2')?.textContent || ''),
+    }];
+  });
+}
+
+function extractRedesignedInvoiceTotals() {
+  const values = {};
+  const deliveryFees = new Map();
+  document.querySelectorAll('.print-bill-payment-section .bill-order-payment-spacing .justify-between').forEach((row) => {
+    const label = normalizeLookupText(row.firstElementChild?.textContent || '');
+    // Ignore repeated accessibility descriptions; use the last amount in the
+    // actual value columns (delivery can show a crossed-out fee before $0).
+    const columns = Array.from(row.children).slice(1).filter((child) => !child.classList.contains('ld_Ec'));
+    const amount = getLastCurrencyValue(columns.map((child) => child.textContent).join(' '));
+    if (!amount) return;
+    if (/^items\s*\(/.test(label)) values.subtotalBeforeSavings = amount;
+    else if (label === 'savings') values.savings = amount.startsWith('-') ? amount : `-${amount}`;
+    else if (label === 'subtotal') values.orderSubtotal = amount;
+    else if (label === 'total' || label === 'order total') values.orderTotal = amount;
+    else if (/^(?:free )?(?:delivery|express)(?:\s|$)/.test(label)) deliveryFees.set(label, amount);
+    else if (label === 'bag fee') values.bagFee = amount;
+    else if (label === 'tax' || label === 'taxes') values.tax = amount;
+    else if (label === 'driver tip' || label === 'tip') values.tip = amount;
+  });
+  if (deliveryFees.size === 1) values.deliveryCharges = deliveryFees.values().next().value;
+  else if (deliveryFees.size > 1) {
+    const cents = Array.from(deliveryFees.values()).reduce((sum, amount) =>
+      sum + Math.round(Number(amount.replace(/[^0-9.-]/g, '')) * 100), 0);
+    values.deliveryCharges = `$${(cents / 100).toFixed(2)}`;
+  }
+  return values;
 }
 
 function extractTextFromNextData(value) {
@@ -1737,6 +1799,11 @@ function readPaymentRowAmount(row) {
   return '';
 }
 
+function readPaymentBrand(row) {
+  return cleanText(row?.querySelector('img[alt]')?.alt ||
+    row?.querySelector('[data-wie-image-alt]')?.getAttribute('data-wie-image-alt') || '');
+}
+
 function extractPaymentDetailsFromOrderPage() {
   const methods = [];
   const seen = new Set();
@@ -1751,7 +1818,7 @@ function extractPaymentDetailsFromOrderPage() {
       return;
     }
 
-    const brand = cleanText(row.querySelector('img[alt]')?.alt || '');
+    const brand = readPaymentBrand(row);
     const amount = readPaymentRowAmount(row);
     const message = cleanText(row.parentElement?.querySelector('.mt3')?.textContent || '');
 
@@ -1777,7 +1844,7 @@ function extractPaymentDetailsFromOrderPage() {
     }
 
     const cardId = cleanText(el.getAttribute('aria-labelledby') || ending);
-    const brand = cleanText(el.closest('.flex.items-center')?.querySelector('img[alt]')?.alt || '');
+    const brand = readPaymentBrand(el.closest('.flex.items-center'));
     const key = `${cardId}|${brand}|${ending}`;
     if (seen.has(key)) {
       return;
@@ -1816,6 +1883,7 @@ function scrapeOrderData() {
       price,
     });
   });
+  if (printItemsList.length === 0) orderItems.push(...extractRedesignedInvoiceItems());
 
   /**
    * Finds order number using fallback selectors.
@@ -1988,6 +2056,18 @@ function scrapeOrderData() {
   if ((!tip || tip === '$0.00') && nextDataOrder?.tip) {
     tip = cleanText(nextDataOrder.tip);
   }
+
+  // Current Walmart pages removed the old bill-order-total-payment/subtotal
+  // classes and fee aria labels. Prefer their explicitly labelled live rows.
+  const redesignedTotals = extractRedesignedInvoiceTotals();
+  orderSubtotal = redesignedTotals.orderSubtotal || orderSubtotal;
+  subtotalBeforeSavings = redesignedTotals.subtotalBeforeSavings || subtotalBeforeSavings;
+  savings = redesignedTotals.savings || savings;
+  orderTotal = redesignedTotals.orderTotal || orderTotal;
+  deliveryCharges = redesignedTotals.deliveryCharges || deliveryCharges;
+  bagFee = redesignedTotals.bagFee || bagFee;
+  tax = redesignedTotals.tax || tax;
+  tip = redesignedTotals.tip || tip;
 
   let paymentMethodDetails = extractPaymentDetailsFromOrderPage();
   if (

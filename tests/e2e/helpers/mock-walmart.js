@@ -52,11 +52,11 @@ function generateCert() {
   return { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath), dir };
 }
 
-function handleRequest(req, res) {
+function handleRequest(req, res, detailHtml = null) {
   const url = new URL(req.url, 'https://www.walmart.com');
   if (/^\/orders\/\d+/.test(url.pathname)) {
     res.writeHead(200, { 'content-type': 'text/html' });
-    res.end(mockHtml('Order details', detailPayload));
+    res.end(detailHtml || mockHtml('Order details', detailPayload));
     return;
   }
   if (url.pathname.startsWith('/orders')) {
@@ -72,10 +72,10 @@ function handleRequest(req, res) {
  * Start the mock: HTTPS origin + CONNECT proxy.
  * @returns {Promise<{proxyPort: number, close: () => Promise<void>}>}
  */
-async function startMockWalmart() {
+async function startMockWalmart({ detailHtml = null } = {}) {
   const { key, cert, dir } = generateCert();
 
-  const origin = https.createServer({ key, cert }, handleRequest);
+  const origin = https.createServer({ key, cert }, (req, res) => handleRequest(req, res, detailHtml));
   await new Promise((resolve) => origin.listen(0, '127.0.0.1', resolve));
   const originPort = origin.address().port;
 
