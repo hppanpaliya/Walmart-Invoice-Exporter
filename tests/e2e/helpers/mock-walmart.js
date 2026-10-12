@@ -79,7 +79,14 @@ async function startMockWalmart({ detailHtml = null } = {}) {
   await new Promise((resolve) => origin.listen(0, '127.0.0.1', resolve));
   const originPort = origin.address().port;
 
+  const sockets = new Set();
+  const track = socket => {
+    sockets.add(socket);
+    socket.once('close', () => sockets.delete(socket));
+    return socket;
+  };
   const proxy = net.createServer((clientSocket) => {
+    track(clientSocket);
     clientSocket.once('data', (chunk) => {
       const header = chunk.toString('utf8');
       const match = /^CONNECT\s+([^\s:]+):(\d+)/.exec(header);
@@ -87,11 +94,11 @@ async function startMockWalmart({ detailHtml = null } = {}) {
         clientSocket.end('HTTP/1.1 502 Blocked by test harness\r\n\r\n');
         return;
       }
-      const upstream = net.connect(originPort, '127.0.0.1', () => {
+      const upstream = track(net.connect(originPort, '127.0.0.1', () => {
         clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
         upstream.pipe(clientSocket);
         clientSocket.pipe(upstream);
-      });
+      }));
       upstream.on('error', () => clientSocket.destroy());
       clientSocket.on('error', () => upstream.destroy());
     });
@@ -102,6 +109,7 @@ async function startMockWalmart({ detailHtml = null } = {}) {
   return {
     proxyPort: proxy.address().port,
     close: async () => {
+      for (const socket of sockets) socket.destroy();
       proxy.closeAllConnections?.();
       origin.closeAllConnections?.();
       await new Promise((resolve) => proxy.close(resolve));

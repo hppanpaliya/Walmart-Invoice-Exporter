@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- Reusable private HTML capture sanitizer and seven-case offline invoice corpus covering observed and synthetic layouts, missing fields, zero totals, hostile content, and real workbook reconciliation. Temporary captures and generated verification artifacts are ignored by Git; the browser harness cleans up profiles and download listeners.
+
 ### Fixed
 - Restrict embedded dashboard commands to the actual parent frame. Spreadsheet exports reject active/local/credential-bearing product links, and CSV exports neutralize formula prefixes hidden behind whitespace or control characters.
 - Dashboard money fallbacks preserve explicit zero amounts, include zero-total orders in averages, and show invoice totals consistently in order rows. Existing-invoice updates refresh the dashboard. Invalid dates fall through to valid stored dates, and rolling date ranges clamp to the last day of shorter months.

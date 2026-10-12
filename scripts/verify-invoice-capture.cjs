@@ -5,6 +5,7 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 const { chromium } = require('playwright');
+const { anonymizeInvoice, MAX_CAPTURE_BYTES } = require('./lib/anonymize-invoice.cjs');
 const ExcelJS = require('exceljs');
 const { loadSandbox } = require('../tests/helpers/sandbox');
 const { captureDownloads, blobBuffer } = require('../tests/helpers/capture-downloads');
@@ -15,81 +16,16 @@ const baselineRef = process.argv[3] || 'faae6af27e38e46dc6ed189b0924aa7a3e9a875e
 const fakeId = '200010000000042';
 
 (async () => {
+  if (fs.statSync(capturePath).size > MAX_CAPTURE_BYTES) throw new Error('Capture exceeds 8 MiB');
+  const fixture = await anonymizeInvoice(fs.readFileSync(capturePath, 'utf8'));
   const browser = await chromium.launch({ headless: true });
   try {
     const context = await browser.newContext();
     await context.route('**/*', route => route.request().isNavigationRequest()
       ? route.fulfill({ contentType: 'text/html', body: '<html><body></body></html>' })
       : route.abort());
-    const capture = await context.newPage();
-    await capture.goto(`https://www.walmart.com/orders/${fakeId}`);
-    const raw = fs.readFileSync(capturePath, 'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '');
-    await capture.setContent(raw);
-    const fixture = await capture.evaluate((id) => {
-      const doc = document.implementation.createHTMLDocument('Anonymized live invoice');
-      const clean = element => {
-        for (const node of [element, ...element.querySelectorAll('*')]) {
-          for (const attr of [...node.attributes]) {
-            if (!['class', 'data-testid', 'link-identifier', 'aria-hidden', 'aria-labelledby', 'alt'].includes(attr.name)) node.removeAttribute(attr.name);
-          }
-        }
-        return element;
-      };
-      const prune = node => {
-        if (node.nodeType !== 1) { node.remove(); return; }
-        if (node.matches('[data-testid="itemtile-stack"]')) return;
-        if (node.querySelector('[data-testid="itemtile-stack"]')) {
-          for (const child of [...node.childNodes]) prune(child);
-        } else if (!/^\s*(?:\d+.*(?:unavailable|shopped|delivered|weight adjusted)|Delivered on|Delivery from store)/i.test(node.textContent)) {
-          node.remove();
-        }
-      };
-      for (const original of document.querySelectorAll('.print-bill-date, .print-bill-bar-id')) {
-        const copy = clean(original.cloneNode(true));
-        if (copy.matches('.print-bill-bar-id')) copy.textContent = `Order# ${id}`;
-        doc.body.appendChild(copy);
-      }
-      for (const original of document.querySelectorAll('.print-bill-group')) {
-        const copy = original.cloneNode(true);
-        for (const child of [...copy.childNodes]) prune(child);
-        let index = 0;
-        for (const tile of copy.querySelectorAll('[data-testid="itemtile-stack"]')) {
-          index++;
-          const nameNode = tile.querySelector('[data-testid="productName"]');
-          const oldName = nameNode?.textContent || '';
-          const placeholder = `Captured product ${index}`;
-          if (nameNode) nameNode.textContent = placeholder;
-          for (const el of tile.querySelectorAll('[aria-label]')) el.removeAttribute('aria-label');
-          for (const el of tile.querySelectorAll('[data-testid="productDescription"], img, button')) el.remove();
-          clean(tile);
-          for (const link of tile.querySelectorAll('a[link-identifier="itemClick"]')) link.setAttribute('href', `/ip/${1000 + index}`);
-          if (oldName && tile.textContent.includes(oldName)) throw new Error('Product anonymization failed');
-        }
-        // Preserve class names and hierarchy, strip telemetry and identifiers.
-        for (const el of [copy, ...copy.querySelectorAll('*')]) {
-          for (const attr of [...el.attributes]) {
-            if (!['class', 'data-testid', 'link-identifier', 'href'].includes(attr.name)) el.removeAttribute(attr.name);
-          }
-        }
-        doc.body.appendChild(copy);
-      }
-      const payment = document.querySelector('.bill-order-payment-info');
-      const section = doc.createElement('div'); section.className = 'print-bill-payment-section';
-      if (payment) {
-        const copy = clean(payment.cloneNode(true));
-        for (const el of copy.querySelectorAll('[aria-labelledby^="card-description-"]')) el.textContent = el.textContent.replace(/\d{4}/g, '0000');
-        section.appendChild(copy);
-      }
-      for (const original of document.querySelectorAll('.bill-order-payment-spacing')) {
-        if (!original.querySelector('.justify-between')) continue;
-        const copy = clean(original.cloneNode(true));
-        for (const el of copy.querySelectorAll('button, img')) el.remove();
-        section.appendChild(copy);
-      }
-      doc.body.appendChild(section);
-      return '<!doctype html>' + doc.documentElement.outerHTML;
-    }, fakeId);
-    const fixturePath = path.join(root, 'tests/fixtures/live-redesigned-order.html');
+    const fixturePath = path.join(root, 'output/playwright/verified-invoice.html');
+    fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
     fs.writeFileSync(fixturePath, fixture);
     const scrape = async source => {
       const page = await context.newPage();

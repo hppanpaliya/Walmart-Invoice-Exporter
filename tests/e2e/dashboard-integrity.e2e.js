@@ -38,6 +38,7 @@ test('dashboard refresh, hostile stored text, view navigation and bridge boundar
       assert.equal(await page.locator('.items-cell img, .status-chip svg, .detail-item-name img').count(), 0);
       for (const view of ['items', 'trends', 'review', 'overview', 'orders']) {
         await page.locator(`[data-nav="${view}"]`).click();
+        await page.waitForFunction(expected => document.body.dataset.view === expected, view);
         assert.equal(await page.getAttribute('body', 'data-view'), view);
       }
       assert.equal(await page.evaluate(() => Boolean(window.injected)), false);
@@ -51,6 +52,8 @@ test('dashboard refresh, hostile stored text, view navigation and bridge boundar
     });
 
     await t.test('embedded panel accepts its parent and rejects a sibling frame', async () => {
+      await page.locator('[data-nav="orders"]').click();
+      await page.waitForFunction(() => document.body.dataset.view === 'orders');
       const embedded = page.frames().find(frame => frame.url().endsWith('sidepanel.html'));
       await embedded.waitForSelector('#exportFormat');
       await page.locator('#pageExportFormat').selectOption('csv');
