@@ -1066,13 +1066,16 @@ function extractRedesignedInvoiceItems() {
 function extractRedesignedInvoiceTotals() {
   const values = {};
   const deliveryFees = new Map();
+  const adjustmentEntries = [];
   document.querySelectorAll('.print-bill-payment-section .bill-order-payment-spacing .justify-between').forEach((row) => {
-    const label = normalizeLookupText(row.firstElementChild?.textContent || '');
+    const visibleLabel = cleanText(row.firstElementChild?.textContent || '');
+    const label = normalizeLookupText(visibleLabel);
     // Ignore repeated accessibility descriptions; use the last amount in the
     // actual value columns (delivery can show a crossed-out fee before $0).
     const columns = Array.from(row.children).slice(1).filter((child) => !child.classList.contains('ld_Ec'));
     const amount = getLastCurrencyValue(columns.map((child) => child.textContent).join(' '));
     if (!amount) return;
+    adjustmentEntries.push({ label: visibleLabel, amount });
     if (/^items\s*\(/.test(label)) values.subtotalBeforeSavings = amount;
     else if (label === 'savings') values.savings = amount.startsWith('-') ? amount : `-${amount}`;
     else if (label === 'subtotal') values.orderSubtotal = amount;
@@ -1088,7 +1091,7 @@ function extractRedesignedInvoiceTotals() {
       sum + Math.round(Number(amount.replace(/[^0-9.-]/g, '')) * 100), 0);
     values.deliveryCharges = `$${(cents / 100).toFixed(2)}`;
   }
-  return values;
+  return { ...values, ...collectFinancialAdjustments(adjustmentEntries) };
 }
 
 function extractTextFromNextData(value) {
@@ -1246,6 +1249,97 @@ function extractNextDataFeeBreakdown(orderNode) {
       };
     })
     .filter((entry) => entry.label || entry.amount || entry.originalAmount);
+}
+
+function classifyFinancialAdjustmentLabel(label) {
+  const normalized = normalizeLookupText(label).replace(/[‐‑‒–—]/g, '-');
+  const isThreeHoursOrLess = /(?:3|three)[\s-]*(?:hours?|hrs?)[\s-]*or[\s-]*(?:less|fewer|under)/i.test(normalized);
+  if (isThreeHoursOrLess && /return/i.test(normalized)) return 'returnedThreeHoursOrLessFee';
+  if (isThreeHoursOrLess) return 'threeHoursOrLessFee';
+  if (/\b(?:promo|promotional|coupon)\b/i.test(normalized)) return 'promoCodeAmount';
+  if (/\bdonations?\b/i.test(normalized)) return 'donations';
+  if (/\brefund(?:ed)?\b/i.test(normalized)) return 'refund';
+  return '';
+}
+
+function collectFinancialAdjustments(entries) {
+  const result = {
+    promoCodeAmount: '',
+    threeHoursOrLessFee: '',
+    returnedThreeHoursOrLessFee: '',
+    donations: '',
+    refund: '',
+    financialAdjustments: [],
+  };
+  const standardLabel = /^(?:items?(?:\s+\(?\d+\)?)?|subtotal(?:\s+after\s+savings)?|savings|delivery(?:\s+from\s+store|\s+charges?|\s+fee)?|express(?:\s+delivery|\s+fee)?|free\s+delivery(?:\s+from\s+store)?|bag\s+fee|tax(?:es)?|driver\s+tip|tip|donations?|total|order\s+total|temporary\s+adjusted\s+total|estimated\s+total)$/i;
+  const seen = new Set();
+
+  (Array.isArray(entries) ? entries : []).forEach((entry) => {
+    const label = cleanText(entry?.label || '');
+    const amount = cleanText(entry?.amount || '');
+    if (!label || !amount) return;
+
+    const field = classifyFinancialAdjustmentLabel(label);
+    if (field) {
+      if (!result[field]) result[field] = amount;
+      return;
+    }
+    if (standardLabel.test(label)) return;
+
+    const key = `${normalizeLookupText(label)}|${amount}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.financialAdjustments.push({ label, amount });
+  });
+  return result;
+}
+
+function extractFinancialAdjustments(feeBreakdown) {
+  return collectFinancialAdjustments(feeBreakdown);
+}
+
+function getDeliveryFeeAmount(feeBreakdown) {
+  const matches = (Array.isArray(feeBreakdown) ? feeBreakdown : []).filter((entry) => {
+    const label = normalizeLookupText(entry?.label || '');
+    return /\b(?:delivery|express)\b/.test(label) &&
+      !/\b(?:discount|savings|coupon|promo|original|normally)\b/.test(label);
+  });
+  if (matches.length === 0) return '';
+  const cents = matches.reduce((sum, entry) => {
+    const value = Number(String(entry.amount || '').replace(/[^\d.-]/g, ''));
+    return sum + (Number.isFinite(value) ? Math.round(value * 100) : 0);
+  }, 0);
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function mergeFinancialAdjustments(...sources) {
+  const merged = {
+    promoCodeAmount: '',
+    threeHoursOrLessFee: '',
+    returnedThreeHoursOrLessFee: '',
+    donations: '',
+    refund: '',
+    financialAdjustments: [],
+  };
+  const seen = new Set();
+  sources.forEach((source) => {
+    if (!source || typeof source !== 'object') return;
+    for (const field of ['promoCodeAmount', 'threeHoursOrLessFee', 'returnedThreeHoursOrLessFee', 'donations', 'refund']) {
+      if (!merged[field] && source[field] !== '' && source[field] !== null && source[field] !== undefined) {
+        merged[field] = cleanText(source[field]);
+      }
+    }
+    (Array.isArray(source.financialAdjustments) ? source.financialAdjustments : []).forEach((entry) => {
+      const label = cleanText(entry?.label || '');
+      const amount = cleanText(entry?.amount || '');
+      if (!label || !amount) return;
+      const key = `${normalizeLookupText(label)}|${amount}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      merged.financialAdjustments.push({ label, amount });
+    });
+  });
+  return merged;
 }
 
 /**
@@ -1578,6 +1672,7 @@ function extractOrderDataFromNextData(providedOrderNode) {
   ).join('; ');
 
   const priceDetails = orderNode?.priceDetails || {};
+  const financialFields = collectFinancialAdjustments(feeBreakdown);
   const deliveryInstructions = cleanText(
     orderNode?.groups_2101?.find((group) => group?.deliveryInstructions)?.deliveryInstructions?.text ||
       orderNode?.deliveryInstructions?.text ||
@@ -1610,12 +1705,16 @@ function extractOrderDataFromNextData(providedOrderNode) {
         priceDetails?.orderTotal?.displayValue ||
         ''
     ),
-    deliveryCharges: getFeeAmount(feeBreakdown, 'delivery') || '',
+    deliveryCharges: getDeliveryFeeAmount(feeBreakdown),
     bagFee: getFeeAmount(feeBreakdown, 'bag fee') || getFeeAmount(feeBreakdown, 'bag') || '',
     tax: cleanText(priceDetails?.taxTotal?.displayValue || ''),
     tip: cleanText(priceDetails?.driverTip?.displayValue || ''),
-    refund: cleanText(priceDetails?.refund?.displayValue || ''),
-    donations: cleanText(priceDetails?.donations?.displayValue || ''),
+    promoCodeAmount: cleanText(financialFields.promoCodeAmount || priceDetails?.promoCodeAmount?.displayValue || priceDetails?.promoCode?.displayValue || ''),
+    threeHoursOrLessFee: cleanText(financialFields.threeHoursOrLessFee || priceDetails?.threeHoursOrLessFee?.displayValue || ''),
+    returnedThreeHoursOrLessFee: cleanText(financialFields.returnedThreeHoursOrLessFee || priceDetails?.returnedThreeHoursOrLessFee?.displayValue || ''),
+    refund: cleanText(financialFields.refund || priceDetails?.refund?.displayValue || ''),
+    donations: cleanText(financialFields.donations || priceDetails?.donations?.displayValue || ''),
+    financialAdjustments: financialFields.financialAdjustments,
     barcodeImageUrl: cleanText(orderNode?.idBarcodeImageUrl || ''),
     sellers: shipmentDetails.sellers,
     fulfillmentTypes: shipmentDetails.fulfillmentTypes,
@@ -1808,9 +1907,21 @@ function extractPaymentDetailsFromOrderPage() {
   const methods = [];
   const seen = new Set();
 
-  const paymentRows = Array.from(document.querySelectorAll('.bill-order-payment-info .flex.items-center.mb3'));
+  const paymentInfo = document.querySelector('.bill-order-payment-info');
+  const paymentRows = new Set(document.querySelectorAll('.bill-order-payment-info .flex.items-center.mb3'));
+  // Some in-store and receipt layouts keep the accessible card label and
+  // amount but change the row utility classes. Walk up from the stable
+  // aria-labelledby marker so those rows still contribute their visible split.
+  Array.from(document.querySelectorAll(SELECTORS.PAYMENT_METHODS)).forEach((method) => {
+    const row = method.closest('.flex.items-center.mb3') ||
+      method.closest('.flex.items-center') || method.parentElement;
+    if (row && (!paymentInfo || paymentInfo.contains(row))) paymentRows.add(row);
+  });
 
-  paymentRows.forEach((row) => {
+  Array.from(paymentRows).sort((left, right) => {
+    const position = left.compareDocumentPosition?.(right) || 0;
+    return position & 4 ? -1 : position & 2 ? 1 : 0;
+  }).forEach((row) => {
     const endingElement = row.querySelector('[aria-labelledby^="card-description-"]');
     const ending = cleanText(endingElement?.textContent || '');
     const cardId = cleanText(endingElement?.getAttribute('aria-labelledby') || ending);
@@ -1829,29 +1940,6 @@ function extractPaymentDetailsFromOrderPage() {
 
     seen.add(key);
     methods.push({ cardId, brand, ending, amount, message });
-  });
-
-  if (methods.length > 0) {
-    return methods;
-  }
-
-  // Legacy fallback
-  const fallbackElements = document.querySelectorAll(SELECTORS.PAYMENT_METHODS);
-  fallbackElements.forEach((el) => {
-    const ending = cleanText(el.textContent || '');
-    if (!ending) {
-      return;
-    }
-
-    const cardId = cleanText(el.getAttribute('aria-labelledby') || ending);
-    const brand = readPaymentBrand(el.closest('.flex.items-center'));
-    const key = `${cardId}|${brand}|${ending}`;
-    if (seen.has(key)) {
-      return;
-    }
-
-    seen.add(key);
-    methods.push({ cardId, brand, ending, amount: '', message: '' });
   });
 
   return methods;
@@ -2004,7 +2092,7 @@ function scrapeOrderData() {
 
   let feeBreakdown = extractFeeBreakdownFromOrderPage();
 
-  let deliveryCharges = getFeeAmount(feeBreakdown, 'delivery') || '$0.00';
+  let deliveryCharges = getDeliveryFeeAmount(feeBreakdown) || '$0.00';
   let bagFee = getFeeAmount(feeBreakdown, 'bag fee') || getFeeAmount(feeBreakdown, 'bag') || '$0.00';
   let tax = getFeeAmount(feeBreakdown, 'tax') || '$0.00';
 
@@ -2111,6 +2199,11 @@ function scrapeOrderData() {
   }
 
   const items = mergeOrderItems(orderItems, nextDataOrder?.items || []);
+  const financialFields = mergeFinancialAdjustments(
+    extractFinancialAdjustments(feeBreakdown),
+    redesignedTotals,
+    nextDataOrder
+  );
   const resolvedOrderNumber = orderNumber || nextDataOrder?.orderNumber || null;
   const resolvedOrderDate = orderDate || cleanText(nextDataOrder?.orderDate || '');
 
@@ -2128,8 +2221,12 @@ function scrapeOrderData() {
     bagFee,
     tax,
     tip,
-    refund: cleanText(nextDataOrder?.refund || ''),
-    donations: cleanText(nextDataOrder?.donations || ''),
+    promoCodeAmount: financialFields.promoCodeAmount,
+    threeHoursOrLessFee: financialFields.threeHoursOrLessFee,
+    returnedThreeHoursOrLessFee: financialFields.returnedThreeHoursOrLessFee,
+    refund: financialFields.refund,
+    financialAdjustments: financialFields.financialAdjustments,
+    donations: financialFields.donations,
     barcodeImageUrl: cleanText(nextDataOrder?.barcodeImageUrl || ''),
     sellers: cleanText(nextDataOrder?.sellers || ''),
     fulfillmentTypes: cleanText(nextDataOrder?.fulfillmentTypes || ''),

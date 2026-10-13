@@ -130,8 +130,9 @@ test('golden: convertMultipleOrdersToXlsx produces the current Orders+Items work
   const orders = workbook.getWorksheet('Orders');
   assert.deepEqual(orders.getRow(1).values.slice(1), [
     'Order Number', 'Order Date', 'Order Type', 'Data', 'Items',
-    'Subtotal (Before Savings)', 'Savings', 'Subtotal', 'Delivery Charges', 'Bag Fee',
-    'Tax', 'Tip', 'Refund', 'Donations', 'Order Total',
+    'Subtotal (Before Savings)', 'Savings', 'Promo Code Amount', 'Subtotal', 'Delivery Charges',
+    '3 Hours or Less Fee', 'Returned 3 Hours or Less Fee', 'Bag Fee',
+    'Tax', 'Tip', 'Refund', 'Donations', 'Other Adjustments', 'Order Total',
     'Payment Method', 'Payment Split', 'Payment Messages', 'Seller(s)', 'Fulfillment',
     'Delivered Date', 'Tracking Numbers', 'Ship To', 'Delivery Instructions', 'Receipt Barcode',
   ]);
@@ -139,8 +140,8 @@ test('golden: convertMultipleOrdersToXlsx produces the current Orders+Items work
 
   assert.deepEqual(orders.getRow(2).values.slice(1), [
     '200010000000042', 'Jul 01, 2026', 'GLASS', 'Full invoice', 3,
-    20.53, 2, 18.53, 0, 0.25,
-    1.14, 4, 3.98, 1, 28.11,
+    20.53, 2, '', 18.53, 0, '', '', 0.25,
+    1.14, 4, 3.98, 1, '', 28.11,
     'VISA - ending in 1234 | Amount: $20.00 || GIFTCARD - Gift Card | Amount: $6.84',
     'VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84', 'Charged Jul 2',
     'Walmart.com; Acme Marketplace LLC', 'DELIVERY, SHIPPING', 'Jul 02, 2026',
@@ -155,8 +156,8 @@ test('golden: convertMultipleOrdersToXlsx produces the current Orders+Items work
   assert.equal(sparseRow[2], 'In-store', 'isInStore formats the raw type away');
   assert.equal(sparseRow[5], '', 'Subtotal (Before Savings) blank, not 0, when unknown');
   assert.equal(sparseRow[6], '', 'Savings blank, not 0, when unknown');
-  assert.equal(sparseRow[7], 8.88, 'Subtotal is known and numeric');
-  assert.equal(sparseRow[14], 9.42, 'Order Total is known and numeric');
+  assert.equal(sparseRow[8], 8.88, 'Subtotal is known and numeric');
+  assert.equal(sparseRow[18], 9.42, 'Order Total is known and numeric');
 
   const items = workbook.getWorksheet('Items');
   assert.deepEqual(items.getRow(1).values.slice(1), [
@@ -225,16 +226,16 @@ test('golden: convertOrdersToCsv produces the current accounting-friendly CSV pa
   assert.equal(
     ordersLines[0],
     'Order Number,Order Date,Items,Address Recipient,Shipping Address,Delivery Instructions,'
-      + 'Payment Method,Payment Messages,Payment Split,Subtotal (Before Savings),Savings,Subtotal,'
-      + 'Delivery Charges,Bag Fee,Tax,Tip,Refund,Donations,Order Total,Seller(s),Fulfillment,'
+      + 'Payment Method,Payment Messages,Payment Split,Subtotal (Before Savings),Savings,Promo Code Amount,Subtotal,'
+      + 'Delivery Charges,3 Hours or Less Fee,Returned 3 Hours or Less Fee,Bag Fee,Tax,Tip,Refund,Donations,Other Adjustments,Order Total,Seller(s),Fulfillment,'
       + 'Delivered Date,Tracking Numbers,Receipt Barcode URL,Order Type'
   );
   assert.equal(
     ordersLines[1],
     '200010000000042,"Jul 01, 2026",3,Test Customer,"Test Customer, 123 Main St, Springfield IL 62704",'
       + 'Leave at door,VISA - ending in 1234 | Amount: $20.00 || GIFTCARD - Gift Card | Amount: $6.84,'
-      + 'Charged Jul 2,VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84,20.53,2,18.53,0,0.25,1.14,4,'
-      + '3.98,1,28.11,Walmart.com; Acme Marketplace LLC,"DELIVERY, SHIPPING","Jul 02, 2026",'
+      + 'Charged Jul 2,VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84,20.53,2,,18.53,0,,,0.25,1.14,4,'
+      + '3.98,1,,28.11,Walmart.com; Acme Marketplace LLC,"DELIVERY, SHIPPING","Jul 02, 2026",'
       + '1Z999AA10123456784; 1Z999AA10123456785,https://receipts-query.edge.walmart.com/barcode?data=sanitized,GLASS'
   );
   // Order-level money columns here have no blankWhenEmpty guard (unlike the
@@ -242,7 +243,7 @@ test('golden: convertOrdersToCsv produces the current accounting-friendly CSV pa
   // existing, pinned quirk (Refund/Donations DO stay blank, at the end).
   assert.equal(
     ordersLines[2],
-    '77501234567890123456,"Jun 15, 2026",1,,,,,,,0,0,8.88,0,0,0.54,0,,,9.42,Walmart.com,IN_STORE,,,,In-store'
+    '77501234567890123456,"Jun 15, 2026",1,,,,,,,0,0,,8.88,0,,,0,0.54,0,,,,9.42,Walmart.com,IN_STORE,,,,In-store'
   );
 
   const itemLines = csvLines(blobText(downloads[1].blob));

@@ -38,6 +38,36 @@ test('redesigned Walmart invoice: actual scraper reads modern DOM, excludes unch
     assert.equal(Math.round(data.items.reduce((sum, item) => sum + money(item.price), 0) * 100), 1853);
     assert.equal(Math.round(['orderSubtotal', 'deliveryCharges', 'bagFee', 'tax', 'tip'].reduce((sum, key) => sum + money(data[key]), 0) * 100), 2702);
 
+    // Walmart can add new fee rows without changing the surrounding invoice
+    // structure. Named fields stay queryable and unfamiliar adjustments are
+    // preserved verbatim for the Excel "Other Adjustments" cell.
+    await page.evaluate(() => {
+      const totals = document.querySelector('.bill-order-payment-spacing');
+      const append = (label, amount) => {
+        const row = document.createElement('div');
+        row.className = 'flex justify-between';
+        row.innerHTML = `<span>${label}</span><span>${amount}</span>`;
+        totals.appendChild(row);
+      };
+      append('Promo code', '-$4.00');
+      append('3 hours or less fee', '$2.95');
+      append('Returned 3 hours or less fee', '-$2.95');
+      append('Refund', '-$3.00');
+      append('Donations', '$0.25');
+      append('Eco handling adjustment', '$0.50');
+      // A receipt layout can retain the accessible method label but drop the
+      // flex utility classes previously used to locate tender rows.
+      document.querySelector('.bill-order-payment-info .flex.items-center.mb3').className = 'payment-method-row';
+    });
+    const adjusted = await page.evaluate(() => window.ProviderRegistry.getById('WALMART_US').scrapeOrder({}));
+    assert.equal(adjusted.promoCodeAmount, '-$4.00');
+    assert.equal(adjusted.threeHoursOrLessFee, '$2.95');
+    assert.equal(adjusted.returnedThreeHoursOrLessFee, '-$2.95');
+    assert.equal(adjusted.refund, '-$3.00', 'a visible refund row must work without JSON');
+    assert.equal(adjusted.donations, '$0.25');
+    assert.deepEqual(adjusted.financialAdjustments, [{ label: 'Eco handling adjustment', amount: '$0.50' }]);
+    assert.equal(adjusted.paymentSplit, 'Walmart Cash: $8.00; Visa Ending in 1234: $19.02');
+
     // An order absent from the embedded history must never borrow a neighbour's
     // metadata. DOM invoice lines and totals still work without that summary.
     await page.evaluate(() => document.querySelector('script#__NEXT_DATA__').remove());

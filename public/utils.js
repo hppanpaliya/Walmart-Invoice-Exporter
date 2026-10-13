@@ -274,8 +274,11 @@ function styleSingleOrderWorksheet(worksheet) {
   const currencyLabels = new Set([
     'Subtotal (Before Savings)',
     'Savings',
+    'Promo Code Amount',
     'Subtotal',
     'Delivery Charges',
+    '3 Hours or Less Fee',
+    'Returned 3 Hours or Less Fee',
     'Bag Fee',
     'Tax',
     'Tip',
@@ -342,13 +345,17 @@ function addOrderSummary(worksheet, orderDetails) {
     ['Payment Messages', orderDetails.paymentMessages],
     ['Subtotal (Before Savings)', excelNumber(orderDetails.subtotalBeforeSavings)],
     ['Savings', excelNumber(orderDetails.savings)],
+    ['Promo Code Amount', excelNumber(orderDetails.promoCodeAmount)],
     ['Subtotal', excelNumber(orderDetails.orderSubtotal)],
     ['Delivery Charges', excelNumber(orderDetails.deliveryCharges)],
+    ['3 Hours or Less Fee', excelNumber(orderDetails.threeHoursOrLessFee)],
+    ['Returned 3 Hours or Less Fee', excelNumber(orderDetails.returnedThreeHoursOrLessFee)],
     ['Bag Fee', excelNumber(orderDetails.bagFee)],
     ['Tax', excelNumber(orderDetails.tax)],
     ['Tip', excelNumber(orderDetails.tip)],
     ['Refund', excelNumber(orderDetails.refund)],
     ['Donations', excelNumber(orderDetails.donations)],
+    ['Other Adjustments', formatFinancialAdjustments(orderDetails.financialAdjustments)],
     ['Order Total', excelNumber(orderDetails.orderTotal)],
     ['Seller(s)', orderDetails.sellers || ''],
     ['Fulfillment', orderDetails.fulfillmentTypes || ''],
@@ -554,6 +561,18 @@ function orderDataLabel(orderDetails) {
     : 'Full invoice';
 }
 
+/** Keep unrecognized Walmart adjustment labels and amounts visible in Excel. */
+function formatFinancialAdjustments(adjustments) {
+  return (Array.isArray(adjustments) ? adjustments : [])
+    .map((entry) => {
+      const label = String(entry?.label || '').trim();
+      const amount = String(entry?.amount || '').trim();
+      return label && amount ? `${label}: ${amount}` : '';
+    })
+    .filter(Boolean)
+    .join('; ');
+}
+
 
 /**
  * Polish a worksheet: Walmart-blue bold header, frozen header row, and
@@ -603,13 +622,17 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
     { header: 'Items', key: 'itemCount', width: 7, style: { numFmt: '#,##0', alignment: { horizontal: 'center' } } },
     { header: 'Subtotal (Before Savings)', key: 'subtotalBeforeSavings', width: 13, style: { numFmt: '$#,##0.00' } },
     { header: 'Savings', key: 'savings', width: 10, style: { numFmt: '$#,##0.00' } },
+    { header: 'Promo Code Amount', key: 'promoCodeAmount', width: 13, style: { numFmt: '$#,##0.00' } },
     { header: 'Subtotal', key: 'orderSubtotal', width: 11, style: { numFmt: '$#,##0.00' } },
     { header: 'Delivery Charges', key: 'deliveryCharges', width: 10, style: { numFmt: '$#,##0.00' } },
+    { header: '3 Hours or Less Fee', key: 'threeHoursOrLessFee', width: 14, style: { numFmt: '$#,##0.00' } },
+    { header: 'Returned 3 Hours or Less Fee', key: 'returnedThreeHoursOrLessFee', width: 19, style: { numFmt: '$#,##0.00' } },
     { header: 'Bag Fee', key: 'bagFee', width: 9, style: { numFmt: '$#,##0.00' } },
     { header: 'Tax', key: 'tax', width: 9, style: { numFmt: '$#,##0.00' } },
     { header: 'Tip', key: 'tip', width: 9, style: { numFmt: '$#,##0.00' } },
     { header: 'Refund', key: 'refund', width: 10, style: { numFmt: '$#,##0.00' } },
     { header: 'Donations', key: 'donations', width: 10, style: { numFmt: '$#,##0.00' } },
+    { header: 'Other Adjustments', key: 'financialAdjustments', width: 34 },
     { header: 'Order Total', key: 'orderTotal', width: 12, style: { numFmt: '$#,##0.00' } },
     { header: 'Payment Method', key: 'paymentMethods', width: 32 },
     { header: 'Payment Split', key: 'paymentSplit', width: 32 },
@@ -632,13 +655,17 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
       itemCount: Array.isArray(orderDetails.items) ? orderDetails.items.length : '',
       subtotalBeforeSavings: excelNumber(orderDetails.subtotalBeforeSavings),
       savings: excelNumber(orderDetails.savings),
+      promoCodeAmount: excelNumber(orderDetails.promoCodeAmount),
       orderSubtotal: excelNumber(orderDetails.orderSubtotal),
       deliveryCharges: excelNumber(orderDetails.deliveryCharges),
+      threeHoursOrLessFee: excelNumber(orderDetails.threeHoursOrLessFee),
+      returnedThreeHoursOrLessFee: excelNumber(orderDetails.returnedThreeHoursOrLessFee),
       bagFee: excelNumber(orderDetails.bagFee),
       tax: excelNumber(orderDetails.tax),
       tip: excelNumber(orderDetails.tip),
       refund: excelNumber(orderDetails.refund),
       donations: excelNumber(orderDetails.donations),
+      financialAdjustments: formatFinancialAdjustments(orderDetails.financialAdjustments),
       orderTotal: excelNumber(orderDetails.orderTotal),
       paymentMethods: formatPaymentMethodDetails(orderDetails) || orderDetails.paymentMethods || '',
       paymentSplit: orderDetails.paymentSplit || '',
@@ -1032,13 +1059,17 @@ const ORDER_CSV_COLUMNS = [
   ['Payment Split', (o) => o.paymentSplit || ''],
   ['Subtotal (Before Savings)', (o) => csvMoney(o.subtotalBeforeSavings)],
   ['Savings', (o) => csvMoney(o.savings)],
+  ['Promo Code Amount', (o) => csvMoney(o.promoCodeAmount, { blankWhenEmpty: true })],
   ['Subtotal', (o) => csvMoney(o.orderSubtotal)],
   ['Delivery Charges', (o) => csvMoney(o.deliveryCharges)],
+  ['3 Hours or Less Fee', (o) => csvMoney(o.threeHoursOrLessFee, { blankWhenEmpty: true })],
+  ['Returned 3 Hours or Less Fee', (o) => csvMoney(o.returnedThreeHoursOrLessFee, { blankWhenEmpty: true })],
   ['Bag Fee', (o) => csvMoney(o.bagFee)],
   ['Tax', (o) => csvMoney(o.tax)],
   ['Tip', (o) => csvMoney(o.tip)],
   ['Refund', (o) => csvMoney(o.refund, { blankWhenEmpty: true })],
   ['Donations', (o) => csvMoney(o.donations, { blankWhenEmpty: true })],
+  ['Other Adjustments', (o) => formatFinancialAdjustments(o.financialAdjustments)],
   ['Order Total', (o) => csvMoney(o.orderTotal)],
   ['Seller(s)', (o) => o.sellers || ''],
   ['Fulfillment', (o) => o.fulfillmentTypes || ''],

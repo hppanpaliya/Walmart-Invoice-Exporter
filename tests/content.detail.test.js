@@ -28,6 +28,39 @@ test('extractOrderDataFromNextData pulls identity and money fields from the payl
   assert.equal(order.barcodeImageUrl, 'https://receipts-query.edge.walmart.com/barcode?data=sanitized');
 });
 
+test('extractOrderDataFromNextData preserves labelled promo, service-fee, refund, and unknown adjustments', () => {
+  const payload = JSON.parse(JSON.stringify(detailPayload));
+  const fees = payload.props.pageProps.initialData.data.order.priceDetails.fees;
+  fees.push(
+    { label: 'Promo code', displayValue: '-$4.00' },
+    { label: '3 hours or less fee', displayValue: '$2.95' },
+    { label: 'Returned 3 hours or less fee', displayValue: '-$2.95' },
+    { label: 'Eco handling adjustment', displayValue: '$0.50' }
+  );
+  const sandbox = loadSandbox({ nextData: payload });
+  const order = sandbox.extractOrderDataFromNextData();
+
+  assert.equal(order.promoCodeAmount, '-$4.00');
+  assert.equal(order.threeHoursOrLessFee, '$2.95');
+  assert.equal(order.returnedThreeHoursOrLessFee, '-$2.95');
+  assert.equal(order.refund, '$3.98', 'the direct refund field remains authoritative');
+  assert.deepEqual(toPlain(order.financialAdjustments), [
+    { label: 'Eco handling adjustment', amount: '$0.50' },
+  ]);
+});
+
+test('delivery charges sum charged delivery and express fees but ignore strike-through amounts and discounts', () => {
+  const payload = JSON.parse(JSON.stringify(detailPayload));
+  const fees = payload.props.pageProps.initialData.data.order.priceDetails.fees;
+  fees.splice(0, fees.length,
+    { label: 'Delivery fee', displayValue: '$0.00', strikeThroughValue: '$9.95' },
+    { label: 'Express delivery fee', displayValue: '$5.00' },
+    { label: 'Delivery discount', displayValue: '-$1.00' }
+  );
+  const sandbox = loadSandbox({ nextData: payload });
+  assert.equal(sandbox.extractOrderDataFromNextData().deliveryCharges, '$5.00');
+});
+
 test('extractOrderDataFromNextData extracts items from groups and subGroups with links and thumbnails', () => {
   const sandbox = loadDetailSandbox();
   const order = sandbox.extractOrderDataFromNextData();

@@ -53,3 +53,9 @@ Remaining limits:
 - Issue #22 has not been fixed by these changes.
 - No guarantee covers all layouts, order types, account variants, future Walmart changes, or every field. Missing fields outside the minimum validation requirements can still need investigation.
 - Previously cached invoices with usable items and totals can retain old optional-field errors, including missing fees; this patch does not rewrite those records automatically.
+
+## Financial adjustments follow-up — October 13, 2026
+
+The original extraction mapped subtotal, savings, delivery, bag fee, tax, tip, refund, and donations, but discarded unrecognized fee rows. This caused newly labelled invoice adjustments to disappear from exports. The redesigned invoice parser now maps promo code amounts, standard and returned "3 hours or less" fees, refunds, and donations from visible rows or matching order payload fees. Other labelled amounts are retained in `financialAdjustments` and exported as an `Other Adjustments` cell. Delivery and express fees are summed from charged values; discounts and crossed-out/original values are excluded.
+
+The in-store split tender remains a source limitation: the verified in-store order page names the two tenders but includes no amounts in its DOM or `__NEXT_DATA__`; the allocation appears only in Walmart's printed receipt image. The extension reports this missing split rather than deriving figures from unrelated totals. The page-row fallback is more tolerant of class changes and will export amounts when Walmart includes them as accessible text. Automated image OCR is not included, so the receipt-image-only split remains unavailable.

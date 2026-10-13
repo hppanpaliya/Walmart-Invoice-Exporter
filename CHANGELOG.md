@@ -4,6 +4,7 @@
 
 ### Added
 - Reusable private HTML capture sanitizer and seven-case offline invoice corpus covering observed and synthetic layouts, missing fields, zero totals, hostile content, and real workbook reconciliation. Temporary captures and generated verification artifacts are ignored by Git; the browser harness cleans up profiles and download listeners.
+- Dedicated Excel and CSV fields for promo code amounts and 3-hours-or-less charges, returned charges, plus a catch-all adjustment column that retains Walmart's original labels and amounts.
 
 ### Fixed
 - Update audited development dependencies and pin patched transitive versions, reducing the installed dependency audit from 33 findings to one unresolved upstream `node-forge` advisory. Keep the release-age policy with two exact security-fix exceptions; see `docs/hardening-2026-10-12.md` for scope and limitations.
@@ -13,6 +14,7 @@
 - Incomplete invoices are no longer saved or exported as successful downloads. The panel rechecks the page once, then tries the alternate order URL; orders still missing usable items, a valid total, or the requested order number are listed as failed with a retry action. The same checks apply to cached and fast-fetched invoices. (#36)
 - Combined exports no longer download an empty file when every selected order fails.
 - Preserve payment card names carried by image alt text when invoice collection blocks images.
+- Sum charged delivery and express fees across fee rows, excluding discounts and crossed-out original prices. Read payment amounts from accessible tender rows even when Walmart changes their flex row classes.
 
 ## [8.3] - September 5, 2026
 
