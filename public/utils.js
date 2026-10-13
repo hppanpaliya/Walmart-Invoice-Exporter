@@ -329,7 +329,7 @@ function styleMultipleOrdersWorksheet(worksheet) {
  */
 function addOrderSummary(worksheet, orderDetails) {
   // Add empty row for spacing
-  worksheet.addRow([]);
+  worksheet.addRow({});
 
   const paymentMethodsDetailed = formatPaymentMethodDetails(orderDetails);
 
@@ -377,7 +377,7 @@ function addOrderSummary(worksheet, orderDetails) {
   const summaryRows = rows
     .filter(([, value]) => !(value === '' || value === null || value === undefined))
     .map(([label, value]) => {
-      const row = worksheet.addRow([label, value]);
+      const row = worksheet.addRow({ productName: label, quantity: value });
       row.font = { ...STYLES.productFont, bold: true };
       return row;
     });

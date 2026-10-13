@@ -16,21 +16,6 @@
  * exact header + representative rows), since those are already
  * deterministic string builders.
  *
- * Test-harness note: tests/helpers/sandbox.js runs utils.js/content.js in
- * a Node `vm` context (a separate realm). ExcelJS worksheet objects
- * created there are real (host-realm) objects, but plain array literals
- * *constructed by the sandboxed code* are vm-realm arrays — and ExcelJS's
- * `worksheet.addRow(someArray)` silently no-ops on a cross-realm array
- * (confirmed empirically; `Array.isArray` says true, `instanceof Array`
- * says false, and ExcelJS's internal check apparently relies on the
- * latter). This only affects the single-order sheet's *summary block*
- * below the items (addOrderSummary uses `addRow([label, value])`, a bare
- * array) — every other writer here uses object-form `addRow({...})`,
- * which is unaffected and asserted in full. In the real extension all
- * scripts share one window/realm, so this is purely a test-double
- * artifact, not a product bug — hence it is scoped out below rather than
- * "fixed" by touching the (out-of-scope, unmodified) converters.
- *
  * Same root cause shows up once more with plain objects: order A comes
  * from sandboxed extraction (scrapeOrderData()), so it carries the vm
  * realm's Object.prototype. assert.deepEqual (strict mode) treats that as

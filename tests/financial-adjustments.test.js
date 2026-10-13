@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const ExcelJS = require('exceljs');
-const { loadSandbox, toPlain } = require('./helpers/sandbox');
+const { loadSandbox } = require('./helpers/sandbox');
 const { captureDownloads, blobBuffer } = require('./helpers/capture-downloads');
 
 const invoice = {
@@ -29,20 +29,16 @@ const invoice = {
 };
 
 test('single-order summary and bulk Excel export carry the same named and additional amounts', async () => {
-  const singleSandbox = loadSandbox();
-  const summaryRows = [];
-  singleSandbox.addOrderSummary({
-    addRow(row) {
-      summaryRows.push(toPlain(row));
-      return {
-        font: {},
-        getCell(column) {
-          return { value: row[column - 1], font: {}, alignment: {}, numFmt: '' };
-        },
-      };
-    },
-  }, invoice);
-  const singleValues = new Map(summaryRows.filter(Array.isArray));
+  const sandbox = loadSandbox();
+  const downloads = captureDownloads(sandbox);
+  await sandbox.convertSingleOrderToXlsx(invoice, ExcelJS, 'single-adjustments.xlsx');
+  const singleWorkbook = new ExcelJS.Workbook();
+  await singleWorkbook.xlsx.load(blobBuffer(downloads[0].blob));
+  const singleRows = new Map();
+  singleWorkbook.getWorksheet('Order Invoice').eachRow((row) => {
+    const values = row.values.slice(1);
+    if (typeof values[0] === 'string') singleRows.set(values[0], values[1]);
+  });
   for (const [label, value] of [
     ['Promo Code Amount', -2],
     ['3 Hours or Less Fee', 2.95],
@@ -51,14 +47,12 @@ test('single-order summary and bulk Excel export carry the same named and additi
     ['Donations', 0.25],
     ['Other Adjustments', 'Eco handling adjustment: $0.50'],
   ]) {
-    assert.equal(singleValues.get(label), value, `single-order invoice includes ${label}`);
+    assert.equal(singleRows.get(label), value, `single-order invoice includes ${label}`);
   }
 
-  const sandbox = loadSandbox();
-  const downloads = captureDownloads(sandbox);
   await sandbox.convertMultipleOrdersToXlsx([invoice], ExcelJS, 'financial-adjustments.xlsx');
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(blobBuffer(downloads[0].blob));
+  await workbook.xlsx.load(blobBuffer(downloads[1].blob));
   const orders = workbook.getWorksheet('Orders');
   const headers = orders.getRow(1).values.slice(1);
   const values = orders.getRow(2).values.slice(1);
