@@ -57,6 +57,22 @@ test('in-store orders come through the list payload', () => {
   assert.equal(inStore.fulfillmentTypes, 'IN_STORE');
 });
 
+test('DOM fallback only accepts order numbers tied to an explicit order label', () => {
+  const sandbox = loadSandbox();
+
+  assert.equal(
+    sandbox.extractOrderNumberFromText('Jun 18, 2026 purchase · tracking reference 99999999999999999999'),
+    null,
+    'a long unrelated identifier must not be mistaken for an order number'
+  );
+  assert.equal(sandbox.extractOrderNumberFromText('Order #200015018437462'), '200015018437462');
+  assert.equal(
+    sandbox.extractOrderNumberFromText('Order number: 230100000000000000293'),
+    '230100000000000000293',
+    'valid long in-store order IDs remain supported'
+  );
+});
+
 test('missing summary fields degrade to empty strings, not undefined', () => {
   const sandbox = loadSandbox({
     nextData: {

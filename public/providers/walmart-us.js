@@ -2326,13 +2326,13 @@ function computeExtractionWarnings(data) {
 function extractOrderNumberFromText(text) {
   if (!text) return null;
 
-  const hashMatch = String(text).match(CONSTANTS.ORDER_NUMBER_REGEX);
-  if (hashMatch?.[1]) {
-    return hashMatch[1];
-  }
-
-  const looseMatch = String(text).match(/\b(\d[\d-]{9,})\b/);
-  return looseMatch?.[1] || null;
+  // A card can contain unrelated long identifiers (tracking references,
+  // fulfillment IDs, etc.). Only accept a number tied to an explicit order
+  // label or hash marker; treating the first long digit run as an order ID
+  // corrupts both the CSV's order number and the neighboring date/status
+  // fields on cards whose layout differs from the standard one (#22).
+  const match = String(text).match(/(?:\border(?:\s*(?:number|no\.?))?\s*[:#]?\s*|#\s*)([\d][\d-]{9,})/i);
+  return match?.[1] || null;
 }
 
 function getOrderCardTitle(card) {
@@ -2792,6 +2792,8 @@ async function checkForNextPage() {
       readPaymentRowAmount,
       mergeOrderItems,
       extractPrintItem,
+      extractOrderNumberFromText,
+      extractOrderNumberFromButton,
       computeExtractionWarnings,
       formatOrderDateFromIsoString,
       buildPaymentSplit,
