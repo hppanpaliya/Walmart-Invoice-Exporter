@@ -490,10 +490,10 @@
   function checkExtractionWarnings(orderNumber, data) {
     const warnings = Array.isArray(data?.extractionWarnings) ? data.extractionWarnings : [];
     if (warnings.length === 0) {
-      return false;
+      return null;
     }
     console.warn(`Extraction warnings for order #${orderNumber}:`, warnings);
-    return true;
+    return { orderNumber, warnings };
   }
 
   /**
@@ -760,7 +760,8 @@
         },
       });
 
-      let extractionWarningsDetected = false;
+      view.clearStatusBanner("extractionWarning");
+      const extractionDiagnostics = [];
       // One snapshot governs the whole run — mid-run option changes apply
       // to the NEXT run, never to files already queued in this one.
       const exportOptions = snapshotExportOptions();
@@ -779,9 +780,8 @@
             errorPrefix: "Failed to collect data for order",
             onOrder: async (orderNumber, options) => {
               const data = await OrderDataFetcher.fetchOrderData(orderNumber, options);
-              if (checkExtractionWarnings(orderNumber, data)) {
-                extractionWarningsDetected = true;
-              }
+              const diagnostic = checkExtractionWarnings(orderNumber, data);
+              if (diagnostic) extractionDiagnostics.push(diagnostic);
               collectedOrdersData.push(data);
             },
             onProgress,
@@ -792,9 +792,9 @@
             return;
           }
 
-          // Warn once (not per order) when any order came back with blank fields.
-          if (extractionWarningsDetected) {
-            view.showExtractionWarning();
+          // Show one actionable summary covering every affected order.
+          if (extractionDiagnostics.length > 0) {
+            view.showExtractionWarning(extractionDiagnostics);
           }
 
           if (collectedOrdersData.length > 0) {
@@ -833,9 +833,8 @@
             errorPrefix: "Error downloading order",
             onOrder: async (orderNumber, options) => {
               const data = await OrderDataFetcher.fetchOrderData(orderNumber, options);
-              if (checkExtractionWarnings(orderNumber, data)) {
-                extractionWarningsDetected = true;
-              }
+              const diagnostic = checkExtractionWarnings(orderNumber, data);
+              if (diagnostic) extractionDiagnostics.push(diagnostic);
               await exportOneOrder(data, exportOptions);
             },
             onProgress,
@@ -846,9 +845,9 @@
             return;
           }
 
-          // Warn once (not per order) when any order came back with blank fields.
-          if (extractionWarningsDetected) {
-            view.showExtractionWarning();
+          // Show one actionable summary covering every affected order.
+          if (extractionDiagnostics.length > 0) {
+            view.showExtractionWarning(extractionDiagnostics);
           }
 
           const succeeded = selectedOrders.length - failedOrders.length;
@@ -930,7 +929,8 @@
         },
       });
 
-      let extractionWarningsDetected = false;
+      view.clearStatusBanner("extractionWarning");
+      const extractionDiagnostics = [];
       const onProgress = (current, total, orderNumber, actionText) => {
         view.updateDownloadProgress(current, total, `${actionText} ${current} / ${total} (#${orderNumber})`);
       };
@@ -947,9 +947,8 @@
           onOrder: async (orderNumber, options) => {
             // fetchOrderData stores the invoice in IndexedDB as a side effect.
             const data = await OrderDataFetcher.fetchOrderData(orderNumber, options);
-            if (checkExtractionWarnings(orderNumber, data)) {
-              extractionWarningsDetected = true;
-            }
+            const diagnostic = checkExtractionWarnings(orderNumber, data);
+            if (diagnostic) extractionDiagnostics.push(diagnostic);
           },
           onProgress,
         });
@@ -958,8 +957,8 @@
           showDownloadResultBanner({ variant: "warning", message: "Saving cancelled." });
           return;
         }
-        if (extractionWarningsDetected) {
-          view.showExtractionWarning();
+        if (extractionDiagnostics.length > 0) {
+          view.showExtractionWarning(extractionDiagnostics);
         }
 
         const succeeded = selectedOrders.length - failedOrders.length;

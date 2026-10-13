@@ -151,12 +151,89 @@
     clearStatusBanner("offTabWarning");
   }
 
-  function showExtractionWarning() {
-    if (document.getElementById("extractionWarning")) return;
+  const EXTRACTION_REASON_LABELS = {
+    "No items were extracted for this order": "No products were found",
+    "All extracted items have a blank product name": "Product names were blank",
+    "Order total came back empty": "Order total was missing",
+    "Order number is missing": "Order number was missing",
+    "An item price exceeds the order total — price extraction looks wrong":
+      "A product price looked incorrect",
+  };
+
+  function maskOrderNumber(orderNumber) {
+    const value = String(orderNumber || "").replace(/[^\d]/g, "");
+    return value ? `order ending ${value.slice(-4).padStart(4, "0")}` : "unknown order";
+  }
+
+  function friendlyExtractionReason(reason) {
+    const value = String(reason || "").trim();
+    if (EXTRACTION_REASON_LABELS[value]) return EXTRACTION_REASON_LABELS[value];
+    if (/^Split tender across \d+ payment methods/.test(value)) {
+      return "Payment methods were found, but the amount charged to each was unavailable";
+    }
+    return value || "Some invoice information was unavailable";
+  }
+
+  function normalizeExtractionDiagnostics(diagnostics) {
+    const seen = new Set();
+    return (Array.isArray(diagnostics) ? diagnostics : []).flatMap((entry) => {
+      const order = maskOrderNumber(entry?.orderNumber);
+      const warnings = Array.isArray(entry?.warnings) ? entry.warnings : [];
+      return warnings.flatMap((warning) => {
+        const reason = friendlyExtractionReason(warning);
+        const key = `${order}\n${reason}`;
+        if (seen.has(key)) return [];
+        seen.add(key);
+        return [{ order, reason }];
+      });
+    });
+  }
+
+  function buildExtractionReportUrl(diagnostics) {
+    const details = normalizeExtractionDiagnostics(diagnostics);
+    const manifest = globalThis.chrome?.runtime?.getManifest?.() || {};
+    const version = manifest.version || "unknown";
+    const browser = globalThis.navigator?.userAgent || "unknown";
+    const shown = details.slice(0, 20);
+    const omitted = details.length - shown.length;
+    const body = [
+      "The extension detected incomplete or suspicious invoice data.",
+      "",
+      "Detected problems:",
+      ...shown.map(({ order, reason }) => `- ${order}: ${reason}`),
+      ...(omitted > 0 ? [`- Plus ${omitted} additional detected problem(s)`] : []),
+      "",
+      `Extension version: ${version}`,
+      `Browser: ${browser}`,
+      "",
+      "What I was doing:",
+      "<!-- Please describe whether you were exporting one file, multiple files, or saving new data. -->",
+    ].join("\n");
+    const params = new URLSearchParams({
+      title: `Invoice extraction warning (${details.length} detected problem${details.length === 1 ? "" : "s"})`,
+      body,
+    });
+    return `${CONSTANTS.URLS.GITHUB_ISSUES}?${params.toString()}`;
+  }
+
+  function showExtractionWarning(diagnostics = []) {
+    const details = normalizeExtractionDiagnostics(diagnostics);
+    if (details.length === 0) return;
+
+    const visible = details.slice(0, 5);
+    const remaining = details.length - visible.length;
+    const detailList = visible
+      .map(({ order, reason }) => `<li><strong>${escapeHtml(order)}:</strong> ${escapeHtml(reason)}</li>`)
+      .join("");
+    const more = remaining > 0 ? `<li>And ${remaining} more detected problem${remaining === 1 ? "" : "s"}</li>` : "";
+    const reportUrl = buildExtractionReportUrl(diagnostics);
 
     renderStatusBanner("extractionWarning", {
       variant: "warning",
-      message: `Walmart may have changed their website — some exported fields came back empty. Please <a href="${CONSTANTS.URLS.GITHUB_ISSUES}" target="_blank">report this</a> so we can fix it quickly.`,
+      message:
+        `<strong>Some invoice information needs attention.</strong>` +
+        `<ul>${detailList}${more}</ul>` +
+        `Your files may still be usable. Please <a href="${escapeHtml(reportUrl)}" target="_blank" rel="noopener noreferrer">send this pre-filled report</a> so we can investigate. Order numbers are masked for privacy.`,
       dismissible: true,
     });
   }
@@ -1434,6 +1511,7 @@
     renderStatusBanner,
     clearStatusBanner,
     clearOffTabWarning,
+    buildExtractionReportUrl,
     showExtractionWarning,
     updateFilterNotice,
     setUIEnabled,

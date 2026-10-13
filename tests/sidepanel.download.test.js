@@ -36,6 +36,25 @@ function fetchOrderData(sandbox, orderNumber, options) {
   return sandbox.window.Sidepanel.download.OrderDataFetcher.fetchOrderData(orderNumber, options);
 }
 
+test('extraction report link prefills actionable, privacy-safe diagnostics', () => {
+  const sandbox = loadDownloadSandbox();
+  const url = new URL(sandbox.window.Sidepanel.view.buildExtractionReportUrl([
+    {
+      orderNumber: '200010000000042',
+      warnings: [
+        'Order total came back empty',
+        'Split tender across 2 payment methods, but no per-tender amounts were extracted',
+      ],
+    },
+  ]));
+
+  assert.equal(url.origin + url.pathname, 'https://github.com/hppanpaliya/Walmart-Invoice-Exporter/issues/new');
+  assert.match(url.searchParams.get('title'), /2 detected problems/);
+  assert.match(url.searchParams.get('body'), /order ending 0042: Order total was missing/);
+  assert.match(url.searchParams.get('body'), /amount charged to each was unavailable/);
+  assert.doesNotMatch(url.searchParams.get('body'), /200010000000042/, 'a public issue must not expose the full order number');
+});
+
 test('fetchOrderData: a current-schema invoice already in IndexedDB is returned with NO tab opened (spec §4.2 fast path)', async () => {
   const sandbox = loadDownloadSandbox();
   const OrderDb = evalIn(sandbox, 'OrderDb');
