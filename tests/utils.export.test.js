@@ -48,15 +48,20 @@ test('describeActiveFilters reports filters but ignores tracking params', () => 
   assert.deepEqual(toPlain(sandbox.describeActiveFilters('not a url')), []);
 });
 
-test('formatPaymentMethodDetails renders per-card amounts', () => {
+test('Payment Method lists tenders while Payment Split lists their amounts', () => {
   const sandbox = loadUtils();
-  const text = sandbox.formatPaymentMethodDetails({
+  const order = {
     paymentMethodDetails: [
       { brand: 'VISA', ending: 'ending in 1234', amount: '$20.00' },
       { brand: 'GIFTCARD', ending: '', amount: '$6.84' },
     ],
-  });
-  assert.equal(text, 'VISA - ending in 1234 | Amount: $20.00 || GIFTCARD | Amount: $6.84');
+  };
+  assert.equal(sandbox.formatPaymentMethodDetails(order), 'VISA - ending in 1234 || GIFTCARD');
+  assert.equal(sandbox.formatPaymentSplit(order), 'VISA ending in 1234: $20.00; GIFTCARD: $6.84');
+  assert.equal(sandbox.formatPaymentMethodDetails({
+    paymentMethods: 'Discover - ending in 5555',
+    paymentMethodDetails: [{ amount: '$5.00' }],
+  }), 'Discover - ending in 5555');
 });
 
 test('escapeHtml neutralizes markup', () => {

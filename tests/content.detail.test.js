@@ -35,7 +35,10 @@ test('extractOrderDataFromNextData preserves labelled promo, service-fee, refund
     { label: 'Promo code', displayValue: '-$4.00' },
     { label: '3 hours or less fee', displayValue: '$2.95' },
     { label: 'Returned 3 hours or less fee', displayValue: '-$2.95' },
-    { label: 'Eco handling adjustment', displayValue: '$0.50' }
+    { label: 'Eco handling adjustment', displayValue: '$0.50' },
+    { label: 'Subtotal (25 items)', displayValue: '$20.00' },
+    { label: 'Free shipping, no order minimum', displayValue: '$0.00' },
+    { label: 'Eco fee waived', displayValue: '$0.00' }
   );
   const sandbox = loadSandbox({ nextData: payload });
   const order = sandbox.extractOrderDataFromNextData();
@@ -125,6 +128,31 @@ test('payment methods keep only amount-shaped displayValues', () => {
   // leak into the amount.
   const gift = order.paymentMethodDetails.find((m) => m.brand === 'GIFTCARD');
   assert.equal(gift.amount, '$6.84');
+});
+
+test('mergePaymentMethodDetails fills amounts from payload when the DOM has tender labels only', () => {
+  const sandbox = loadDetailSandbox();
+  const dom = [
+    { cardId: 'card-description-0', brand: 'VISA', ending: 'ending in 1234', amount: '' },
+    { cardId: 'card-description-1', brand: 'GIFTCARD', ending: 'Gift Card', amount: '' },
+  ];
+  const payload = [
+    { brand: 'VISA', ending: 'ending in 1234', amount: '$20.00' },
+    { brand: 'GIFTCARD', ending: 'Gift Card', amount: '$6.84' },
+  ];
+  const merged = toPlain(sandbox.mergePaymentMethodDetails(dom, payload));
+  assert.deepEqual(merged.map((entry) => entry.amount), ['$20.00', '$6.84']);
+  assert.equal(sandbox.buildPaymentSplit(merged), 'VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84');
+});
+
+test('mergePaymentMethodDetails does not assign an unrelated payload amount by brand alone', () => {
+  const sandbox = loadDetailSandbox();
+  const merged = toPlain(sandbox.mergePaymentMethodDetails(
+    [{ brand: 'VISA', ending: 'ending in 1234', amount: '' }],
+    [{ brand: 'VISA', ending: 'ending in 9876', amount: '$20.00' }]
+  ));
+  assert.equal(merged[0].amount, '');
+  assert.equal(merged[1].amount, '$20.00');
 });
 
 test('scrapeOrderData (payload-only page) produces schemaVersion 2 with the payment split', () => {

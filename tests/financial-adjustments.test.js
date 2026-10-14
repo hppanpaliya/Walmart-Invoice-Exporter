@@ -45,7 +45,7 @@ test('single-order summary and bulk Excel export carry the same named and additi
     ['Returned 3 Hours or Less Fee', -2.95],
     ['Refund', -1],
     ['Donations', 0.25],
-    ['Other Adjustments', 'Eco handling adjustment: $0.50'],
+    ['Other Adjustments (Eco handling adjustment: $0.50)', 0.5],
   ]) {
     assert.equal(singleRows.get(label), value, `single-order invoice includes ${label}`);
   }
@@ -68,4 +68,35 @@ test('single-order summary and bulk Excel export carry the same named and additi
   assert.equal(cell('Tax'), 1.2);
   assert.equal(cell('Tip'), 3);
   assert.equal(cell('Other Adjustments'), 'Eco handling adjustment: $0.50');
+  assert.equal(cell('Other Adjustments Amount'), 0.5);
+});
+
+test('single and bulk exports omit redundant or zero adjustment rows and cells', async () => {
+  const sandbox = loadSandbox();
+  const downloads = captureDownloads(sandbox);
+  const noExtras = {
+    orderNumber: '200010000000043', orderTotal: '$12.00', items: [],
+    financialAdjustments: [
+      { label: 'Items (3)', amount: '$12.00' },
+      { label: 'Subtotal (25 items)', amount: '$12.00' },
+      { label: 'Free shipping, no order minimum', amount: '$0.00' },
+      { label: 'Eco handling adjustment', amount: '$0.00' },
+    ],
+  };
+
+  await sandbox.convertSingleOrderToXlsx(noExtras, ExcelJS, 'single-no-adjustments.xlsx');
+  const single = new ExcelJS.Workbook();
+  await single.xlsx.load(blobBuffer(downloads[0].blob));
+  const labels = [];
+  single.getWorksheet('Order Invoice').eachRow((row) => labels.push(row.getCell(1).value));
+  assert.ok(!labels.some((label) => String(label || '').startsWith('Other Adjustments')));
+
+  await sandbox.convertMultipleOrdersToXlsx([noExtras], ExcelJS, 'bulk-no-adjustments.xlsx');
+  const bulk = new ExcelJS.Workbook();
+  await bulk.xlsx.load(blobBuffer(downloads[1].blob));
+  const orders = bulk.getWorksheet('Orders');
+  const headers = orders.getRow(1).values.slice(1);
+  const values = orders.getRow(2).values.slice(1);
+  assert.equal(values[headers.indexOf('Other Adjustments')], '');
+  assert.equal(values[headers.indexOf('Other Adjustments Amount')], '');
 });

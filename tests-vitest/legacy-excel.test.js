@@ -110,7 +110,7 @@ test('legacy: convertMultipleOrdersToXlsxLegacy is a SINGLE "Walmart Orders" she
 
   assert.deepEqual(sheet.getRow(2).values.slice(1), [
     '200010000000042', 'Jul 01, 2026', 'Test Customer', 'Test Customer, 123 Main St, Springfield IL 62704',
-    'Leave at door', 'VISA - ending in 1234 | Amount: $20.00 || GIFTCARD - Gift Card | Amount: $6.84',
+    'Leave at door', 'VISA - ending in 1234 || GIFTCARD - Gift Card',
     'Charged Jul 2', 20.53, 2, 18.53,
     'Great Value Milk 1 Gallon', 2, 7.96, 0, 0.25,
     1.14, 4, 28.11, 'Delivered',

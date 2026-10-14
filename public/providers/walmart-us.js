@@ -1212,13 +1212,8 @@ function extractNextDataPaymentMethods(orderNode) {
       // descriptive strings into this array on some orders.
       const amountValues = displayValues
         .map((value) => cleanText(typeof value === 'string' ? value : value?.displayValue || ''))
-        .filter((value) => /-?\$\s*\d|\d+\.\d{2}/.test(value));
-      const amount = amountValues.length > 0
-        ? amountValues.join(' + ')
-        : cleanText(
-            displayValues[0]?.displayValue ||
-              (typeof displayValues[0] === 'string' ? displayValues[0] : '')
-          );
+        .filter((value) => /^-?\$?\s*[\d,]+(?:\.\d{2})?$/.test(value));
+      const amount = amountValues.length > 0 ? amountValues.join(' + ') : '';
       const message = extractTextFromNextData(paymentMethod?.message);
 
       return {
@@ -1271,13 +1266,15 @@ function collectFinancialAdjustments(entries) {
     refund: '',
     financialAdjustments: [],
   };
-  const standardLabel = /^(?:items?(?:\s+\(?\d+\)?)?|subtotal(?:\s+after\s+savings)?|savings|delivery(?:\s+from\s+store|\s+charges?|\s+fee)?|express(?:\s+delivery|\s+fee)?|free\s+delivery(?:\s+from\s+store)?|bag\s+fee|tax(?:es)?|driver\s+tip|tip|donations?|total|order\s+total|temporary\s+adjusted\s+total|estimated\s+total)$/i;
+  const standardLabel = /^(?:items?(?:\s*\(\s*\d+\s*\)|\s+\d+\s+items?)?|subtotal(?:\s+\(\s*\d+\s+items?\s*\))?(?:\s+after\s+savings)?|savings|delivery(?:\s+from\s+store|\s+charges?|\s+fee)?|express(?:\s+delivery|\s+fee)?|free\s+(?:delivery|shipping)(?:\s+from\s+store)?(?:\s*,?\s*no\s+order\s+minimum)?|no\s+order\s+minimum|bag\s+fee|tax(?:es)?|driver\s+tip|tip|donations?|total|order\s+total|temporary\s+adjusted\s+total|estimated\s+total)$/i;
   const seen = new Set();
 
   (Array.isArray(entries) ? entries : []).forEach((entry) => {
     const label = cleanText(entry?.label || '');
     const amount = cleanText(entry?.amount || '');
     if (!label || !amount) return;
+    const numericAmount = Number(amount.replace(/[^\d.-]/g, ''));
+    if (!Number.isFinite(numericAmount) || numericAmount === 0) return;
 
     const field = classifyFinancialAdjustmentLabel(label);
     if (field) {
@@ -1440,6 +1437,53 @@ function buildPaymentSplit(paymentMethodDetails) {
     })
     .filter(Boolean)
     .join('; ');
+}
+
+/** Merge DOM tenders with payload tenders, filling DOM-missing amounts safely. */
+function mergePaymentMethodDetails(domDetails, payloadDetails) {
+  const dom = Array.isArray(domDetails) ? domDetails : [];
+  const payload = Array.isArray(payloadDetails) ? payloadDetails : [];
+  const normalized = (value) => normalizeLookupText(value || '').replace(/[^a-z0-9]/g, '');
+  const usedPayload = new Set();
+  const merged = dom.map((entry, index) => {
+    const brand = normalized(entry.brand);
+    const ending = normalized(entry.ending);
+    let candidates = payload.map((candidate, payloadIndex) => ({ candidate, payloadIndex }))
+      .filter(({ payloadIndex }) => !usedPayload.has(payloadIndex));
+    let matches = candidates.filter(({ candidate }) => {
+      const candidateBrand = normalized(candidate.brand);
+      const candidateEnding = normalized(candidate.ending);
+      return ending && candidateEnding && (ending === candidateEnding || ending.endsWith(candidateEnding) || candidateEnding.endsWith(ending)) &&
+        (!brand || !candidateBrand || brand === candidateBrand || brand.includes(candidateBrand) || candidateBrand.includes(brand));
+    });
+    if (matches.length !== 1 && dom.length === payload.length) {
+      const indexed = candidates.find(({ payloadIndex }) => payloadIndex === index);
+      if (indexed) {
+        const candidateBrand = normalized(indexed.candidate.brand);
+        const candidateEnding = normalized(indexed.candidate.ending);
+        const endingCompatible = !ending || !candidateEnding || ending === candidateEnding ||
+          ending.endsWith(candidateEnding) || candidateEnding.endsWith(ending);
+        if (endingCompatible && (!brand || !candidateBrand || brand === candidateBrand || brand.includes(candidateBrand) || candidateBrand.includes(brand))) {
+          matches = [indexed];
+        }
+      }
+    }
+    const match = matches.length === 1 ? matches[0] : null;
+    if (match) usedPayload.add(match.payloadIndex);
+    const fallback = match?.candidate || {};
+    return {
+      ...fallback,
+      ...entry,
+      brand: entry.brand || fallback.brand || '',
+      ending: entry.ending || fallback.ending || '',
+      amount: entry.amount || fallback.amount || '',
+      message: entry.message || fallback.message || '',
+    };
+  });
+  payload.forEach((entry, index) => {
+    if (!usedPayload.has(index)) merged.push(entry);
+  });
+  return merged;
 }
 
 function collectItemsFromNextDataGroups(groups, pushItem) {
@@ -2157,13 +2201,10 @@ function scrapeOrderData() {
   tax = redesignedTotals.tax || tax;
   tip = redesignedTotals.tip || tip;
 
-  let paymentMethodDetails = extractPaymentDetailsFromOrderPage();
-  if (
-    (!Array.isArray(paymentMethodDetails) || paymentMethodDetails.length === 0) &&
-    Array.isArray(nextDataOrder?.paymentMethodDetails)
-  ) {
-    paymentMethodDetails = nextDataOrder.paymentMethodDetails;
-  }
+  const paymentMethodDetails = mergePaymentMethodDetails(
+    extractPaymentDetailsFromOrderPage(),
+    nextDataOrder?.paymentMethodDetails
+  );
 
   const paymentMethods = paymentMethodDetails
     .map((method) => [method.brand, method.ending].filter(Boolean).join(' - '))
@@ -2797,6 +2838,7 @@ async function checkForNextPage() {
       computeExtractionWarnings,
       formatOrderDateFromIsoString,
       buildPaymentSplit,
+      mergePaymentMethodDetails,
       buildTenderLabel,
       buildDomOrderSummary,
       PurchaseHistoryDataSource,

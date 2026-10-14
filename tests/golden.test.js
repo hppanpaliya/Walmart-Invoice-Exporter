@@ -117,7 +117,7 @@ test('golden: convertMultipleOrdersToXlsx produces the current Orders+Items work
     'Order Number', 'Order Date', 'Order Type', 'Data', 'Items',
     'Subtotal (Before Savings)', 'Savings', 'Promo Code Amount', 'Subtotal', 'Delivery Charges',
     '3 Hours or Less Fee', 'Returned 3 Hours or Less Fee', 'Bag Fee',
-    'Tax', 'Tip', 'Refund', 'Donations', 'Other Adjustments', 'Order Total',
+    'Tax', 'Tip', 'Refund', 'Donations', 'Other Adjustments', 'Other Adjustments Amount', 'Order Total',
     'Payment Method', 'Payment Split', 'Payment Messages', 'Seller(s)', 'Fulfillment',
     'Delivered Date', 'Tracking Numbers', 'Ship To', 'Delivery Instructions', 'Receipt Barcode',
   ]);
@@ -126,8 +126,8 @@ test('golden: convertMultipleOrdersToXlsx produces the current Orders+Items work
   assert.deepEqual(orders.getRow(2).values.slice(1), [
     '200010000000042', 'Jul 01, 2026', 'GLASS', 'Full invoice', 3,
     20.53, 2, '', 18.53, 0, '', '', 0.25,
-    1.14, 4, 3.98, 1, '', 28.11,
-    'VISA - ending in 1234 | Amount: $20.00 || GIFTCARD - Gift Card | Amount: $6.84',
+    1.14, 4, 3.98, 1, '', '', 28.11,
+    'VISA - ending in 1234 || GIFTCARD - Gift Card',
     'VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84', 'Charged Jul 2',
     'Walmart.com; Acme Marketplace LLC', 'DELIVERY, SHIPPING', 'Jul 02, 2026',
     '1Z999AA10123456784; 1Z999AA10123456785', 'Test Customer, 123 Main St, Springfield IL 62704',
@@ -142,7 +142,7 @@ test('golden: convertMultipleOrdersToXlsx produces the current Orders+Items work
   assert.equal(sparseRow[5], '', 'Subtotal (Before Savings) blank, not 0, when unknown');
   assert.equal(sparseRow[6], '', 'Savings blank, not 0, when unknown');
   assert.equal(sparseRow[8], 8.88, 'Subtotal is known and numeric');
-  assert.equal(sparseRow[18], 9.42, 'Order Total is known and numeric');
+  assert.equal(sparseRow[19], 9.42, 'Order Total is known and numeric');
 
   const items = workbook.getWorksheet('Items');
   assert.deepEqual(items.getRow(1).values.slice(1), [
@@ -218,7 +218,7 @@ test('golden: convertOrdersToCsv produces the current accounting-friendly CSV pa
   assert.equal(
     ordersLines[1],
     '200010000000042,"Jul 01, 2026",3,Test Customer,"Test Customer, 123 Main St, Springfield IL 62704",'
-      + 'Leave at door,VISA - ending in 1234 | Amount: $20.00 || GIFTCARD - Gift Card | Amount: $6.84,'
+      + 'Leave at door,VISA - ending in 1234 || GIFTCARD - Gift Card,'
       + 'Charged Jul 2,VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84,20.53,2,,18.53,0,,,0.25,1.14,4,'
       + '3.98,1,,28.11,Walmart.com; Acme Marketplace LLC,"DELIVERY, SHIPPING","Jul 02, 2026",'
       + '1Z999AA10123456784; 1Z999AA10123456785,https://receipts-query.edge.walmart.com/barcode?data=sanitized,GLASS'

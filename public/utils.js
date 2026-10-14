@@ -61,14 +61,32 @@ function formatPaymentMethodDetails(orderDetails) {
     return orderDetails?.paymentMethods || '';
   }
 
-  return details
+  const labels = details
     .map((entry) => {
       const primary = [entry.brand, entry.ending].filter(Boolean).join(' - ');
-      const amount = entry.amount ? `Amount: ${entry.amount}` : '';
-      return [primary, amount].filter(Boolean).join(' | ');
+      return primary;
     })
     .filter(Boolean)
     .join(' || ');
+  return labels || orderDetails?.paymentMethods || '';
+}
+
+/** Use the explicit split when available; recover it from tender details for older invoices. */
+function formatPaymentSplit(orderDetails) {
+  const split = String(orderDetails?.paymentSplit || '').trim();
+  if (split) return split;
+  const details = Array.isArray(orderDetails?.paymentMethodDetails)
+    ? orderDetails.paymentMethodDetails
+    : [];
+  return details
+    .map((entry) => {
+      const amount = String(entry?.amount || '').trim();
+      if (!amount) return '';
+      const label = [entry?.brand, entry?.ending].filter(Boolean).join(' ');
+      return label ? `${label}: ${amount}` : amount;
+    })
+    .filter(Boolean)
+    .join('; ');
 }
 
 /**
@@ -355,13 +373,13 @@ function addOrderSummary(worksheet, orderDetails) {
     ['Tip', excelNumber(orderDetails.tip)],
     ['Refund', excelNumber(orderDetails.refund)],
     ['Donations', excelNumber(orderDetails.donations)],
-    ['Other Adjustments', formatFinancialAdjustments(orderDetails.financialAdjustments)],
+    ...otherAdjustmentRows(orderDetails.financialAdjustments),
     ['Order Total', excelNumber(orderDetails.orderTotal)],
     ['Seller(s)', orderDetails.sellers || ''],
     ['Fulfillment', orderDetails.fulfillmentTypes || ''],
     ['Delivered Date', orderDetails.deliveredDate || ''],
     ['Tracking Numbers', orderDetails.trackingNumbers || ''],
-    ['Payment Split', orderDetails.paymentSplit || ''],
+    ['Payment Split', formatPaymentSplit(orderDetails)],
     [
       'Receipt Barcode',
       orderDetails.barcodeImageUrl
@@ -397,7 +415,7 @@ function addOrderSummary(worksheet, orderDetails) {
   ]);
   summaryRows.forEach((row) => {
     const label = row.getCell(1).value;
-    if (!currencyLabels.has(label)) return;
+    if (!currencyLabels.has(label) && !String(label || '').startsWith('Other Adjustments (')) return;
     row.getCell(2).numFmt = "$#,##0.00";
     row.getCell(2).font = { ...STYLES.productFont, bold: true };
     row.getCell(1).font = { ...STYLES.productFont, bold: true };
@@ -563,14 +581,37 @@ function orderDataLabel(orderDetails) {
 
 /** Keep unrecognized Walmart adjustment labels and amounts visible in Excel. */
 function formatFinancialAdjustments(adjustments) {
-  return (Array.isArray(adjustments) ? adjustments : [])
+  return meaningfulFinancialAdjustments(adjustments)
     .map((entry) => {
-      const label = String(entry?.label || '').trim();
-      const amount = String(entry?.amount || '').trim();
-      return label && amount ? `${label}: ${amount}` : '';
+      return `${entry.label}: ${entry.amount}`;
     })
-    .filter(Boolean)
     .join('; ');
+}
+
+function meaningfulFinancialAdjustments(adjustments) {
+  const redundant = /^(?:items?(?:\s*\(\s*\d+\s*\)|\s+\d+\s+items?)?|subtotal(?:\s+\(\s*\d+\s+items?\s*\))?(?:\s+after\s+savings)?|free\s+(?:shipping|delivery)(?:\s*,?\s*no\s+order\s+minimum)?|no\s+order\s+minimum)$/i;
+  return (Array.isArray(adjustments) ? adjustments : []).flatMap((entry) => {
+    const label = String(entry?.label || '').trim();
+    const amount = String(entry?.amount || '').trim();
+    if (!label || !amount || redundant.test(label)) return [];
+    const numeric = parseOptionalNumericValue(amount);
+    if (numeric === null || numeric === 0) return [];
+    return [{ label, amount, numeric }];
+  });
+}
+
+function financialAdjustmentsTotal(adjustments) {
+  const entries = meaningfulFinancialAdjustments(adjustments);
+  if (entries.length === 0) return '';
+  const cents = entries.reduce((sum, entry) => sum + Math.round(entry.numeric * 100), 0);
+  return cents / 100;
+}
+
+function otherAdjustmentRows(adjustments) {
+  const entries = meaningfulFinancialAdjustments(adjustments);
+  if (entries.length === 0) return [];
+  const details = entries.map(({ label, amount }) => `${label}: ${amount}`).join('; ');
+  return [[`Other Adjustments (${details})`, financialAdjustmentsTotal(adjustments)]];
 }
 
 
@@ -632,7 +673,8 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
     { header: 'Tip', key: 'tip', width: 9, style: { numFmt: '$#,##0.00' } },
     { header: 'Refund', key: 'refund', width: 10, style: { numFmt: '$#,##0.00' } },
     { header: 'Donations', key: 'donations', width: 10, style: { numFmt: '$#,##0.00' } },
-    { header: 'Other Adjustments', key: 'financialAdjustments', width: 34 },
+    { header: 'Other Adjustments', key: 'financialAdjustments', width: 38 },
+    { header: 'Other Adjustments Amount', key: 'financialAdjustmentsAmount', width: 16, style: { numFmt: '$#,##0.00' } },
     { header: 'Order Total', key: 'orderTotal', width: 12, style: { numFmt: '$#,##0.00' } },
     { header: 'Payment Method', key: 'paymentMethods', width: 32 },
     { header: 'Payment Split', key: 'paymentSplit', width: 32 },
@@ -666,9 +708,10 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
       refund: excelNumber(orderDetails.refund),
       donations: excelNumber(orderDetails.donations),
       financialAdjustments: formatFinancialAdjustments(orderDetails.financialAdjustments),
+      financialAdjustmentsAmount: financialAdjustmentsTotal(orderDetails.financialAdjustments),
       orderTotal: excelNumber(orderDetails.orderTotal),
       paymentMethods: formatPaymentMethodDetails(orderDetails) || orderDetails.paymentMethods || '',
-      paymentSplit: orderDetails.paymentSplit || '',
+      paymentSplit: formatPaymentSplit(orderDetails),
       paymentMessages: orderDetails.paymentMessages || '',
       sellers: orderDetails.sellers || '',
       fulfillmentTypes: orderDetails.fulfillmentTypes || '',
@@ -935,7 +978,7 @@ async function convertMultipleOrdersToXlsxLegacy(ordersData, ExcelJS, filename =
         fulfillmentTypes: orderDetails.fulfillmentTypes || '',
         deliveredDate: orderDetails.deliveredDate || '',
         trackingNumbers: orderDetails.trackingNumbers || '',
-        paymentSplit: orderDetails.paymentSplit || '',
+        paymentSplit: formatPaymentSplit(orderDetails),
         orderType: orderDetails.orderType || '',
         isInStore: Boolean(orderDetails.isInStore),
       });
@@ -1056,7 +1099,7 @@ const ORDER_CSV_COLUMNS = [
   ['Delivery Instructions', (o) => o.deliveryInstructions || ''],
   ['Payment Method', (o) => formatPaymentMethodDetails(o)],
   ['Payment Messages', (o) => o.paymentMessages || ''],
-  ['Payment Split', (o) => o.paymentSplit || ''],
+  ['Payment Split', (o) => formatPaymentSplit(o)],
   ['Subtotal (Before Savings)', (o) => csvMoney(o.subtotalBeforeSavings)],
   ['Savings', (o) => csvMoney(o.savings)],
   ['Promo Code Amount', (o) => csvMoney(o.promoCodeAmount, { blankWhenEmpty: true })],
