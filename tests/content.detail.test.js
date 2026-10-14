@@ -26,7 +26,7 @@ test('extractOrderDataFromNextData pulls identity and money fields from the payl
   assert.equal(order.refund, '$3.98');
   assert.equal(order.donations, '$1.00');
   assert.equal(order.barcodeImageUrl, 'https://receipts-query.edge.walmart.com/barcode?data=sanitized');
-  assert.equal(order.walmartExtractionVersion, 2);
+  assert.equal(order.walmartExtractionVersion, 3);
 });
 
 test('extractOrderDataFromNextData preserves labelled promo, service-fee, refund, and unknown adjustments', () => {
@@ -151,6 +151,20 @@ test('WMTRC and Walmart Cash aliases with the same tender and amount are counted
   assert.equal(sandbox.buildPaymentSplit(merged), 'Walmart Cash: $1.00; Discover Ending in 6011: $64.33');
 });
 
+test('generic OTHER payload alias merges into a matching gift-card tender', () => {
+  const sandbox = loadDetailSandbox();
+  const merged = toPlain(sandbox.mergePaymentMethodDetails([
+    { brand: 'Gift Card', ending: 'Ending in 2468', amount: '' },
+    { brand: 'PayPal', ending: 'customer@example.com', amount: '' },
+  ], [
+    { brand: 'OTHER', ending: 'Ending in 2468', amount: '' },
+    { brand: 'PAYPAL', ending: 'customer@example.com', amount: '' },
+  ]));
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].brand, 'Gift Card');
+  assert.equal(merged[1].brand, 'PayPal');
+});
+
 test('one missing tender amount can be inferred from a valid final order total', () => {
   const sandbox = loadDetailSandbox();
   const inferred = toPlain(sandbox.inferSingleTenderAmount(
@@ -158,6 +172,19 @@ test('one missing tender amount can be inferred from a valid final order total',
   ));
   assert.equal(inferred[0].amount, '$71.71');
   assert.equal(inferred[0].amountSource, 'order-total');
+});
+
+test('single-tender allocation uses invoice total instead of cumulative charge-history transactions', () => {
+  const sandbox = loadDetailSandbox();
+  const corrected = toPlain(sandbox.inferSingleTenderAmount([
+    { brand: 'PAYPAL', ending: 'buyer@example.com', amount: '$90.56', amountSource: 'charge-history' },
+  ], '$74.26'));
+  assert.equal(corrected[0].amount, '$74.26');
+  assert.equal(corrected[0].amountSource, 'order-total');
+  const card = toPlain(sandbox.inferSingleTenderAmount([
+    { brand: 'DISCOVER', ending: 'Ending in 6011', amount: '$4.17', amountSource: 'charge-history' },
+  ], '$40.89'));
+  assert.equal(card[0].amount, '$40.89');
 });
 
 test('one missing split allocation uses the final total remainder only after a charge-history amount was found', () => {
@@ -197,12 +224,12 @@ test('mergePaymentMethodDetails does not assign an unrelated payload amount by b
   assert.equal(merged[1].amount, '$20.00');
 });
 
-test('scrapeOrderData (payload-only page) produces schemaVersion 2 with the payment split', () => {
+test('scrapeOrderData (payload-only page) produces schemaVersion 3 with the payment split', () => {
   const sandbox = loadDetailSandbox();
   const data = sandbox.scrapeOrderData();
 
   assert.equal(data.schemaVersion, 3);
-  assert.equal(data.walmartExtractionVersion, 2);
+  assert.equal(data.walmartExtractionVersion, 3);
   assert.equal(data.orderNumber, '200010000000042');
   assert.equal(data.items.length, 3);
   assert.equal(data.paymentSplit, 'VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84');
@@ -262,6 +289,21 @@ test('computeExtractionWarnings flags split tender with no per-tender amounts', 
   }));
   assert.equal(partial.length, 1, 'a partial split must not look complete');
   assert.match(partial[0], /1 per-tender amount was unavailable/);
+});
+
+test('computeExtractionWarnings flags complete tender amounts that do not reconcile to invoice total', () => {
+  const sandbox = loadDetailSandbox();
+  const warnings = toPlain(sandbox.computeExtractionWarnings({
+    orderNumber: '200010000000042',
+    orderTotal: '$64.98',
+    items: [{ productName: 'Synthetic item', price: '$60.63' }],
+    paymentMethodDetails: [
+      { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$19.07', amountSource: 'charge-history' },
+      { brand: 'PayPal', ending: 'buyer@example.com', amount: '$50.34', amountSource: 'charge-history' },
+    ],
+  }));
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /Payment split totals \$69\.41, which does not match the order total \$64\.98/);
 });
 
 test('readPaymentRowAmount reads the 2026 payment row (flex-auto moved off the amount)', () => {

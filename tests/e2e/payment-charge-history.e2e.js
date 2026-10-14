@@ -66,3 +66,59 @@ test('scrapeOrder reads missing split-tender amounts from Walmart charge history
     await close();
   }
 });
+
+test('single PayPal tender uses the invoice total instead of cumulative partial charges', async () => {
+  const { context, close } = await launch();
+  try {
+    const page = await context.newPage();
+    await page.goto(`https://www.walmart.com/orders/${ONLINE_ORDER}`);
+    await page.setContent(`<!doctype html><html><body>
+      <div class="print-bill-bar-id">Order# ${ONLINE_ORDER}</div>
+      <div class="print-bill-group"><div data-testid="itemtile-stack">
+        <div class="print-item-title"><div data-testid="productName">Synthetic item</div></div>
+        <div class="bill-item-quantity">Qty 1</div><div data-testid="line-price">$71.71</div>
+      </div></div>
+      <div class="print-bill-payment-section">
+        <div class="bill-order-payment-info">
+          <div class="flex items-center mb3"><img alt="PayPal"><span aria-labelledby="card-description-0">paypal@example.test</span><span class="tr"></span></div>
+        </div>
+        <div class="bill-order-payment-spacing">
+          <div class="justify-between"><span>Items</span><span>$71.71</span></div>
+          <div class="justify-between"><span>Driver tip</span><span>$1.00</span></div>
+          <div class="justify-between"><span>Refund</span><span>-$0.01</span></div>
+          <div class="justify-between"><span>Total</span><span>$74.26</span></div>
+        </div>
+        <button id="charge-history" aria-label="Charge history">Charge history</button>
+      </div>
+      <div id="history" role="dialog" style="display:none">
+        <button aria-label="close panel">Close</button>
+        <section><h3>Viewing order charge history of PayPal</h3><h4>Final charges</h4>
+          <ul><li><h6>Order charge</h6><span>$92.50 5:41 PM</span></li>
+          <li><h6>Refund</h6><span>-$3.07 5:43 PM</span></li>
+          <li><h6>Items Edited</h6><span>-$3.10 5:43 PM</span></li>
+          <li><h6>Order charge</h6><span>$3.24 5:44 PM</span></li>
+          <li><h6>Driver tip</h6><span>$1.00 7:41 PM</span></li>
+          <li><h6>Refund</h6><span>-$0.01 7:41 PM</span></li></ul>
+        </section>
+      </div>
+      <script>document.querySelector('#charge-history').addEventListener('click', () => { document.querySelector('#history').style.display='block'; });
+      document.querySelector('[aria-label="close panel"]').addEventListener('click', () => { document.querySelector('#history').style.display='none'; });</script>
+    </body></html>`);
+    for (const script of ['utils.js', 'providers/base.js', 'providers/registry.js', 'providers/walmart-us.js']) {
+      await page.addScriptTag({ path: path.join(root, 'public', script) });
+    }
+
+    const result = await page.evaluate(async () => {
+      const provider = window.ProviderRegistry.getById('WALMART_US');
+      const data = await provider.scrapeOrder({});
+      return { data, drawerHidden: document.querySelector('#history').style.display === 'none' };
+    });
+
+    assert.equal(result.data.orderTotal, '$74.26');
+    assert.equal(result.data.paymentSplit, 'PayPal paypal@example.test: $74.26');
+    assert.deepEqual(result.data.extractionWarnings, []);
+    assert.equal(result.drawerHidden, true);
+  } finally {
+    await close();
+  }
+});

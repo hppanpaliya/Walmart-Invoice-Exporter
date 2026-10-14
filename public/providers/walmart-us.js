@@ -1420,7 +1420,10 @@ function buildTenderLabel(brand, ending) {
   const e = cleanText(ending || '');
   if (!b) return e;
   if (!e) return b;
-  return e.toLowerCase().includes(b.toLowerCase()) ? e : `${b} ${e}`;
+  const description = e.replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi, '');
+  const escapedBrand = b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const containsBrand = new RegExp(`(^|[^a-z0-9])${escapedBrand}(?=$|[^a-z0-9])`, 'i').test(description);
+  return containsBrand ? e : `${b} ${e}`;
 }
 
 function normalizeTenderBrand(value) {
@@ -1440,23 +1443,28 @@ function sameMoneyAmount(left, right) {
 }
 
 /**
- * Walmart sometimes emits the same Walmart Cash tender twice: once as
- * `Walmart Cash` and once as the internal `WMTRC` code. Only collapse that
- * explicit alias pair when its description and amount also match; two distinct
- * cash credits or cards with different amounts remain separate.
+ * Walmart sometimes emits the same tender twice under a specific brand and a
+ * generic code (`WMTRC` for Walmart Cash or `OTHER` for a gift card). The
+ * masked tender description is the stable identity shared by those records.
  */
 function dedupePaymentMethodDetails(details) {
   const result = [];
   (Array.isArray(details) ? details : []).forEach((entry) => {
     const duplicateIndex = result.findIndex((existing) => {
-      const brands = [normalizeLookupText(existing.brand), normalizeLookupText(entry.brand)];
-      const aliasPair = brands.some((brand) => /\bwmtrc\b/i.test(brand)) &&
-        brands.some((brand) => /\bwalmart cash\b/i.test(brand));
+      const brands = [normalizeTenderBrand(existing.brand), normalizeTenderBrand(entry.brand)];
+      const wmtrcAliasPair = brands.includes('walmartcash') &&
+        [normalizeLookupText(existing.brand), normalizeLookupText(entry.brand)].some((brand) => /\bwmtrc\b/i.test(brand)) &&
+        [normalizeLookupText(existing.brand), normalizeLookupText(entry.brand)].some((brand) => /\bwalmart cash\b/i.test(brand));
+      const otherAliasPair = brands.includes('other') && brands.some((brand) => brand && brand !== 'other');
       const existingEnding = normalizeLookupText(existing.ending || '');
       const entryEnding = normalizeLookupText(entry.ending || '');
       const bothAmountsMissing = !cleanText(existing.amount || '') && !cleanText(entry.amount || '');
-      return aliasPair && existingEnding && existingEnding === entryEnding &&
-        (sameMoneyAmount(existing.amount, entry.amount) || bothAmountsMissing);
+      const sameTender = existingEnding && existingEnding === entryEnding;
+      return sameTender && (
+        (otherAliasPair && (sameMoneyAmount(existing.amount, entry.amount) || bothAmountsMissing ||
+          !cleanText(existing.amount || '') || !cleanText(entry.amount || ''))) ||
+        (wmtrcAliasPair && (sameMoneyAmount(existing.amount, entry.amount) || bothAmountsMissing))
+      );
     });
 
     if (duplicateIndex < 0) {
@@ -1465,12 +1473,16 @@ function dedupePaymentMethodDetails(details) {
     }
 
     const existing = result[duplicateIndex];
-    const preferred = /\bwalmart cash\b/i.test(normalizeLookupText(entry.brand)) ? entry : existing;
+    const preferred = normalizeTenderBrand(entry.brand) === 'other'
+      ? existing
+      : normalizeTenderBrand(existing.brand) === 'other'
+        ? entry
+        : /\bwalmart cash\b/i.test(normalizeLookupText(entry.brand)) ? entry : existing;
     result[duplicateIndex] = {
       ...existing,
       ...entry,
       ...preferred,
-      amount: existing.amount || entry.amount || '',
+      amount: preferred.amount || existing.amount || entry.amount || '',
       message: existing.message || entry.message || '',
     };
   });
@@ -2168,9 +2180,12 @@ async function extractPaymentAmountsFromChargeHistory(paymentMethodDetails) {
 
 function inferSingleTenderAmount(paymentMethodDetails, orderTotal) {
   const details = dedupePaymentMethodDetails(paymentMethodDetails);
-  if (details.length !== 1 || cleanText(details[0].amount || '')) return details;
+  if (details.length !== 1) return details;
   const cents = parsePaymentAmountCents(orderTotal);
   if (cents === null) return details;
+  // Walmart's Charge history can contain several partial/adjusted PayPal
+  // transactions that belong to separate fulfillment groups. For a single
+  // tender the invoice's final order total is the authoritative allocation.
   return [{ ...details[0], amount: formatPaymentAmountCents(cents), amountSource: 'order-total' }];
 }
 
@@ -2548,6 +2563,19 @@ function computeExtractionWarnings(data) {
           `${missingPaymentAmounts} per-tender amount${missingPaymentAmounts === 1 ? ' was' : 's were'} ` +
           'unavailable after checking the order page and charge history'
       );
+    } else if (paymentMethods.length > 1 && cleanText(data?.orderTotal) &&
+      paymentMethods.some((method) => method?.amountSource === 'charge-history')) {
+      const tenderCents = paymentMethods.map((method) => parsePaymentAmountCents(method?.amount));
+      const orderCents = parsePaymentAmountCents(data?.orderTotal);
+      if (orderCents !== null && tenderCents.every((amount) => amount !== null)) {
+        const splitCents = tenderCents.reduce((sum, amount) => sum + amount, 0);
+        if (splitCents !== orderCents) {
+          warnings.push(
+            `Payment split totals ${formatPaymentAmountCents(splitCents)}, which does not match ` +
+              `the order total ${formatPaymentAmountCents(orderCents)}`
+          );
+        }
+      }
     }
   } catch (error) {
     // Validation is best-effort; never let it interfere with extraction.
@@ -2964,9 +2992,11 @@ async function checkForNextPage() {
    */
   async function scrapeOrder(ctx) {
     const data = scrapeOrderData();
-    if (data.paymentMethodDetails.some((method) => !cleanText(method?.amount || ''))) {
-      data.paymentMethodDetails = await extractPaymentAmountsFromChargeHistory(data.paymentMethodDetails);
-      data.paymentMethodDetails = inferOneMissingTenderAmount(data.paymentMethodDetails, data.orderTotal);
+    if (data.paymentMethodDetails.length > 0) {
+      if (data.paymentMethodDetails.some((method) => !cleanText(method?.amount || ''))) {
+        data.paymentMethodDetails = await extractPaymentAmountsFromChargeHistory(data.paymentMethodDetails);
+        data.paymentMethodDetails = inferOneMissingTenderAmount(data.paymentMethodDetails, data.orderTotal);
+      }
       data.paymentMethodDetails = inferSingleTenderAmount(data.paymentMethodDetails, data.orderTotal);
       data.paymentMethods = data.paymentMethodDetails
         .map((method) => [method.brand, method.ending].filter(Boolean).join(' - '))

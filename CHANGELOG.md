@@ -17,6 +17,9 @@
 - Sum charged delivery and express fees across fee rows, excluding discounts and crossed-out original prices. Read payment amounts from accessible tender rows even when Walmart changes their flex row classes.
 - Refresh saved Walmart invoices after extraction updates so re-exports don't silently reuse older records with missing financial details. If live refresh fails, the exported fallback clearly warns that it contains stale data.
 - Read per-tender order charges from Walmart's charge-history drawer when its payment rows and payload omit amounts, infer a single tender from a valid order total, and remove duplicate Walmart Cash/WMTRC aliases.
+- Use the final invoice total for single-tender orders instead of summing PayPal partial charges across fulfillment groups.
+- Merge Walmart's generic OTHER tender alias with a specific tender sharing the same masked card ending, preventing duplicated gift-card rows and restoring charge-history matching.
+- Warn when complete multi-tender allocations do not reconcile with the invoice total.
 
 ## [8.5] - October 13, 2026
 

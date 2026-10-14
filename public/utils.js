@@ -47,6 +47,26 @@ function safeExportUrl(value) {
   } catch (_) { return ''; }
 }
 
+function paymentEndingIdentity(value) {
+  const text = String(value || '').toLowerCase();
+  return text.match(/ending\s+in\s+([a-z0-9]{4})\b/)?.[1] || '';
+}
+
+function isOtherTenderAlias(entry, details) {
+  const brand = String(entry?.brand || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const ending = paymentEndingIdentity(entry?.ending);
+  return brand === 'other' && ending && details.some((candidate) => {
+    const candidateBrand = String(candidate?.brand || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    return candidate !== entry && candidateBrand && candidateBrand !== 'other' &&
+      paymentEndingIdentity(candidate?.ending) === ending;
+  });
+}
+
+function withoutOtherTenderAliases(details) {
+  const list = Array.isArray(details) ? details : [];
+  return list.filter((entry) => !isOtherTenderAlias(entry, list));
+}
+
 /**
  * Format detailed payment method metadata into a readable string
  * @param {Object} orderDetails - Order details containing payment info
@@ -61,7 +81,7 @@ function formatPaymentMethodDetails(orderDetails) {
     return orderDetails?.paymentMethods || '';
   }
 
-  const labels = details
+  const labels = withoutOtherTenderAliases(details)
     .map((entry) => {
       const brand = String(entry?.brand || '').trim();
       const ending = String(entry?.ending || '').trim();
@@ -80,16 +100,49 @@ function formatPaymentMethodDetails(orderDetails) {
 
 function dedupePaymentSplitText(value) {
   const seen = new Set();
-  return String(value || '').split(/\s*;\s*/).filter((part) => {
+  const retained = [];
+  String(value || '').split(/\s*;\s*/).forEach((part) => {
+    if (!part) return;
     const separator = part.lastIndexOf(':');
-    if (separator < 0) return Boolean(part);
+    if (separator < 0) {
+      retained.push(part);
+      return;
+    }
+    const labelText = part.slice(0, separator).trim();
     const label = part.slice(0, separator).toLowerCase().replace(/\bwmtrc\b/g, '').replace(/[^a-z0-9]/g, '');
     const amount = part.slice(separator + 1).replace(/\s/g, '').toLowerCase();
     const key = `${label}|${amount}`;
-    if (seen.has(key)) return false;
+    if (seen.has(key)) return;
+    const ending = paymentEndingIdentity(labelText);
+    const isOtherAlias = /^other\b/i.test(labelText) && ending && retained.some((previous) => {
+      const previousSeparator = previous.lastIndexOf(':');
+      if (previousSeparator < 0) return false;
+      const previousLabel = previous.slice(0, previousSeparator).trim();
+      const previousAmount = previous.slice(previousSeparator + 1).replace(/\s/g, '').toLowerCase();
+      return !/^other\b/i.test(previousLabel) && previousAmount === amount &&
+        paymentEndingIdentity(previousLabel) === ending;
+    });
+    if (isOtherAlias) return;
+    const duplicatesOtherAlias = !/^other\b/i.test(labelText) && ending && retained.some((previous) => {
+      const previousSeparator = previous.lastIndexOf(':');
+      if (previousSeparator < 0) return false;
+      const previousLabel = previous.slice(0, previousSeparator).trim();
+      const previousAmount = previous.slice(previousSeparator + 1).replace(/\s/g, '').toLowerCase();
+      return /^other\b/i.test(previousLabel) && previousAmount === amount &&
+        paymentEndingIdentity(previousLabel) === ending;
+    });
+    if (duplicatesOtherAlias) {
+      const index = retained.findIndex((previous) => {
+        const previousSeparator = previous.lastIndexOf(':');
+        const previousLabel = previous.slice(0, previousSeparator).trim();
+        return /^other\b/i.test(previousLabel) && paymentEndingIdentity(previousLabel) === ending;
+      });
+      if (index >= 0) retained.splice(index, 1);
+    }
     seen.add(key);
-    return true;
-  }).join('; ');
+    retained.push(part);
+  });
+  return retained.join('; ');
 }
 
 /** Use the explicit split when available; recover it from tender details for older invoices. */
@@ -99,7 +152,7 @@ function formatPaymentSplit(orderDetails) {
   const details = Array.isArray(orderDetails?.paymentMethodDetails)
     ? orderDetails.paymentMethodDetails
     : [];
-  return dedupePaymentSplitText(details
+  return dedupePaymentSplitText(withoutOtherTenderAliases(details)
     .map((entry) => {
       const amount = String(entry?.amount || '').trim();
       if (!amount) return '';
@@ -2100,7 +2153,7 @@ const CONSTANTS = {
   ORDER_SCHEMA_VERSION: 3,
   // Bump when Walmart invoice extraction changes so saved v3 invoices are
   // re-fetched once instead of being exported forever through the DB fast path.
-  WALMART_US_EXTRACTION_VERSION: 2,
+  WALMART_US_EXTRACTION_VERSION: 3,
 
   // Export file formats
   EXPORT_FORMATS: {

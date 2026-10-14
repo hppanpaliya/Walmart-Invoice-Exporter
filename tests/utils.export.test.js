@@ -73,6 +73,20 @@ test('Payment Method lists tenders while Payment Split lists their amounts', () 
     { brand: 'Walmart Cash', ending: 'Walmart Cash', amount: '$1.00' },
     { brand: 'WMTRC', ending: 'Walmart Cash', amount: '$1.00' },
   ] }), 'Walmart Cash: $1.00');
+  const giftCardAlias = {
+    paymentMethodDetails: [
+      { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$14.64' },
+      { brand: 'OTHER', ending: 'Ending in 2468', amount: '$14.64' },
+      { brand: 'PayPal', ending: 'buyer@example.com', amount: '$50.34' },
+    ],
+  };
+  assert.equal(sandbox.formatPaymentMethodDetails(giftCardAlias),
+    'Gift Card - Ending in 2468 || PayPal - buyer@example.com');
+  assert.equal(sandbox.formatPaymentSplit(giftCardAlias),
+    'Gift Card Ending in 2468: $14.64; PayPal buyer@example.com: $50.34');
+  assert.equal(sandbox.formatPaymentSplit({ paymentSplit:
+    'Gift Card Ending in 2468: $14.64; OTHER Ending in 2468: $14.64; PayPal: $50.34',
+  }), 'Gift Card Ending in 2468: $14.64; PayPal: $50.34');
   assert.equal(sandbox.formatPaymentMethodDetails({
     paymentMethods: 'Discover - ending in 5555',
     paymentMethodDetails: [{ amount: '$5.00' }],
