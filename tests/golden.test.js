@@ -119,7 +119,7 @@ test('golden: convertMultipleOrdersToXlsx produces the current Orders+Items work
     '3 Hours or Less Fee', 'Returned 3 Hours or Less Fee', 'Bag Fee',
     'Tax', 'Tip', 'Refund', 'Donations', 'Other Adjustments', 'Other Adjustments Amount', 'Order Total',
     'Payment Method', 'Payment Split', 'Payment Messages', 'Seller(s)', 'Fulfillment',
-    'Delivered Date', 'Tracking Numbers', 'Ship To', 'Delivery Instructions', 'Receipt Barcode',
+    'Delivered Date', 'Ship To', 'Delivery Instructions', 'Receipt Barcode',
   ]);
   assert.equal(orders.rowCount, 3, 'header + one row per order');
 
@@ -130,7 +130,7 @@ test('golden: convertMultipleOrdersToXlsx produces the current Orders+Items work
     'VISA - ending in 1234 || GIFTCARD - Gift Card',
     'VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84', 'Charged Jul 2',
     'Walmart.com; Acme Marketplace LLC', 'DELIVERY, SHIPPING', 'Jul 02, 2026',
-    '1Z999AA10123456784; 1Z999AA10123456785', 'Test Customer, 123 Main St, Springfield IL 62704',
+    'Test Customer, 123 Main St, Springfield IL 62704',
     'Leave at door', { text: 'Barcode', hyperlink: 'https://receipts-query.edge.walmart.com/barcode?data=sanitized' },
   ]);
 

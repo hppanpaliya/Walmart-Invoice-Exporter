@@ -29,7 +29,7 @@ const LEGACY_MULTI_ORDER_HEADERS = [
   'Payment Method', 'Payment Messages', 'Subtotal (Before Savings)', 'Savings', 'Subtotal',
   'Product Name', 'Quantity', 'Price', 'Delivery Charges', 'Bag Fee',
   'Tax', 'Tip', 'Order Total', 'Delivery Status', 'Product Link',
-  'Seller(s)', 'Fulfillment', 'Delivered Date', 'Tracking Numbers', 'Payment Split',
+  'Seller(s)', 'Fulfillment', 'Delivered Date', 'Payment Split',
   'Refund', 'Donations', 'Receipt Barcode', 'Order Type',
 ];
 
@@ -82,7 +82,7 @@ function secondOrder() {
   };
 }
 
-test('legacy: convertMultipleOrdersToXlsxLegacy is a SINGLE "Walmart Orders" sheet with the 29 legacy headers', async () => {
+test('legacy: convertMultipleOrdersToXlsxLegacy is a SINGLE "Walmart Orders" sheet without tracking numbers', async () => {
   const { sandbox, order: orderA } = loadExtractedOrder();
   const orderB = secondOrder();
   const downloads = captureDownloads(sandbox);
@@ -98,7 +98,7 @@ test('legacy: convertMultipleOrdersToXlsxLegacy is a SINGLE "Walmart Orders" she
   assert.deepEqual(workbook.worksheets.map((w) => w.name), ['Walmart Orders'], 'exactly one sheet, not Orders+Items');
 
   const sheet = workbook.getWorksheet('Walmart Orders');
-  assert.equal(LEGACY_MULTI_ORDER_HEADERS.length, 29, 'sanity: this test itself expects 29 legacy columns');
+  assert.equal(LEGACY_MULTI_ORDER_HEADERS.length, 28, 'legacy workbook has no tracking-number column');
   assert.deepEqual(sheet.getRow(1).values.slice(1), LEGACY_MULTI_ORDER_HEADERS);
 
   // One row per ITEM (not per order) — order fields repeat on every row,
@@ -113,7 +113,7 @@ test('legacy: convertMultipleOrdersToXlsxLegacy is a SINGLE "Walmart Orders" she
     1.14, 4, 28.11, 'Delivered',
     { text: 'Great Value Milk 1 Gallon', hyperlink: 'https://www.walmart.com/ip/10450114' },
     'Walmart.com; Acme Marketplace LLC', 'DELIVERY, SHIPPING', 'Jul 02, 2026',
-    '1Z999AA10123456784; 1Z999AA10123456785', 'VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84',
+    'VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84',
     3.98, 1, { text: 'Barcode', hyperlink: 'https://receipts-query.edge.walmart.com/barcode?data=sanitized' }, 'GLASS',
   ]);
 
@@ -132,7 +132,7 @@ test('legacy: convertMultipleOrdersToXlsxLegacy is a SINGLE "Walmart Orders" she
   assert.equal(row5[11], 1);
   assert.equal(row5[12], 9.42);
   assert.equal(row5[18], 'Purchased in store');
-  assert.equal(row5[28], 'In-store');
+  assert.equal(row5[27], 'In-store');
   // Legacy quirk, recovered as-is: an item with no productLink still gets a
   // {text, hyperlink:''} object (old code has no productLink-present guard),
   // and ExcelJS itself renders an empty-hyperlink object as a literal JSON
@@ -186,10 +186,10 @@ test('legacy: configureMultipleOrdersColumnsLegacy appends an optional Thumbnail
   // drop the optional column.
   const withThumbnails = {};
   sandbox.configureMultipleOrdersColumnsLegacy(withThumbnails, { includeThumbnails: true });
-  assert.equal(withThumbnails.columns.length, 30, '29 legacy columns + optional Thumbnail column');
-  assert.equal(withThumbnails.columns[29].header, 'Thumbnail');
+  assert.equal(withThumbnails.columns.length, 29, '28 legacy columns + optional Thumbnail column');
+  assert.equal(withThumbnails.columns[28].header, 'Thumbnail');
 
   const withoutThumbnails = {};
   sandbox.configureMultipleOrdersColumnsLegacy(withoutThumbnails, { includeThumbnails: false });
-  assert.equal(withoutThumbnails.columns.length, 29, 'Thumbnail column omitted by default');
+  assert.equal(withoutThumbnails.columns.length, 28, 'Thumbnail column omitted by default');
 });

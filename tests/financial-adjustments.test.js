@@ -25,6 +25,7 @@ const invoice = {
   financialAdjustments: [{ label: 'Eco handling adjustment', amount: '$0.50' }],
   paymentMethodDetails: [],
   paymentSplit: 'Visa ending in 0000: $29.60',
+  trackingNumbers: 'TRACKING-123',
   items: [],
 };
 
@@ -49,6 +50,7 @@ test('single-order summary and bulk Excel export carry the same named and additi
   ]) {
     assert.equal(singleRows.get(label), value, `single-order invoice includes ${label}`);
   }
+  assert.ok(!singleRows.has('Tracking Numbers'), 'single-order Excel omits tracking numbers');
 
   await sandbox.convertMultipleOrdersToXlsx([invoice], ExcelJS, 'financial-adjustments.xlsx');
   const workbook = new ExcelJS.Workbook();
@@ -69,6 +71,7 @@ test('single-order summary and bulk Excel export carry the same named and additi
   assert.equal(cell('Tip'), 3);
   assert.equal(cell('Other Adjustments'), 'Eco handling adjustment: $0.50');
   assert.equal(cell('Other Adjustments Amount'), 0.5);
+  assert.ok(!headers.includes('Tracking Numbers'), 'bulk Excel omits tracking-number column');
 });
 
 test('single and bulk exports omit redundant or zero adjustment rows and cells', async () => {
