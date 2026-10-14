@@ -2196,9 +2196,11 @@ function inferSingleTenderAmount(paymentMethodDetails, orderTotal) {
  * currently displayed invoice. For a mixed payment, the non-PayPal tenders
  * have explicit allocations in their own history; PayPal is the balancing
  * tender and receives the remaining invoice amount. When several PayPal
- * instruments are present, preserve their observed relative proportions while
- * distributing that remainder in cents. Never infer an allocation if a
- * non-PayPal amount is missing or the known amounts already exceed the total.
+ * instruments are present, only infer a value when exactly one allocation is
+ * missing. Multiple observed PayPal allocations are left intact unless they
+ * already reconcile; transaction-history proportions cannot prove an invoice
+ * split. Never infer an allocation if a non-PayPal amount is missing or the
+ * known amounts already exceed the total.
  */
 function reconcilePayPalTenderAmounts(paymentMethodDetails, orderTotal) {
   const details = dedupePaymentMethodDetails(paymentMethodDetails).map((entry) => ({ ...entry }));
@@ -2244,24 +2246,6 @@ function reconcilePayPalTenderAmounts(paymentMethodDetails, orderTotal) {
     return details;
   }
   if (paypalAmounts.some((amount) => amount === null || amount < 0)) return details;
-  const weightTotal = paypalAmounts.reduce((sum, amount) => sum + amount, 0);
-  if (weightTotal <= 0) return details;
-
-  const allocations = paypalAmounts.map((amount, position) => {
-    const exact = remainingCents * amount / weightTotal;
-    return { position, cents: Math.floor(exact), remainder: exact - Math.floor(exact) };
-  });
-  let centsLeft = remainingCents - allocations.reduce((sum, entry) => sum + entry.cents, 0);
-  allocations.slice().sort((left, right) => right.remainder - left.remainder || left.position - right.position)
-    .slice(0, centsLeft).forEach((entry) => { allocations[entry.position].cents += 1; });
-
-  paypalIndices.forEach((index, position) => {
-    details[index] = {
-      ...details[index],
-      amount: formatPaymentAmountCents(allocations[position].cents),
-      amountSource: 'order-total-remainder',
-    };
-  });
   return details;
 }
 

@@ -201,7 +201,7 @@ test('mixed PayPal tender uses non-PayPal charge as the anchor and reconciles to
     'Gift Card Ending in 2468: $19.07; PayPal buyer@example.com: $45.91');
 });
 
-test('multiple PayPal instruments share the invoice remainder proportionally with cent-safe rounding', () => {
+test('multiple PayPal instruments are only reconciled when exactly one allocation is missing', () => {
   const sandbox = loadDetailSandbox();
   const reconciled = toPlain(sandbox.reconcilePayPalTenderAmounts([
     { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$10.00' },
@@ -210,12 +210,12 @@ test('multiple PayPal instruments share the invoice remainder proportionally wit
   ], '$40.00'));
   assert.deepEqual(reconciled.map((entry) => entry.amount), ['$10.00', '$20.00', '$10.00']);
 
-  const rounded = toPlain(sandbox.reconcilePayPalTenderAmounts([
-    { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$0.01' },
-    { brand: 'PayPal', ending: 'Account A', amount: '$1.00' },
-    { brand: 'PayPal', ending: 'Account B', amount: '$1.00' },
-  ], '$0.02'));
-  assert.deepEqual(rounded.map((entry) => entry.amount), ['$0.01', '$0.01', '$0.00']);
+  const mismatched = toPlain(sandbox.reconcilePayPalTenderAmounts([
+    { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$10.00', amountSource: 'charge-history' },
+    { brand: 'PayPal', ending: 'Account A', amount: '$18.00', amountSource: 'charge-history' },
+    { brand: 'PayPal', ending: 'Account B', amount: '$10.00', amountSource: 'charge-history' },
+  ], '$40.00'));
+  assert.deepEqual(mismatched.map((entry) => entry.amount), ['$10.00', '$18.00', '$10.00']);
 
   const oneMissing = toPlain(sandbox.reconcilePayPalTenderAmounts([
     { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$10.00' },
@@ -355,6 +355,22 @@ test('PayPal reconciliation removes aggregate-history overcount before extractio
     paymentMethodDetails,
   }));
   assert.deepEqual(warnings, []);
+});
+
+test('unresolvable multi-PayPal mismatch remains visible as a warning', () => {
+  const sandbox = loadDetailSandbox();
+  const paymentMethodDetails = toPlain(sandbox.reconcilePayPalTenderAmounts([
+    { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$10.00', amountSource: 'charge-history' },
+    { brand: 'PayPal', ending: 'Account A', amount: '$18.00', amountSource: 'charge-history' },
+    { brand: 'PayPal', ending: 'Account B', amount: '$10.00', amountSource: 'charge-history' },
+  ], '$40.00'));
+  const warnings = toPlain(sandbox.computeExtractionWarnings({
+    orderNumber: '200010000000042',
+    orderTotal: '$40.00',
+    items: [{ productName: 'Synthetic item', price: '$39.00' }],
+    paymentMethodDetails,
+  }));
+  assert.match(warnings[0], /Payment split totals \$38\.00, which does not match the order total \$40\.00/);
 });
 
 test('readPaymentRowAmount reads the 2026 payment row (flex-auto moved off the amount)', () => {
