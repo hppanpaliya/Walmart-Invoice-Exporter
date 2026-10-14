@@ -26,7 +26,7 @@ test('scrapeOrder reads missing split-tender amounts from Walmart charge history
           <div class="justify-between"><span>Items</span><span>$65.00</span></div>
           <div class="justify-between"><span>Driver tip</span><span>$3.00</span></div>
           <div class="justify-between"><span>Refund</span><span>-$2.00</span></div>
-          <div class="justify-between"><span>Total</span><span>$70.41</span></div>
+          <div class="justify-between"><span>Total</span><span>$64.98</span></div>
         </div>
         <button id="charge-history" aria-label="Charge history">Charge history</button>
       </div>
@@ -59,7 +59,7 @@ test('scrapeOrder reads missing split-tender amounts from Walmart charge history
     });
 
     assert.equal(result.data.paymentSplit,
-      'Gift Card Ending in 2468: $17.07; PayPal Ending in 48QZ: $53.34');
+      'Gift Card Ending in 2468: $17.07; PayPal Ending in 48QZ: $47.91');
     assert.deepEqual(result.data.extractionWarnings, []);
     assert.equal(result.drawerHidden, true, 'scraping closes the drawer after reading it');
   } finally {

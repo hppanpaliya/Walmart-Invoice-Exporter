@@ -26,7 +26,7 @@ test('extractOrderDataFromNextData pulls identity and money fields from the payl
   assert.equal(order.refund, '$3.98');
   assert.equal(order.donations, '$1.00');
   assert.equal(order.barcodeImageUrl, 'https://receipts-query.edge.walmart.com/barcode?data=sanitized');
-  assert.equal(order.walmartExtractionVersion, 3);
+  assert.equal(order.walmartExtractionVersion, 4);
 });
 
 test('extractOrderDataFromNextData preserves labelled promo, service-fee, refund, and unknown adjustments', () => {
@@ -187,6 +187,57 @@ test('single-tender allocation uses invoice total instead of cumulative charge-h
   assert.equal(card[0].amount, '$40.89');
 });
 
+test('mixed PayPal tender uses non-PayPal charge as the anchor and reconciles to the invoice total', () => {
+  const sandbox = loadDetailSandbox();
+  const reconciled = toPlain(sandbox.reconcilePayPalTenderAmounts([
+    { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$19.07', amountSource: 'charge-history' },
+    { brand: 'PayPal', ending: 'buyer@example.com', amount: '$50.34', amountSource: 'charge-history' },
+  ], '$64.98'));
+  assert.deepEqual(reconciled.map(({ amount, amountSource }) => [amount, amountSource]), [
+    ['$19.07', 'charge-history'],
+    ['$45.91', 'order-total-remainder'],
+  ]);
+  assert.equal(sandbox.buildPaymentSplit(reconciled),
+    'Gift Card Ending in 2468: $19.07; PayPal buyer@example.com: $45.91');
+});
+
+test('multiple PayPal instruments share the invoice remainder proportionally with cent-safe rounding', () => {
+  const sandbox = loadDetailSandbox();
+  const reconciled = toPlain(sandbox.reconcilePayPalTenderAmounts([
+    { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$10.00' },
+    { brand: 'PayPal', ending: 'Account A', amount: '$20.00' },
+    { brand: 'PayPal', ending: 'Account B', amount: '$10.00' },
+  ], '$40.00'));
+  assert.deepEqual(reconciled.map((entry) => entry.amount), ['$10.00', '$20.00', '$10.00']);
+
+  const rounded = toPlain(sandbox.reconcilePayPalTenderAmounts([
+    { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$0.01' },
+    { brand: 'PayPal', ending: 'Account A', amount: '$1.00' },
+    { brand: 'PayPal', ending: 'Account B', amount: '$1.00' },
+  ], '$0.02'));
+  assert.deepEqual(rounded.map((entry) => entry.amount), ['$0.01', '$0.01', '$0.00']);
+
+  const oneMissing = toPlain(sandbox.reconcilePayPalTenderAmounts([
+    { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$10.00' },
+    { brand: 'PayPal', ending: 'Account A', amount: '$20.00' },
+    { brand: 'PayPal', ending: 'Account B', amount: '' },
+  ], '$40.00'));
+  assert.deepEqual(oneMissing.map((entry) => entry.amount), ['$10.00', '$20.00', '$10.00']);
+});
+
+test('mixed PayPal split stays unresolved when an anchor amount is missing or exceeds the invoice total', () => {
+  const sandbox = loadDetailSandbox();
+  const methods = [
+    { brand: 'Discover', ending: 'Ending in 1234', amount: '' },
+    { brand: 'PayPal', ending: 'buyer@example.com', amount: '$50.34' },
+  ];
+  assert.equal(toPlain(sandbox.reconcilePayPalTenderAmounts(methods, '$64.98'))[1].amount, '$50.34');
+  assert.equal(toPlain(sandbox.reconcilePayPalTenderAmounts([
+    { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$70.00' },
+    { brand: 'PayPal', ending: 'buyer@example.com', amount: '$50.34' },
+  ], '$64.98'))[1].amount, '$50.34');
+});
+
 test('one missing split allocation uses the final total remainder only after a charge-history amount was found', () => {
   const sandbox = loadDetailSandbox();
   const details = [
@@ -224,12 +275,12 @@ test('mergePaymentMethodDetails does not assign an unrelated payload amount by b
   assert.equal(merged[1].amount, '$20.00');
 });
 
-test('scrapeOrderData (payload-only page) produces schemaVersion 3 with the payment split', () => {
+test('scrapeOrderData (payload-only page) produces schemaVersion 4 with the payment split', () => {
   const sandbox = loadDetailSandbox();
   const data = sandbox.scrapeOrderData();
 
   assert.equal(data.schemaVersion, 3);
-  assert.equal(data.walmartExtractionVersion, 3);
+  assert.equal(data.walmartExtractionVersion, 4);
   assert.equal(data.orderNumber, '200010000000042');
   assert.equal(data.items.length, 3);
   assert.equal(data.paymentSplit, 'VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84');
@@ -291,19 +342,19 @@ test('computeExtractionWarnings flags split tender with no per-tender amounts', 
   assert.match(partial[0], /1 per-tender amount was unavailable/);
 });
 
-test('computeExtractionWarnings flags complete tender amounts that do not reconcile to invoice total', () => {
+test('PayPal reconciliation removes aggregate-history overcount before extraction warnings', () => {
   const sandbox = loadDetailSandbox();
+  const paymentMethodDetails = toPlain(sandbox.reconcilePayPalTenderAmounts([
+    { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$19.07', amountSource: 'charge-history' },
+    { brand: 'PayPal', ending: 'buyer@example.com', amount: '$50.34', amountSource: 'charge-history' },
+  ], '$64.98'));
   const warnings = toPlain(sandbox.computeExtractionWarnings({
     orderNumber: '200010000000042',
     orderTotal: '$64.98',
     items: [{ productName: 'Synthetic item', price: '$60.63' }],
-    paymentMethodDetails: [
-      { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$19.07', amountSource: 'charge-history' },
-      { brand: 'PayPal', ending: 'buyer@example.com', amount: '$50.34', amountSource: 'charge-history' },
-    ],
+    paymentMethodDetails,
   }));
-  assert.equal(warnings.length, 1);
-  assert.match(warnings[0], /Payment split totals \$69\.41, which does not match the order total \$64\.98/);
+  assert.deepEqual(warnings, []);
 });
 
 test('readPaymentRowAmount reads the 2026 payment row (flex-auto moved off the amount)', () => {

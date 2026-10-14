@@ -2153,7 +2153,7 @@ const CONSTANTS = {
   ORDER_SCHEMA_VERSION: 3,
   // Bump when Walmart invoice extraction changes so saved v3 invoices are
   // re-fetched once instead of being exported forever through the DB fast path.
-  WALMART_US_EXTRACTION_VERSION: 3,
+  WALMART_US_EXTRACTION_VERSION: 4,
 
   // Export file formats
   EXPORT_FORMATS: {

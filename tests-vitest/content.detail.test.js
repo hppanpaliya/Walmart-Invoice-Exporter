@@ -124,6 +124,17 @@ test('single-tender allocation uses invoice total instead of cumulative charge-h
   assert.equal(card[0].amount, '$40.89');
 });
 
+test('mixed PayPal allocation uses known non-PayPal tenders and reconciles the invoice remainder', () => {
+  const sandbox = loadDetailSandbox();
+  const details = toPlain(sandbox.reconcilePayPalTenderAmounts([
+    { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$19.07', amountSource: 'charge-history' },
+    { brand: 'PayPal', ending: 'buyer@example.com', amount: '$50.34', amountSource: 'charge-history' },
+  ], '$64.98'));
+  assert.deepEqual(details.map((entry) => entry.amount), ['$19.07', '$45.91']);
+  assert.equal(sandbox.buildPaymentSplit(details),
+    'Gift Card Ending in 2468: $19.07; PayPal buyer@example.com: $45.91');
+});
+
 test('scrapeOrderData (payload-only page) produces schemaVersion 3 with the payment split', () => {
   const sandbox = loadDetailSandbox();
   const data = sandbox.scrapeOrderData();

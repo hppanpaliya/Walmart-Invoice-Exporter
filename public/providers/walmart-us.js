@@ -2183,10 +2183,86 @@ function inferSingleTenderAmount(paymentMethodDetails, orderTotal) {
   if (details.length !== 1) return details;
   const cents = parsePaymentAmountCents(orderTotal);
   if (cents === null) return details;
-  // Walmart's Charge history can contain several partial/adjusted PayPal
-  // transactions that belong to separate fulfillment groups. For a single
-  // tender the invoice's final order total is the authoritative allocation.
+  // Charge history can include partial authorizations and later adjustments.
+  // The invoice total is the authoritative allocation when only one tender is
+  // listed, regardless of the payment brand.
   return [{ ...details[0], amount: formatPaymentAmountCents(cents), amountSource: 'order-total' }];
+}
+
+/**
+ * Reconcile mixed PayPal tenders against the displayed invoice total.
+ * Walmart's charge-history drawer reports PayPal transactions across partial
+ * charges, edits, refunds, and sometimes fulfillment groups outside the
+ * currently displayed invoice. For a mixed payment, the non-PayPal tenders
+ * have explicit allocations in their own history; PayPal is the balancing
+ * tender and receives the remaining invoice amount. When several PayPal
+ * instruments are present, preserve their observed relative proportions while
+ * distributing that remainder in cents. Never infer an allocation if a
+ * non-PayPal amount is missing or the known amounts already exceed the total.
+ */
+function reconcilePayPalTenderAmounts(paymentMethodDetails, orderTotal) {
+  const details = dedupePaymentMethodDetails(paymentMethodDetails).map((entry) => ({ ...entry }));
+  const totalCents = parsePaymentAmountCents(orderTotal);
+  if (details.length < 2 || totalCents === null) return details;
+
+  const paypalIndices = details.map((entry, index) =>
+    /paypal/i.test(`${entry.brand || ''} ${entry.ending || ''}`) ? index : -1
+  ).filter((index) => index >= 0);
+  if (!paypalIndices.length) return details;
+
+  const nonPaypal = details.map((entry, index) => ({ entry, index }))
+    .filter(({ index }) => !paypalIndices.includes(index));
+  const nonPaypalCents = nonPaypal.map(({ entry }) => parsePaymentAmountCents(entry.amount));
+  if (nonPaypalCents.some((amount) => amount === null)) return details;
+
+  const remainingCents = totalCents - nonPaypalCents.reduce((sum, amount) => sum + amount, 0);
+  if (remainingCents < 0) return details;
+
+  if (paypalIndices.length === 1) {
+    const index = paypalIndices[0];
+    details[index] = {
+      ...details[index],
+      amount: formatPaymentAmountCents(remainingCents),
+      amountSource: 'order-total-remainder',
+    };
+    return details;
+  }
+
+  const paypalAmounts = paypalIndices.map((index) => parsePaymentAmountCents(details[index].amount));
+  const missingPaypal = paypalAmounts.map((amount, position) => amount === null ? position : -1)
+    .filter((position) => position >= 0);
+  if (missingPaypal.length === 1) {
+    const knownPaypalCents = paypalAmounts.reduce((sum, amount) => sum + (amount === null ? 0 : amount), 0);
+    const residual = remainingCents - knownPaypalCents;
+    if (residual < 0) return details;
+    const index = paypalIndices[missingPaypal[0]];
+    details[index] = {
+      ...details[index],
+      amount: formatPaymentAmountCents(residual),
+      amountSource: 'order-total-remainder',
+    };
+    return details;
+  }
+  if (paypalAmounts.some((amount) => amount === null || amount < 0)) return details;
+  const weightTotal = paypalAmounts.reduce((sum, amount) => sum + amount, 0);
+  if (weightTotal <= 0) return details;
+
+  const allocations = paypalAmounts.map((amount, position) => {
+    const exact = remainingCents * amount / weightTotal;
+    return { position, cents: Math.floor(exact), remainder: exact - Math.floor(exact) };
+  });
+  let centsLeft = remainingCents - allocations.reduce((sum, entry) => sum + entry.cents, 0);
+  allocations.slice().sort((left, right) => right.remainder - left.remainder || left.position - right.position)
+    .slice(0, centsLeft).forEach((entry) => { allocations[entry.position].cents += 1; });
+
+  paypalIndices.forEach((index, position) => {
+    details[index] = {
+      ...details[index],
+      amount: formatPaymentAmountCents(allocations[position].cents),
+      amountSource: 'order-total-remainder',
+    };
+  });
+  return details;
 }
 
 function inferOneMissingTenderAmount(paymentMethodDetails, orderTotal) {
@@ -2995,9 +3071,15 @@ async function checkForNextPage() {
     if (data.paymentMethodDetails.length > 0) {
       if (data.paymentMethodDetails.some((method) => !cleanText(method?.amount || ''))) {
         data.paymentMethodDetails = await extractPaymentAmountsFromChargeHistory(data.paymentMethodDetails);
-        data.paymentMethodDetails = inferOneMissingTenderAmount(data.paymentMethodDetails, data.orderTotal);
+        const containsPayPal = data.paymentMethodDetails.some((method) =>
+          /paypal/i.test(`${method.brand || ''} ${method.ending || ''}`)
+        );
+        if (!containsPayPal) {
+          data.paymentMethodDetails = inferOneMissingTenderAmount(data.paymentMethodDetails, data.orderTotal);
+        }
       }
       data.paymentMethodDetails = inferSingleTenderAmount(data.paymentMethodDetails, data.orderTotal);
+      data.paymentMethodDetails = reconcilePayPalTenderAmounts(data.paymentMethodDetails, data.orderTotal);
       data.paymentMethods = data.paymentMethodDetails
         .map((method) => [method.brand, method.ending].filter(Boolean).join(' - '))
         .filter(Boolean)
@@ -3032,6 +3114,7 @@ async function checkForNextPage() {
       return null;
     }
     data.paymentMethodDetails = inferSingleTenderAmount(data.paymentMethodDetails, data.orderTotal);
+    data.paymentMethodDetails = reconcilePayPalTenderAmounts(data.paymentMethodDetails, data.orderTotal);
     data.paymentMethods = data.paymentMethodDetails
       .map((method) => [method.brand, method.ending].filter(Boolean).join(' - '))
       .filter(Boolean)
@@ -3087,6 +3170,7 @@ async function checkForNextPage() {
       mergePaymentMethodDetails,
       inferSingleTenderAmount,
       inferOneMissingTenderAmount,
+      reconcilePayPalTenderAmounts,
       extractPaymentAmountsFromChargeHistory,
       buildTenderLabel,
       buildDomOrderSummary,
