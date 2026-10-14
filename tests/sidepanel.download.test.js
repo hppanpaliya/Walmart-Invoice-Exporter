@@ -24,6 +24,7 @@ const ORDER_NUMBER = '200010000000042';
 function sampleInvoice(overrides = {}) {
   return {
     schemaVersion: 3,
+    walmartExtractionVersion: 1,
     orderNumber: ORDER_NUMBER,
     orderTotal: '$28.11',
     orderDate: '2026-06-01T00:00:00.000Z',
@@ -67,6 +68,20 @@ test('fetchOrderData: a current-schema invoice already in IndexedDB is returned 
   assert.equal(data.items.length, 1);
   assert.deepEqual(sandbox.chrome.tabs._calls.create, [], 'an already-downloaded order must open no tab');
   assert.deepEqual(sandbox.chrome.tabs._calls.get, [], 'nor even look one up');
+});
+
+test('fetchOrderData: a saved Walmart invoice without the current extraction marker is refreshed and replaced', async () => {
+  const sandbox = loadDownloadSandbox();
+  const OrderDb = evalIn(sandbox, 'OrderDb');
+  await OrderDb.putInvoice(ORDER_NUMBER, sampleInvoice({ walmartExtractionVersion: undefined }));
+  const calls = mockInvoiceResponses(sandbox, () => sampleInvoice({ orderTotal: '$31.25' }));
+
+  const data = await fetchOrderData(sandbox, ORDER_NUMBER, FETCH_OPTIONS);
+  const stored = await OrderDb.getOrder(ORDER_NUMBER);
+
+  assert.equal(calls.length, 1, 'legacy saved invoice must hit the Walmart extractor');
+  assert.equal(data.orderTotal, '$31.25');
+  assert.equal(stored.invoice.walmartExtractionVersion, 1, 'successful refresh stores the current extractor marker');
 });
 
 test('fetchOrderData: re-exporting the SAME order twice only opens a tab once (the second call hits the DB)', async () => {

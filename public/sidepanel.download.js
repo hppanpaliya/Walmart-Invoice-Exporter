@@ -86,9 +86,12 @@
 
     const isUsableInvoiceData = (data, orderNumber) => invoiceProblems(data, orderNumber).length === 0;
 
-    const isValidInvoiceData = (data, orderNumber) => {
+    const isValidInvoiceData = (data, orderNumber, providerId) => {
       const schemaVersion = Number(data?.schemaVersion || 0);
-      return schemaVersion >= MIN_ORDER_SCHEMA_VERSION && isUsableInvoiceData(data, orderNumber);
+      const extractionVersionCurrent = providerId !== 'WALMART_US' ||
+        Number(data?.walmartExtractionVersion || 0) >= Number(CONSTANTS.WALMART_US_EXTRACTION_VERSION || 1);
+      return schemaVersion >= MIN_ORDER_SCHEMA_VERSION && extractionVersionCurrent &&
+        isUsableInvoiceData(data, orderNumber);
     };
 
     /** The adapter driving the current export (defaults to WALMART_US). */
@@ -419,7 +422,7 @@
         console.warn(`Order DB unavailable for fast-path lookup of #${orderNumber}:`, error);
       }
 
-      if (storedInvoice && isValidInvoiceData(storedInvoice, orderNumber)) {
+      if (storedInvoice && isValidInvoiceData(storedInvoice, orderNumber, providerId)) {
         view.updateOrderCacheStatus(orderNumber);
         return storedInvoice;
       }
@@ -455,7 +458,18 @@
               `Both fetches failed for order #${orderNumber}; falling back to stale stored data`
             );
             view.updateOrderCacheStatus(orderNumber);
-            return storedInvoice;
+            const needsWalmartRefresh = providerId === 'WALMART_US' &&
+              Number(storedInvoice?.walmartExtractionVersion || 0) <
+                Number(CONSTANTS.WALMART_US_EXTRACTION_VERSION || 1);
+            return needsWalmartRefresh
+              ? {
+                  ...storedInvoice,
+                  extractionWarnings: [
+                    ...(Array.isArray(storedInvoice.extractionWarnings) ? storedInvoice.extractionWarnings : []),
+                    'Walmart could not refresh this saved invoice, so older saved data was exported',
+                  ],
+                }
+              : storedInvoice;
           }
           throw fallbackError;
         }

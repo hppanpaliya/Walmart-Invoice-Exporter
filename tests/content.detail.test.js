@@ -26,6 +26,7 @@ test('extractOrderDataFromNextData pulls identity and money fields from the payl
   assert.equal(order.refund, '$3.98');
   assert.equal(order.donations, '$1.00');
   assert.equal(order.barcodeImageUrl, 'https://receipts-query.edge.walmart.com/barcode?data=sanitized');
+  assert.equal(order.walmartExtractionVersion, 1);
 });
 
 test('extractOrderDataFromNextData preserves labelled promo, service-fee, refund, and unknown adjustments', () => {
@@ -160,6 +161,7 @@ test('scrapeOrderData (payload-only page) produces schemaVersion 2 with the paym
   const data = sandbox.scrapeOrderData();
 
   assert.equal(data.schemaVersion, 3);
+  assert.equal(data.walmartExtractionVersion, 1);
   assert.equal(data.orderNumber, '200010000000042');
   assert.equal(data.items.length, 3);
   assert.equal(data.paymentSplit, 'VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84');
