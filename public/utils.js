@@ -63,30 +63,58 @@ function formatPaymentMethodDetails(orderDetails) {
 
   const labels = details
     .map((entry) => {
-      const primary = [entry.brand, entry.ending].filter(Boolean).join(' - ');
-      return primary;
+      const brand = String(entry?.brand || '').trim();
+      const ending = String(entry?.ending || '').trim();
+      if (!brand) return ending;
+      if (!ending) return brand;
+      const normalizedBrand = brand.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normalizedEnding = ending.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if ((normalizedBrand === 'wmtrc' || normalizedBrand === 'walmartcash')
+        && normalizedEnding.includes('walmartcash')) return ending;
+      return `${brand} - ${ending}`;
     })
-    .filter(Boolean)
+    .filter((label, index, all) => label && all.findIndex((other) => other.toLowerCase() === label.toLowerCase()) === index)
     .join(' || ');
   return labels || orderDetails?.paymentMethods || '';
+}
+
+function dedupePaymentSplitText(value) {
+  const seen = new Set();
+  return String(value || '').split(/\s*;\s*/).filter((part) => {
+    const separator = part.lastIndexOf(':');
+    if (separator < 0) return Boolean(part);
+    const label = part.slice(0, separator).toLowerCase().replace(/\bwmtrc\b/g, '').replace(/[^a-z0-9]/g, '');
+    const amount = part.slice(separator + 1).replace(/\s/g, '').toLowerCase();
+    const key = `${label}|${amount}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).join('; ');
 }
 
 /** Use the explicit split when available; recover it from tender details for older invoices. */
 function formatPaymentSplit(orderDetails) {
   const split = String(orderDetails?.paymentSplit || '').trim();
-  if (split) return split;
+  if (split) return dedupePaymentSplitText(split);
   const details = Array.isArray(orderDetails?.paymentMethodDetails)
     ? orderDetails.paymentMethodDetails
     : [];
-  return details
+  return dedupePaymentSplitText(details
     .map((entry) => {
       const amount = String(entry?.amount || '').trim();
       if (!amount) return '';
-      const label = [entry?.brand, entry?.ending].filter(Boolean).join(' ');
+      const brand = String(entry?.brand || '').trim();
+      const ending = String(entry?.ending || '').trim();
+      const normalizedBrand = brand.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normalizedEnding = ending.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const label = (normalizedBrand === 'wmtrc' || normalizedBrand === 'walmartcash')
+        && normalizedEnding.includes('walmartcash')
+        ? ending
+        : [brand, ending].filter(Boolean).join(' ');
       return label ? `${label}: ${amount}` : amount;
     })
     .filter(Boolean)
-    .join('; ');
+    .join('; '));
 }
 
 /**
@@ -2072,7 +2100,7 @@ const CONSTANTS = {
   ORDER_SCHEMA_VERSION: 3,
   // Bump when Walmart invoice extraction changes so saved v3 invoices are
   // re-fetched once instead of being exported forever through the DB fast path.
-  WALMART_US_EXTRACTION_VERSION: 1,
+  WALMART_US_EXTRACTION_VERSION: 2,
 
   // Export file formats
   EXPORT_FORMATS: {

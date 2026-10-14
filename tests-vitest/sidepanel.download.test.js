@@ -24,7 +24,7 @@ const ORDER_NUMBER = '200010000000042';
 function sampleInvoice(overrides = {}) {
   return {
     schemaVersion: 3,
-    walmartExtractionVersion: 1,
+    walmartExtractionVersion: 2,
     orderNumber: ORDER_NUMBER,
     orderTotal: '$28.11',
     orderDate: '2026-06-01T00:00:00.000Z',

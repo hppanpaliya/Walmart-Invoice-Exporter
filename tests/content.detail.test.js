@@ -26,7 +26,7 @@ test('extractOrderDataFromNextData pulls identity and money fields from the payl
   assert.equal(order.refund, '$3.98');
   assert.equal(order.donations, '$1.00');
   assert.equal(order.barcodeImageUrl, 'https://receipts-query.edge.walmart.com/barcode?data=sanitized');
-  assert.equal(order.walmartExtractionVersion, 1);
+  assert.equal(order.walmartExtractionVersion, 2);
 });
 
 test('extractOrderDataFromNextData preserves labelled promo, service-fee, refund, and unknown adjustments', () => {
@@ -131,6 +131,47 @@ test('payment methods keep only amount-shaped displayValues', () => {
   assert.equal(gift.amount, '$6.84');
 });
 
+test('payment methods read detailedDisplayValues when Walmart leaves displayValues empty', () => {
+  const payload = JSON.parse(JSON.stringify(detailPayload));
+  const methods = payload.props.pageProps.initialData.data.order.paymentMethods;
+  methods[0].displayValues = null;
+  methods[0].detailedDisplayValues = [{ displayValue: '$20.00' }, { displayValue: 'Visa ending in 1234' }];
+  const sandbox = loadSandbox({ nextData: payload });
+  assert.equal(sandbox.extractOrderDataFromNextData().paymentMethodDetails[0].amount, '$20.00');
+});
+
+test('WMTRC and Walmart Cash aliases with the same tender and amount are counted once', () => {
+  const sandbox = loadDetailSandbox();
+  const merged = toPlain(sandbox.mergePaymentMethodDetails([], [
+    { brand: 'Walmart Cash', ending: 'Walmart Cash', amount: '$1.00' },
+    { brand: 'WMTRC', ending: 'Walmart Cash', amount: '$1.00' },
+    { brand: 'Discover', ending: 'Ending in 6011', amount: '$64.33' },
+  ]));
+  assert.equal(merged.length, 2);
+  assert.equal(sandbox.buildPaymentSplit(merged), 'Walmart Cash: $1.00; Discover Ending in 6011: $64.33');
+});
+
+test('one missing tender amount can be inferred from a valid final order total', () => {
+  const sandbox = loadDetailSandbox();
+  const inferred = toPlain(sandbox.inferSingleTenderAmount(
+    [{ brand: 'VISA', ending: 'Ending in 1234', amount: '' }], '$71.71'
+  ));
+  assert.equal(inferred[0].amount, '$71.71');
+  assert.equal(inferred[0].amountSource, 'order-total');
+});
+
+test('one missing split allocation uses the final total remainder only after a charge-history amount was found', () => {
+  const sandbox = loadDetailSandbox();
+  const details = [
+    { brand: 'Walmart Cash', ending: 'Walmart Cash', amount: '$0.57', amountSource: 'charge-history' },
+    { brand: 'Discover', ending: 'Ending in 6011', amount: '' },
+  ];
+  const inferred = toPlain(sandbox.inferOneMissingTenderAmount(details, '$60.33'));
+  assert.equal(inferred[1].amount, '$59.76');
+  assert.equal(inferred[1].amountSource, 'order-total-remainder');
+  assert.equal(sandbox.inferOneMissingTenderAmount(details.map(x => ({ ...x, amountSource: '' })), '$60.33')[1].amount, '');
+});
+
 test('mergePaymentMethodDetails fills amounts from payload when the DOM has tender labels only', () => {
   const sandbox = loadDetailSandbox();
   const dom = [
@@ -161,7 +202,7 @@ test('scrapeOrderData (payload-only page) produces schemaVersion 2 with the paym
   const data = sandbox.scrapeOrderData();
 
   assert.equal(data.schemaVersion, 3);
-  assert.equal(data.walmartExtractionVersion, 1);
+  assert.equal(data.walmartExtractionVersion, 2);
   assert.equal(data.orderNumber, '200010000000042');
   assert.equal(data.items.length, 3);
   assert.equal(data.paymentSplit, 'VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84');
@@ -212,15 +253,15 @@ test('computeExtractionWarnings flags split tender with no per-tender amounts', 
     ],
   })), []);
 
-  // Partial extraction is not a silent loss: one known amount plus the order
-  // total gives the other, so this stays quiet too.
-  assert.deepEqual(toPlain(sandbox.computeExtractionWarnings({
+  const partial = toPlain(sandbox.computeExtractionWarnings({
     ...base,
     paymentMethodDetails: [
       { brand: 'VISA', ending: 'ending in 1234', amount: '$200.51' },
       { brand: '', ending: 'Ending in 2043', amount: '' },
     ],
-  })), []);
+  }));
+  assert.equal(partial.length, 1, 'a partial split must not look complete');
+  assert.match(partial[0], /1 per-tender amount was unavailable/);
 });
 
 test('readPaymentRowAmount reads the 2026 payment row (flex-auto moved off the amount)', () => {

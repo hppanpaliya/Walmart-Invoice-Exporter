@@ -1201,17 +1201,20 @@ function extractNextDataAddressDetails(orderNode) {
 function extractNextDataPaymentMethods(orderNode) {
   const paymentMethods = Array.isArray(orderNode?.paymentMethods) ? orderNode.paymentMethods : [];
 
-  return paymentMethods
+  const details = paymentMethods
     .map((paymentMethod, index) => {
       const brand = cleanText(paymentMethod?.cardType || paymentMethod?.paymentType || '');
       const ending = cleanText(paymentMethod?.description || paymentMethod?.title || '');
-      const displayValues = Array.isArray(paymentMethod?.displayValues)
-        ? paymentMethod.displayValues
-        : [];
+      const displayValues = [
+        ...(Array.isArray(paymentMethod?.displayValues) ? paymentMethod.displayValues : []),
+        ...(Array.isArray(paymentMethod?.detailedDisplayValues) ? paymentMethod.detailedDisplayValues : []),
+      ];
       // Keep only amount-shaped entries ("$25.00", "-12.50") — Walmart mixes
-      // descriptive strings into this array on some orders.
+      // descriptive strings into these arrays on some orders.
       const amountValues = displayValues
-        .map((value) => cleanText(typeof value === 'string' ? value : value?.displayValue || ''))
+        .map((value) => cleanText(typeof value === 'string'
+          ? value
+          : value?.displayValue || value?.amount?.displayValue || value?.amount || ''))
         .filter((value) => /^-?\$?\s*[\d,]+(?:\.\d{2})?$/.test(value));
       const amount = amountValues.length > 0 ? amountValues.join(' + ') : '';
       const message = extractTextFromNextData(paymentMethod?.message);
@@ -1225,6 +1228,7 @@ function extractNextDataPaymentMethods(orderNode) {
       };
     })
     .filter((entry) => entry.brand || entry.ending || entry.amount || entry.message);
+  return dedupePaymentMethodDetails(details);
 }
 
 function extractNextDataFeeBreakdown(orderNode) {
@@ -1419,6 +1423,60 @@ function buildTenderLabel(brand, ending) {
   return e.toLowerCase().includes(b.toLowerCase()) ? e : `${b} ${e}`;
 }
 
+function normalizeTenderBrand(value) {
+  const normalized = normalizeLookupText(value || '').replace(/[^a-z0-9]/g, '');
+  return normalized === 'wmtrc' ? 'walmartcash' : normalized;
+}
+
+function sameMoneyAmount(left, right) {
+  const toCents = (value) => {
+    const text = cleanText(value || '');
+    if (!/^-?\$?\s*[\d,]+(?:\.\d{2})?$/.test(text)) return null;
+    return Math.round(Number(text.replace(/[$,\s]/g, '')) * 100);
+  };
+  const a = toCents(left);
+  const b = toCents(right);
+  return a !== null && a === b;
+}
+
+/**
+ * Walmart sometimes emits the same Walmart Cash tender twice: once as
+ * `Walmart Cash` and once as the internal `WMTRC` code. Only collapse that
+ * explicit alias pair when its description and amount also match; two distinct
+ * cash credits or cards with different amounts remain separate.
+ */
+function dedupePaymentMethodDetails(details) {
+  const result = [];
+  (Array.isArray(details) ? details : []).forEach((entry) => {
+    const duplicateIndex = result.findIndex((existing) => {
+      const brands = [normalizeLookupText(existing.brand), normalizeLookupText(entry.brand)];
+      const aliasPair = brands.some((brand) => /\bwmtrc\b/i.test(brand)) &&
+        brands.some((brand) => /\bwalmart cash\b/i.test(brand));
+      const existingEnding = normalizeLookupText(existing.ending || '');
+      const entryEnding = normalizeLookupText(entry.ending || '');
+      const bothAmountsMissing = !cleanText(existing.amount || '') && !cleanText(entry.amount || '');
+      return aliasPair && existingEnding && existingEnding === entryEnding &&
+        (sameMoneyAmount(existing.amount, entry.amount) || bothAmountsMissing);
+    });
+
+    if (duplicateIndex < 0) {
+      result.push(entry);
+      return;
+    }
+
+    const existing = result[duplicateIndex];
+    const preferred = /\bwalmart cash\b/i.test(normalizeLookupText(entry.brand)) ? entry : existing;
+    result[duplicateIndex] = {
+      ...existing,
+      ...entry,
+      ...preferred,
+      amount: existing.amount || entry.amount || '',
+      message: existing.message || entry.message || '',
+    };
+  });
+  return result;
+}
+
 /**
  * Format the per-card charge split, e.g. "VISA ending in 1234: $10.00; Gift Card: $5.00".
  * Works for both payload- and DOM-sourced payment method details.
@@ -1483,7 +1541,7 @@ function mergePaymentMethodDetails(domDetails, payloadDetails) {
   payload.forEach((entry, index) => {
     if (!usedPayload.has(index)) merged.push(entry);
   });
-  return merged;
+  return dedupePaymentMethodDetails(merged);
 }
 
 function collectItemsFromNextDataGroups(groups, pushItem) {
@@ -1990,6 +2048,154 @@ function extractPaymentDetailsFromOrderPage() {
   return methods;
 }
 
+function parsePaymentAmountCents(value) {
+  const text = cleanText(value || '');
+  if (!/^-?\$?\s*[\d,]+(?:\.\d{2})?$/.test(text)) return null;
+  const amount = Number(text.replace(/[$,\s]/g, ''));
+  return Number.isFinite(amount) ? Math.round(amount * 100) : null;
+}
+
+function formatPaymentAmountCents(cents) {
+  const sign = cents < 0 ? '-' : '';
+  return `${sign}$${(Math.abs(cents) / 100).toFixed(2)}`;
+}
+
+function paymentHistorySectionAmount(section) {
+  const rows = Array.from(section?.querySelectorAll('li') || []);
+  const groupHeadings = Array.from(section?.querySelectorAll('h4') || []);
+  const finalRows = rows.filter((row) => {
+    if (!groupHeadings.length) return true;
+    const previousGroups = groupHeadings.filter((heading) =>
+      Boolean(heading.compareDocumentPosition(row) & 4)
+    );
+    return cleanText(previousGroups.at(-1)?.textContent || '').toLowerCase() === 'final charges';
+  });
+  const amounts = finalRows.map((row) => ({
+    label: cleanText(row.querySelector('h6')?.textContent || ''),
+    cents: parsePaymentAmountCents(getLastCurrencyValue(row.textContent || '')),
+  })).filter((entry) => entry.cents !== null);
+  // Do not confuse an isolated tip or refund with the tender's complete
+  // allocation. There must be an order charge in Final charges; when it is
+  // present, summing its final transactions also accounts for edits, tips,
+  // and refunds that Walmart posts against that same tender.
+  if (!amounts.some((entry) => /^(?:final\s+)?order charge$/i.test(entry.label))) return null;
+  return amounts.reduce((sum, entry) => sum + entry.cents, 0);
+}
+
+function findPaymentMethodIndexForHistory(label, details, usedIndices, fallbackIndex, sectionCount) {
+  const normalizedLabel = normalizeLookupText(label || '').replace(/[^a-z0-9]/g, '');
+  const candidates = (Array.isArray(details) ? details : []).map((entry, index) => ({ entry, index }))
+    .filter(({ index }) => !usedIndices.has(index))
+    .filter(({ entry }) => {
+      const brand = normalizeTenderBrand(entry.brand);
+      const endingDigits = String(entry.ending || '').match(/\d{4}/)?.[0] || '';
+      const brandMatches = brand && normalizedLabel.includes(brand);
+      const endingMatches = endingDigits && normalizedLabel.includes(endingDigits);
+      return (brandMatches && (!endingDigits || endingMatches)) || endingMatches;
+    });
+  if (candidates.length === 1) return candidates[0].index;
+  return details.length === sectionCount && fallbackIndex < details.length && !usedIndices.has(fallbackIndex)
+    ? fallbackIndex
+    : -1;
+}
+
+/**
+ * Read the final Order charge transaction per tender from Walmart's Charge
+ * history drawer. Current order pages often omit tender amounts from both
+ * payment rows and __NEXT_DATA__, while the drawer still shows them.
+ */
+async function extractPaymentAmountsFromChargeHistory(paymentMethodDetails) {
+  const details = Array.isArray(paymentMethodDetails) ? paymentMethodDetails : [];
+  if (!details.length) return details;
+
+  const trigger = Array.from(document.querySelectorAll('button,[role="button"]')).find((button) => {
+    const label = `${button.getAttribute('aria-label') || ''} ${button.textContent || ''}`;
+    return /charge history/i.test(label) && !/information/i.test(label);
+  });
+  if (!trigger) return details;
+
+  let dialog = null;
+  try {
+    trigger.click();
+    for (let attempt = 0; attempt < 24; attempt++) {
+      dialog = document.querySelector('[role="dialog"]');
+      if (dialog?.querySelector('section h3')) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (!dialog) return details;
+
+    const selectorButtons = Array.from(dialog.querySelectorAll('button[aria-label]'))
+      .filter((button) => !/close panel|information|temporary holds|previous|next|slide/i.test(
+        button.getAttribute('aria-label') || ''
+      ));
+    // Selecting each tender once makes Walmart populate its per-method history
+    // section. The history remains in the drawer DOM after another tender is
+    // selected, so all allocations can then be read without network parsing.
+    for (const button of selectorButtons) {
+      button.click();
+      await new Promise((resolve) => setTimeout(resolve, 90));
+    }
+
+    const usedIndices = new Set();
+    const updated = details.map((entry) => ({ ...entry }));
+    const sections = Array.from(dialog.querySelectorAll('section')).filter((section) =>
+      /^viewing order charge history of\b/i.test(cleanText(section.querySelector('h3')?.textContent || ''))
+    );
+    sections.forEach((section, sectionIndex) => {
+      const title = cleanText(section.querySelector('h3')?.textContent || '')
+        .replace(/^viewing order charge history of\s*/i, '');
+      const cents = paymentHistorySectionAmount(section);
+      if (cents === null) return;
+      const index = findPaymentMethodIndexForHistory(
+        title, updated, usedIndices, sectionIndex, sections.length
+      );
+      if (index < 0) return;
+      usedIndices.add(index);
+      if (!cleanText(updated[index].amount || '')) {
+        updated[index].amount = formatPaymentAmountCents(cents);
+        updated[index].amountSource = 'charge-history';
+      }
+    });
+    return updated;
+  } catch (error) {
+    console.warn('Unable to read Walmart charge history for payment split:', error);
+    return details;
+  } finally {
+    const closeButton = dialog?.querySelector('button[aria-label*="close panel" i]');
+    if (closeButton) closeButton.click();
+  }
+}
+
+function inferSingleTenderAmount(paymentMethodDetails, orderTotal) {
+  const details = dedupePaymentMethodDetails(paymentMethodDetails);
+  if (details.length !== 1 || cleanText(details[0].amount || '')) return details;
+  const cents = parsePaymentAmountCents(orderTotal);
+  if (cents === null) return details;
+  return [{ ...details[0], amount: formatPaymentAmountCents(cents), amountSource: 'order-total' }];
+}
+
+function inferOneMissingTenderAmount(paymentMethodDetails, orderTotal) {
+  const details = dedupePaymentMethodDetails(paymentMethodDetails);
+  const missingIndices = details.map((entry, index) =>
+    cleanText(entry?.amount || '') ? -1 : index
+  ).filter((index) => index >= 0);
+  if (details.length < 2 || missingIndices.length !== 1 ||
+      !details.some((entry) => entry?.amountSource === 'charge-history')) return details;
+  const totalCents = parsePaymentAmountCents(orderTotal);
+  if (totalCents === null) return details;
+  if (details.some((entry, index) => index !== missingIndices[0] && parsePaymentAmountCents(entry.amount) === null)) {
+    return details;
+  }
+  const knownCents = details.reduce((sum, entry, index) => {
+    if (index === missingIndices[0]) return sum;
+    const cents = parsePaymentAmountCents(entry.amount);
+    return cents === null ? sum : sum + cents;
+  }, 0);
+  return details.map((entry, index) => index === missingIndices[0]
+    ? { ...entry, amount: formatPaymentAmountCents(totalCents - knownCents), amountSource: 'order-total-remainder' }
+    : entry);
+}
+
 function scrapeOrderData() {
   const orderItems = [];
   const productLinkLookup = buildProductLinkLookup();
@@ -2329,33 +2535,18 @@ function computeExtractionWarnings(data) {
       warnings.push("Order number is missing");
     }
 
-    // Split tender with no per-tender amounts (#20). When part of an order is
-    // paid with Walmart Cash / rewards / a gift card, the card is charged LESS
-    // than the order total — and that smaller figure is the one a bank feed
-    // shows. With no amounts, `paymentSplit` is empty and the export looks
-    // exactly like a single-tender order, so a downstream consumer silently
-    // mis-reconciles instead of knowing to ask.
-    //
-    // On in-store orders the amounts are genuinely absent from every source
-    // this extension can read: the payment box names both tenders without
-    // figures, `.print-bill-payment-section` carries only subtotal/tax/total,
-    // and the order page's __NEXT_DATA__ has no order node at all. The real
-    // split lives solely in the printed receipt, which Walmart serves as an
-    // IMAGE. So this reports the gap rather than pretending to fill it.
-    //
-    // Only for 2+ methods: with a single tender the amount IS the order total,
-    // so nothing is lost and a warning would be noise.
+    // Any missing split allocation is actionable: the live scraper checks
+    // payment rows, Next.js payloads, and Walmart's charge-history drawer
+    // before warning, so a partial split must not be presented as complete.
     const paymentMethods = Array.isArray(data?.paymentMethodDetails)
       ? data.paymentMethodDetails
       : [];
-    if (
-      paymentMethods.length > 1 &&
-      paymentMethods.every((method) => !cleanText(method?.amount || ""))
-    ) {
+    const missingPaymentAmounts = paymentMethods.filter((method) => !cleanText(method?.amount || '')).length;
+    if (paymentMethods.length > 1 && missingPaymentAmounts > 0) {
       warnings.push(
-        `Split tender across ${paymentMethods.length} payment methods, but no ` +
-          "per-tender amounts were extracted — the amount charged to each " +
-          "method is missing"
+        `Split tender across ${paymentMethods.length} payment methods, but ` +
+          `${missingPaymentAmounts} per-tender amount${missingPaymentAmounts === 1 ? ' was' : 's were'} ` +
+          'unavailable after checking the order page and charge history'
       );
     }
   } catch (error) {
@@ -2771,8 +2962,18 @@ async function checkForNextPage() {
    * @param {ProviderContentCtx} ctx
    * @returns {Object} normalized order
    */
-  function scrapeOrder(ctx) {
+  async function scrapeOrder(ctx) {
     const data = scrapeOrderData();
+    if (data.paymentMethodDetails.some((method) => !cleanText(method?.amount || ''))) {
+      data.paymentMethodDetails = await extractPaymentAmountsFromChargeHistory(data.paymentMethodDetails);
+      data.paymentMethodDetails = inferOneMissingTenderAmount(data.paymentMethodDetails, data.orderTotal);
+      data.paymentMethodDetails = inferSingleTenderAmount(data.paymentMethodDetails, data.orderTotal);
+      data.paymentMethods = data.paymentMethodDetails
+        .map((method) => [method.brand, method.ending].filter(Boolean).join(' - '))
+        .filter(Boolean)
+        .join('; ') || data.paymentMethods;
+      data.paymentSplit = buildPaymentSplit(data.paymentMethodDetails);
+    }
     data.extractionWarnings = computeExtractionWarnings(data);
     return data;
   }
@@ -2793,6 +2994,19 @@ async function checkForNextPage() {
     if (!orderNode) return null;
     const data = extractOrderDataFromNextData(orderNode);
     if (!data) return null;
+    if (data.paymentMethodDetails.length > 1 &&
+      data.paymentMethodDetails.some((method) => !cleanText(method?.amount || ''))) {
+      // The lightweight HTML path has no DOM for Walmart's charge-history
+      // drawer. Fall back to the order page, where per-tender transactions can
+      // be read interactively instead of returning an incomplete split.
+      return null;
+    }
+    data.paymentMethodDetails = inferSingleTenderAmount(data.paymentMethodDetails, data.orderTotal);
+    data.paymentMethods = data.paymentMethodDetails
+      .map((method) => [method.brand, method.ending].filter(Boolean).join(' - '))
+      .filter(Boolean)
+      .join('; ') || data.paymentMethods;
+    data.paymentSplit = buildPaymentSplit(data.paymentMethodDetails);
     data.extractionWarnings = computeExtractionWarnings(data);
     return data;
   }
@@ -2841,6 +3055,9 @@ async function checkForNextPage() {
       formatOrderDateFromIsoString,
       buildPaymentSplit,
       mergePaymentMethodDetails,
+      inferSingleTenderAmount,
+      inferOneMissingTenderAmount,
+      extractPaymentAmountsFromChargeHistory,
       buildTenderLabel,
       buildDomOrderSummary,
       PurchaseHistoryDataSource,

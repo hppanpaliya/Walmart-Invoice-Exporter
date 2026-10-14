@@ -58,6 +58,21 @@ test('Payment Method lists tenders while Payment Split lists their amounts', () 
   };
   assert.equal(sandbox.formatPaymentMethodDetails(order), 'VISA - ending in 1234 || GIFTCARD');
   assert.equal(sandbox.formatPaymentSplit(order), 'VISA ending in 1234: $20.00; GIFTCARD: $6.84');
+  assert.equal(sandbox.formatPaymentMethodDetails({ paymentMethodDetails: [
+    { brand: 'Walmart Cash', ending: 'Walmart Cash' },
+    { brand: 'WMTRC', ending: 'Walmart Cash' },
+  ] }), 'Walmart Cash');
+  assert.equal(sandbox.formatPaymentMethodDetails({ paymentMethodDetails: [
+    { brand: 'Walmart Cash', ending: 'Walmart Cash' },
+    { brand: 'Walmart Cash', ending: 'Walmart Cash' },
+  ] }), 'Walmart Cash');
+  assert.equal(sandbox.formatPaymentSplit({
+    paymentSplit: 'Walmart Cash: $1.00; WMTRC Walmart Cash: $1.00; Discover Ending in 6011: $64.33',
+  }), 'Walmart Cash: $1.00; Discover Ending in 6011: $64.33');
+  assert.equal(sandbox.formatPaymentSplit({ paymentMethodDetails: [
+    { brand: 'Walmart Cash', ending: 'Walmart Cash', amount: '$1.00' },
+    { brand: 'WMTRC', ending: 'Walmart Cash', amount: '$1.00' },
+  ] }), 'Walmart Cash: $1.00');
   assert.equal(sandbox.formatPaymentMethodDetails({
     paymentMethods: 'Discover - ending in 5555',
     paymentMethodDetails: [{ amount: '$5.00' }],

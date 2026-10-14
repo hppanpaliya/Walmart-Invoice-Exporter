@@ -15,12 +15,20 @@
 - Combined exports no longer download an empty file when every selected order fails.
 - Preserve payment card names carried by image alt text when invoice collection blocks images.
 - Sum charged delivery and express fees across fee rows, excluding discounts and crossed-out original prices. Read payment amounts from accessible tender rows even when Walmart changes their flex row classes.
-- Refresh saved Walmart invoices once after extraction updates so re-exports don't silently reuse older records with missing financial details. If live refresh fails, the exported fallback clearly warns that it contains stale data.
+- Refresh saved Walmart invoices after extraction updates so re-exports don't silently reuse older records with missing financial details. If live refresh fails, the exported fallback clearly warns that it contains stale data.
+- Read per-tender order charges from Walmart's charge-history drawer when its payment rows and payload omit amounts, infer a single tender from a valid order total, and remove duplicate Walmart Cash/WMTRC aliases.
+
+## [8.5] - October 13, 2026
+
+### Fixed
+- Re-exporting saved Walmart invoices refreshes records created before the latest payment extraction fixes.
+- Single-card exports consistently show the full order amount, and split-tender exports read per-method charges from charge history when Walmart omits them from the invoice payload.
+- Duplicate Walmart Cash/WMTRC entries no longer repeat the tender or its amount in Excel.
 
 ## [8.4] - October 13, 2026
 
 ### Fixed
-- Re-exporting a saved Walmart invoice now refreshes records created before the latest extraction fixes, including payment splits and adjustments.
+- Refresh old saved Walmart invoice records after extraction changes, and warn when exports must fall back to stale data.
 
 ## [8.3] - September 5, 2026
 

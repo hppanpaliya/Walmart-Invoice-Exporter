@@ -152,15 +152,17 @@ test('computeExtractionWarnings flags split tender with no per-tender amounts', 
     ],
   })), []);
 
-  // Partial extraction is not a silent loss: one known amount plus the order
-  // total gives the other, so this stays quiet too.
-  assert.deepEqual(toPlain(sandbox.computeExtractionWarnings({
+  // A partially extracted split stays visible until the order-page charge
+  // history can provide the missing amount.
+  const partial = toPlain(sandbox.computeExtractionWarnings({
     ...base,
     paymentMethodDetails: [
       { brand: 'VISA', ending: 'ending in 1234', amount: '$200.51' },
       { brand: '', ending: 'Ending in 2043', amount: '' },
     ],
-  })), []);
+  }));
+  assert.equal(partial.length, 1);
+  assert.match(partial[0], /1 per-tender amount was unavailable/);
 });
 
 test('readPaymentRowAmount reads the 2026 payment row (flex-auto moved off the amount)', () => {
