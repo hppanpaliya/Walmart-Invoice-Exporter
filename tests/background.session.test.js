@@ -23,6 +23,35 @@ function resetSessionState(sandbox, request = {}) {
 
 const SESSION_KEY = 'walmart_collection_session';
 
+test('partial API history is persisted before classic collection resumes', async () => {
+  const s = loadBackgroundSandbox();
+  const state = evalIn(s, 'CollectionState');
+  const db = evalIn(s, 'OrderDb');
+  state.isCollecting = true;
+  state.tabId = 1;
+  state.fastFetch = true;
+  state.accountKey = 'ACCOUNT_A';
+  s.chrome.tabs.get = (_id, callback) => callback({ id: 1, url: 'https://www.walmart.com/orders' });
+  s.chrome.tabs.sendMessage = (_id, _message, callback) => queueMicrotask(() => callback({
+    fast: true, fallbackToClassic: true, hasNextPage: true, pages: 1,
+    orderNumbers: ['200010000000042'], additionalFields: {},
+    orderSummaries: { '200010000000042': { orderDate: '2026-10-01', orderTotal: '$12.00' } },
+  }));
+  let resumed = false;
+  s.collectOrderNumbers = () => { resumed = true; state.isCollecting = false; };
+  s.collectAllFast();
+  const deadline = Date.now() + 1500;
+  while (!resumed && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(resumed, true);
+  assert.equal(state.fastFetch, false);
+  assert.equal(state.fastAttempted, true);
+  assert.equal(state.accountKey, 'ACCOUNT_A');
+  assert.ok(state.allOrderNumbers.has('200010000000042'));
+  const record = await db.getOrder('200010000000042');
+  assert.equal(record.summary.orderTotal, '$12.00');
+  assert.equal(record.accountKey, 'ACCOUNT_A');
+});
+
 test('CollectionState now mirrors to chrome.storage.session under a dedicated key (not the legacy local one)', () => {
   const sandbox = loadBackgroundSandbox();
   const CollectionState = evalIn(sandbox, 'CollectionState');

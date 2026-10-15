@@ -118,6 +118,8 @@ test('collectAllViaFetch: a failed page fetch stops gracefully, keeping what was
 
   assert.equal(plain.fast, true);
   assert.equal(plain.pages, 1, 'kept page 1 and stopped cleanly on the failed fetch');
+  assert.equal(plain.fallbackToClassic, true);
+  assert.equal(plain.hasNextPage, true);
   assert.deepEqual(plain.orderNumbers, ['200000000000001', '200000000000002']);
 });
 
@@ -224,11 +226,11 @@ test('replayPage: re-fetches a known page as a dated snapshot; unknown page ⇒ 
   assert.equal(none, null);
 });
 
-test('collectAllViaFetch: a rotated hash / throttle still returns page 1 and does NOT fall back to the crawl', async () => {
+test('collectAllViaFetch: a rotated hash preserves page 1 and requests classic rescue', async () => {
   const sandbox = loadSandbox({
     // Page 1 always comes from __NEXT_DATA__, so even when every API request
-    // fails the run keeps page 1 and reports fast:true — it must never degrade
-    // into the slow page-by-page crawl just because the API is unhappy.
+    // fails, keep page 1 but request classic rescue so the remaining history
+    // is not silently presented as fully collected.
     nextData: nextDataWith([order('200000000000001', '2026-03-04T10:00:00-08:00', 'Mar 04, 2026 order')], 'c1'),
     scripts: ['utils.js', 'providers/base.js', 'providers/registry.js', 'providers/walmart-us.js', 'flags.js'],
   });
@@ -239,8 +241,8 @@ test('collectAllViaFetch: a rotated hash / throttle still returns page 1 and doe
   const result = await evalIn(sandbox, 'PurchaseHistoryDataSource.collectAllViaFetch({})');
   const plain = toPlain(result);
 
-  assert.equal(plain.fast, true, 'still a fast-mode result, not a classic fallback');
-  assert.notEqual(plain.fallbackToClassic, true);
+  assert.equal(plain.fast, true, 'partial API result retains its source');
+  assert.equal(plain.fallbackToClassic, true);
   assert.deepEqual(plain.orderNumbers, ['200000000000001'], 'page 1 survived');
   assert.ok(plain.orderSummaries['200000000000001'].orderDate, 'page 1 dated');
 });
@@ -258,4 +260,14 @@ test('collectAllViaFetch: falls back to classic only when the request truly cann
   const plain = toPlain(result);
 
   assert.deepEqual(plain, { fallbackToClassic: true });
+});
+
+test('collectAllViaFetch: a repeated cursor requests rescue without looping or losing its pages', async () => {
+  const s = loadSandbox({ nextData: nextDataWith([order('200000000000001', '2026-03-04', 'First')], 'c1') });
+  const calls = stubFetch(s, [apiBody([order('200000000000002', '2026-03-03', 'Second')], 'c1')]);
+  const result = await evalIn(s, 'PurchaseHistoryDataSource.collectAllViaFetch({})');
+  assert.equal(calls.length, 1);
+  assert.equal(result.pages, 2);
+  assert.equal(result.orderNumbers.length, 2);
+  assert.equal(result.fallbackToClassic, true);
 });

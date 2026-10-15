@@ -46,6 +46,16 @@
   // built from synthesized headers. We reuse EXACTLY what the page just sent.
   let lastRequestHeaders = null;
 
+  // Captured session headers belong only to this site's purchase-history
+  // operation. Resolve paths first so traversal cannot escape that route.
+  const isPurchaseHistoryUrl = (value) => {
+    try {
+      const url = new URL(value, window.location.origin);
+      return url.origin === window.location.origin &&
+        /^\/orchestra\/(?:cph\/)?graphql\/PurchaseHistoryV3\/[a-f0-9]{64}$/i.test(url.pathname);
+    } catch (_) { return false; }
+  };
+
   const captureHeaders = (input, init) => {
     const headers = {};
     try {
@@ -147,7 +157,7 @@
       const requestUrl = urlOf(args[0]);
       // Remember the real headers of the page's own PurchaseHistoryV3 request,
       // so Fast Collect can replay later pages with the SAME (accepted) headers.
-      if (requestUrl.indexOf("PurchaseHistoryV3") > -1) {
+      if (isPurchaseHistoryUrl(requestUrl)) {
         const captured = captureHeaders(args[0], args[1]);
         if (captured && Object.keys(captured).length) lastRequestHeaders = captured;
       }
@@ -221,7 +231,7 @@
         reply({ ok: false, reason: "no-headers" });
         return;
       }
-      if (!msg.url || typeof msg.url !== "string" || msg.url.indexOf("/orchestra/") !== 0) {
+      if (typeof msg.url !== "string" || !isPurchaseHistoryUrl(msg.url)) {
         reply({ ok: false, reason: "bad-url" });
         return;
       }

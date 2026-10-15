@@ -805,7 +805,9 @@ function collectItemsFromNextDataGroups(groups, pushItem) {
           Array.isArray(subGroup?.categories) ? subGroup.categories : []
         );
 
-    if (categories.length > 0) {
+    // History summaries may list category types without item arrays. Those
+    // are metadata only; the rendered invoice must still supply its lines.
+    if (categories.some(category => Array.isArray(category?.items))) {
       usedCategories = true;
       categories.forEach((category) => {
         const categoryType = String(category?.type || '').toUpperCase();

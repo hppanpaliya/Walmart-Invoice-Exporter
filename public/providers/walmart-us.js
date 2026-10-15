@@ -734,7 +734,7 @@ const PurchaseHistoryDataSource = (() => {
       return snapshot.nextPageCursor || null; // null => no further page
     };
 
-    const finalize = () => {
+    const finalize = (incomplete = false) => {
       console.log(
         `[WIE] Fast Collect: ${merged.orderNumbers.length} order(s) across ${merged.pages} page(s) — 1 real request + ${Math.max(0, merged.pages - 2)} replayed.`
       );
@@ -743,8 +743,9 @@ const PurchaseHistoryDataSource = (() => {
         additionalFields: merged.additionalFields,
         orderSummaries: merged.orderSummaries,
         pages: merged.pages,
-        hasNextPage: false,
+        hasNextPage: incomplete,
         fast: true,
+        ...(incomplete ? { fallbackToClassic: true } : {}),
       };
     };
 
@@ -771,6 +772,7 @@ const PurchaseHistoryDataSource = (() => {
       console.log("[WIE] Fast Collect (incremental): page 1 is all known orders — done.");
       return finalize();
     }
+    if (pageLimit > 0 && merged.pages >= pageLimit) return finalize();
 
     // SEED (real runtime): trigger ONE genuine "Next" so the page makes its own
     // PurchaseHistoryV3 request. The main-world bridge captures BOTH page 2's
@@ -806,9 +808,15 @@ const PurchaseHistoryDataSource = (() => {
     // under the test harness it fetches directly (stubbed).
     const hash = capturedHash || (await readCachedHash()) || DEFAULT_HASH;
     let guard = 0;
+    let incomplete = false;
+    const visitedCursors = new Set();
     while (cursor) {
       if (pageLimit > 0 && merged.pages >= pageLimit) break;
-      if (guard++ > FAST_FETCH_MAX_PAGES) break;
+      if (guard++ >= FAST_FETCH_MAX_PAGES || visitedCursors.has(cursor)) {
+        incomplete = true;
+        break;
+      }
+      visitedCursors.add(cursor);
       if (!isTest) await delay(humanPacingDelay());
       let purchaseHistory;
       try {
@@ -818,9 +826,14 @@ const PurchaseHistoryDataSource = (() => {
           `[WIE] Fast Collect stopped after ${merged.pages} page(s):`,
           error && error.message
         );
-        break; // keep everything collected so far
+        incomplete = true;
+        break; // keep everything collected so far and request classic rescue
       }
       const snapshot = buildSnapshot(purchaseHistory, "fetch");
+      if (!snapshot) {
+        incomplete = true;
+        break;
+      }
       cursor = absorb(snapshot);
       if (pageAllKnown(snapshot)) {
         console.log("[WIE] Fast Collect (incremental): page of all-known orders — stopping.");
@@ -831,7 +844,7 @@ const PurchaseHistoryDataSource = (() => {
     if (merged.orderNumbers.length === 0) {
       return { fallbackToClassic: true };
     }
-    return finalize();
+    return finalize(incomplete);
   }
 
   /**
@@ -1583,7 +1596,9 @@ function collectItemsFromNextDataGroups(groups, pushItem) {
           Array.isArray(subGroup?.categories) ? subGroup.categories : []
         );
 
-    if (categories.length > 0) {
+    // History summaries may list category types without item arrays. Those
+    // are metadata only; the rendered invoice must still supply its lines.
+    if (categories.some(category => Array.isArray(category?.items))) {
       usedCategories = true;
       categories.forEach((category) => {
         const categoryType = String(category?.type || '').toUpperCase();

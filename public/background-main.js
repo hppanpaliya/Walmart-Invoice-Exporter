@@ -519,7 +519,9 @@ function collectAllFast() {
     }
     console.warn(`[collect] Fast Collect unavailable (${why}); using the classic loop.`);
     CollectionState.fastFetch = false;
+    const accountKey = CollectionState.accountKey;
     CollectionState.reset();
+    CollectionState.accountKey = accountKey;
     // Classic must not bounce back into fast within the same run.
     CollectionState.fastAttempted = true;
     CollectionState.initialPageLoaded = true;
@@ -549,7 +551,7 @@ function collectAllFast() {
           runClassicInstead("no response");
           return;
         }
-        if (response.fallbackToClassic) {
+        if (response.fallbackToClassic && !response.orderNumbers?.length) {
           runClassicInstead("adapter requested fallback");
           return;
         }
@@ -595,7 +597,8 @@ function collectAllFast() {
             console.log(
               `[collect] Fast Collect stored ${response.orderNumbers.length} orders across ${response.pages || "?"} page(s).`
             );
-            finishCollection();
+            if (response.fallbackToClassic) runClassicInstead("partial API history");
+            else finishCollection();
           });
       }
     );

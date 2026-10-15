@@ -231,3 +231,32 @@ test('collection loop advances through every page, not just page 1', async () =>
   );
   assert.equal(CollectionState.currentPage, 3, 'reached the final page');
 });
+
+test('partial API history is persisted before classic collection resumes', async () => {
+  const s = loadBackgroundSandbox();
+  const state = evalIn(s, 'CollectionState');
+  const db = evalIn(s, 'OrderDb');
+  state.isCollecting = true;
+  state.tabId = 1;
+  state.fastFetch = true;
+  state.accountKey = 'ACCOUNT_A';
+  s.chrome.tabs.get = (_id, callback) => callback({ id: 1, url: 'https://www.walmart.com/orders' });
+  s.chrome.tabs.sendMessage = (_id, _message, callback) => queueMicrotask(() => callback({
+    fast: true, fallbackToClassic: true, hasNextPage: true, pages: 1,
+    orderNumbers: ['200010000000042'], additionalFields: {},
+    orderSummaries: { '200010000000042': { orderDate: '2026-10-01', orderTotal: '$12.00' } },
+  }));
+  let resumed = false;
+  s.collectOrderNumbers = () => { resumed = true; state.isCollecting = false; };
+  s.collectAllFast();
+  const deadline = Date.now() + 1500;
+  while (!resumed && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(resumed, true);
+  assert.equal(state.fastFetch, false);
+  assert.equal(state.fastAttempted, true);
+  assert.equal(state.accountKey, 'ACCOUNT_A');
+  assert.ok(state.allOrderNumbers.has('200010000000042'));
+  const record = await db.getOrder('200010000000042');
+  assert.equal(record.summary.orderTotal, '$12.00');
+  assert.equal(record.accountKey, 'ACCOUNT_A');
+});

@@ -156,6 +156,15 @@ test('flat-items fallback still works when no categories exist anywhere', () => 
   assert.equal(items.length, 2);
 });
 
+test('category labels without item arrays are summaries, not an authoritative empty invoice', () => {
+  const sandbox = loadSandbox();
+  const data = sandbox.extractOrderDataFromNextData({ id: '200010000000099',
+    groups: [{ categories: [{ type: 'REGULAR' }, { type: 'UNAVAILABLE' }] }] });
+  assert.equal(data.items.fromChargedCategories, undefined);
+  const merged = sandbox.mergeOrderItems([{ productName: 'Delivered', quantity: '1', price: '$5.00' }], data.items);
+  assert.equal(merged.length, 1);
+});
+
 for (const categoryType of ['UNAVAILABLE', 'CANCELED', 'CANCELLED']) {
   test(`all-${categoryType} categories remain empty despite legacy payload and DOM copies`, () => {
     const sandbox = loadSandbox();
