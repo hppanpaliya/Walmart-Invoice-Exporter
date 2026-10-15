@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [8.8] - October 14, 2026
+
+### Fixed
+- Retry empty invoice responses on the same page before trying an alternate URL. Never infer a negative missing payment allocation.
+- Keep fully unavailable/canceled category items excluded in both US and Canada. Treat category labels without item arrays as summaries so redesigned invoices still read their rendered items.
+- Refresh older US and Canada extraction caches after these changes, preserving a visible stale-data warning if refresh fails.
+- Preserve promo, express/returned fees, refunds and other financial adjustments in HTML/PDF receipts and legacy Excel. Keep explicit zero totals and validate receipt barcode hyperlinks.
+- Reject stale dashboard refresh results and invalid inactivity-retention baselines/windows that could delete data prematurely.
+- Preserve partial Fast Collect results and continue through classic collection after API failures or repeated cursors. Limit captured session-header replay to the purchase-history endpoint.
+- Use current invoice totals in the local AI bridge, require pairing before tool calls, reject inherited tool names, and ignore events from replaced sockets.
+
+### Tests
+- Add regression coverage for the above cases and an eighth offline capture scenario for financial adjustments. The audit report records exact validation and remaining limitations.
+
+## Earlier unreleased work
+
 ### Added
 - Reusable private HTML capture sanitizer and seven-case offline invoice corpus covering observed and synthetic layouts, missing fields, zero totals, hostile content, and real workbook reconciliation. Temporary captures and generated verification artifacts are ignored by Git; the browser harness cleans up profiles and download listeners.
 - Dedicated Excel and CSV fields for promo code amounts and 3-hours-or-less charges, returned charges, plus a catch-all adjustment column that retains Walmart's original labels and amounts.
