@@ -16,7 +16,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { loadSandbox } = require('./helpers/sandbox');
+const { loadSandbox, evalIn } = require('./helpers/sandbox');
 
 const money = (v) => ({ value: v, displayValue: `$${v.toFixed(2)}` });
 const item = (id, name, qty, line) => ({
@@ -174,3 +174,24 @@ for (const categoryType of ['UNAVAILABLE', 'CANCELED', 'CANCELLED']) {
     assert.equal(merged.length, 0);
   });
 }
+
+test('Canada keeps charged duplicate lines and excludes unavailable categories like the US adapter', () => {
+  const sandbox = loadSandbox({ nextData: orderNodeWithCategories(), url: 'https://www.walmart.ca/orders/200010000000099',
+    scripts: ['utils.js', 'providers/base.js', 'providers/registry.js', 'providers/walmart-ca.js'] });
+  const data = evalIn(sandbox, 'WalmartCaProvider').scrapeOrder({});
+  assert.equal(data.items.length, 5);
+  assert.equal(data.items.filter(i => /Sliced Olives/.test(i.productName)).length, 2);
+  assert.ok(!data.items.some(i => /String Cheese/.test(i.productName)));
+  assert.ok(data.items.every(i => i.productLink.startsWith('https://www.walmart.ca/')));
+});
+
+test('Canada does not fall back to ordered items when all charged categories are canceled', () => {
+  const nextData = orderNodeWithCategories();
+  const order = nextData.props.pageProps.initialData.data.order;
+  const excluded = item(7, 'Never charged', 1, 12);
+  order.groups_2101 = [{ categories: [{ type: 'CANCELED', items: [excluded] }], items: [excluded] }];
+  order.items = [excluded];
+  const sandbox = loadSandbox({ nextData, url: 'https://www.walmart.ca/orders/200010000000099',
+    scripts: ['utils.js', 'providers/base.js', 'providers/registry.js', 'providers/walmart-ca.js'] });
+  assert.equal(evalIn(sandbox, 'WalmartCaProvider').scrapeOrder({}).items.length, 0);
+});

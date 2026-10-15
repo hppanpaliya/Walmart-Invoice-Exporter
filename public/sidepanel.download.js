@@ -88,11 +88,14 @@
 
     const isValidInvoiceData = (data, orderNumber, providerId) => {
       const schemaVersion = Number(data?.schemaVersion || 0);
-      const extractionVersionCurrent = providerId !== 'WALMART_US' ||
-        Number(data?.walmartExtractionVersion || 0) >= Number(CONSTANTS.WALMART_US_EXTRACTION_VERSION || 1);
+      const extractionVersionCurrent = Number(data?.walmartExtractionVersion || 0) >= requiredExtractionVersion(providerId);
       return schemaVersion >= MIN_ORDER_SCHEMA_VERSION && extractionVersionCurrent &&
         isUsableInvoiceData(data, orderNumber);
     };
+
+    const requiredExtractionVersion = (providerId) => providerId === 'WALMART_US'
+      ? Number(CONSTANTS.WALMART_US_EXTRACTION_VERSION || 1)
+      : providerId === 'WALMART_CA' ? Number(CONSTANTS.WALMART_CA_EXTRACTION_VERSION || 1) : 0;
 
     /** The adapter driving the current export (defaults to WALMART_US). */
     const activeAdapter = () => {
@@ -456,9 +459,7 @@
               `Both fetches failed for order #${orderNumber}; falling back to stale stored data`
             );
             view.updateOrderCacheStatus(orderNumber);
-            const needsWalmartRefresh = providerId === 'WALMART_US' &&
-              Number(storedInvoice?.walmartExtractionVersion || 0) <
-                Number(CONSTANTS.WALMART_US_EXTRACTION_VERSION || 1);
+            const needsWalmartRefresh = Number(storedInvoice?.walmartExtractionVersion || 0) < requiredExtractionVersion(providerId);
             return needsWalmartRefresh
               ? {
                   ...storedInvoice,

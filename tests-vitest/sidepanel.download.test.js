@@ -24,7 +24,7 @@ const ORDER_NUMBER = '200010000000042';
 function sampleInvoice(overrides = {}) {
   return {
     schemaVersion: 3,
-    walmartExtractionVersion: 4,
+    walmartExtractionVersion: 5,
     orderNumber: ORDER_NUMBER,
     orderTotal: '$28.11',
     orderDate: '2026-06-01T00:00:00.000Z',
@@ -403,4 +403,17 @@ test('empty response: retries the same order page once before changing its URL',
   assert.equal(calls.length, 2);
   assert.equal(calls[0].url, calls[1].url);
   assert.equal(sandbox.chrome.tabs._calls.update.length, 0);
+});
+
+test('Canada refreshes invoices saved before the charged-category fix using the Canada URL', async () => {
+  const s = loadDownloadSandbox();
+  s.window.Sidepanel.state.app.provider = 'WALMART_CA';
+  s.ProviderRegistry = { getById: () => ({ ordersListUrl: 'https://www.walmart.ca/orders' }) };
+  const db = evalIn(s, 'OrderDb');
+  await db.putInvoice(ORDER_NUMBER, sampleInvoice({ walmartExtractionVersion: undefined }), 'WALMART_CA');
+  const calls = mockInvoiceResponses(s, () => sampleInvoice({ walmartExtractionVersion: 1 }));
+  const data = await fetchOrderData(s, ORDER_NUMBER, FETCH_OPTIONS);
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].url.startsWith('https://www.walmart.ca/orders/'));
+  assert.equal(data.walmartExtractionVersion, 1);
 });
