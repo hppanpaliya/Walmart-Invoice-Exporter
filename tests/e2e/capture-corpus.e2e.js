@@ -25,6 +25,13 @@ test('anonymizer removes private and executable content without executing source
   assert.match(first, /Captured product 1/);
   assert.match(first, /Ending in 0000/);
   assert.match(first, /\$5\.00/);
+  const financialSource = source + '<div class="bill-order-payment-spacing">' +
+    ['Promo code', '3 hours or less fee', 'Returned 3 hours or less fee', 'Refund', 'Donations']
+      .map(label => `<div class="flex justify-between"><span>${label}</span><span>-$1.00</span></div>`).join('') + '</div>';
+  const financialCapture = await anonymizeInvoice(financialSource);
+  for (const label of ['Promo code', '3 hours or less fee', 'Returned 3 hours or less fee', 'Refund', 'Donations']) {
+    assert.ok(financialCapture.includes(label), `financial capture preserves ${label}`);
+  }
   await assert.rejects(anonymizeInvoice('<p>unsupported page</p>'), /no supported invoice/);
   await assert.rejects(anonymizeInvoice('x'.repeat(MAX_CAPTURE_BYTES + 1)), /8 MiB/);
 });
@@ -64,6 +71,8 @@ test('anonymized invoice replay corpus runs the production provider offline', as
         if (entry.subtotal) assert.equal(data.orderSubtotal, entry.subtotal);
         if (entry.delivery) assert.equal(data.deliveryCharges, entry.delivery);
         if (entry.paymentSplit) assert.equal(data.paymentSplit, entry.paymentSplit);
+        for (const [key, expected] of Object.entries(entry.amounts || {})) assert.equal(data[key], expected, key);
+        if (entry.financialAdjustments) assert.deepEqual(data.financialAdjustments, entry.financialAdjustments);
         if (entry.warning) assert.ok(data.extractionWarnings.includes(entry.warning));
         else assert.deepEqual(data.extractionWarnings, []);
         if (!entry.warning) {

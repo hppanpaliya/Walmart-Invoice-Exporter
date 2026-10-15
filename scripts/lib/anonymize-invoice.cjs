@@ -19,7 +19,7 @@ function sanitizeDocument({ html, id }) {
   const safeText = value => {
     const text = value.replace(/\s+/g, ' ').trim();
     if (/^-?\$\d[\d,]*(?:\.\d{1,2})?$/.test(text)) return text;
-    if (/^(?:Savings|Subtotal|Tax|Taxes|Bag fee|Driver tip|Tip|Total|Order total|Temporary adjusted total|Delivery from store|Free delivery from store|Express delivery|Walmart Cash|Visa|Mastercard|American Express|Discover|Gift card)$/i.test(text)) return text;
+    if (/^(?:Savings|Subtotal|Tax|Taxes|Bag fee|Driver tip|Tip|Total|Order total|Temporary adjusted total|Delivery from store|Free delivery from store|Express delivery|Walmart Cash|Visa|Mastercard|American Express|Discover|Gift card|PayPal|Promo code|Promo code amount|Refund|Donations|3 hours or less fee|Returned 3 hours or less fee|Shipping|Shipping fee|Minimum order fee)$/i.test(text)) return text;
     if (/^Items \(\d{1,4}\)$/.test(text)) return text;
     if (/^(?:\d{1,4}\s+)?(?:unavailable|canceled|cancelled)(?:\s+items?)?$/i.test(text)) return text;
     if (/^\d{1,4}\s+(?:unavailable|canceled|cancelled|items? (?:delivered|shopped|weight adjusted))$/i.test(text)) return text;

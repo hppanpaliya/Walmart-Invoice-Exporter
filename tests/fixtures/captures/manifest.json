@@ -66,6 +66,29 @@
       "total": "$27.02",
       "subtotal": "$18.53",
       "delivery": "$2.95"
+    },
+    {
+      "name": "promo, express and returned fees, refund, donation and extra adjustment",
+      "file": "financial-adjustments.html",
+      "provenance": "synthetic financial variant of sanitized layout",
+      "items": 2,
+      "total": "$24.77",
+      "subtotal": "$18.53",
+      "delivery": "$2.95",
+      "paymentSplit": "Walmart Cash: $8.00; Visa Ending in 0000: $16.77",
+      "amounts": {
+        "promoCodeAmount": "-$2.00",
+        "threeHoursOrLessFee": "$2.95",
+        "returnedThreeHoursOrLessFee": "-$2.95",
+        "refund": "-$1.00",
+        "donations": "$0.25"
+      },
+      "financialAdjustments": [
+        {
+          "label": "Eco handling adjustment",
+          "amount": "$0.50"
+        }
+      ]
     }
   ]
 }
