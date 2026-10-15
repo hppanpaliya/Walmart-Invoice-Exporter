@@ -1519,7 +1519,7 @@
    * resolved value differs). Leaves the resolution + maps in state for the
    * data reads (state.account) and the switcher to consume. Safe to re-run.
    */
-  async function resolveAccountState() {
+  async function resolveAccountState(isCurrent = () => true) {
     const KEYS = CONSTANTS.STORAGE_KEYS;
     let summaries = [];
     try {
@@ -1529,6 +1529,7 @@
       summaries = [];
     }
     const stored = await storageGet([KEYS.CURRENT_ACCOUNT, KEYS.ACCOUNT_LABELS, KEYS.ACCOUNT_ORDINALS]);
+    if (!isCurrent()) return;
     const labels = (stored && stored[KEYS.ACCOUNT_LABELS]) || {};
     const existingOrdinals = (stored && stored[KEYS.ACCOUNT_ORDINALS]) || {};
     const storedCurrent = (stored && stored[KEYS.CURRENT_ACCOUNT]) || null;
@@ -1669,11 +1670,16 @@
    * and re-render when anything changed.
    * @param {boolean} [force] - render even when the signature is unchanged
    */
+  let refreshGeneration = 0;
   async function refresh(force = false) {
+    const generation = ++refreshGeneration;
+    const isCurrent = () => generation === refreshGeneration;
     // Resolve the shared account selection before any data read so every scope
     // below is filtered to state.account, then reflect it in the switcher.
-    await resolveAccountState();
+    await resolveAccountState(isCurrent);
+    if (!isCurrent()) return;
     renderAccountSwitcher();
+    const account = state.account;
 
     const api = providersApi();
     let provider = 'WALMART_US';
@@ -1687,7 +1693,7 @@
         for (const id of ids) {
           let records = [];
           try {
-            records = await OrderDb.getAllOrders(id, state.account);
+            records = await OrderDb.getAllOrders(id, account);
           } catch (error) {
             console.warn('Dashboard page: order database unavailable:', error);
           }
@@ -1710,16 +1716,17 @@
       provider = 'WALMART_US';
       let records = [];
       try {
-        records = await OrderDb.getAllOrders(provider, state.account);
+        records = await OrderDb.getAllOrders(provider, account);
       } catch (error) {
         console.warn('Dashboard page: order database unavailable:', error);
       }
       scopes = [{ id: provider, label: 'Walmart.com', currency: 'USD', records }];
     }
 
+    if (!isCurrent()) return;
     const combined = Boolean(api) && provider === api.PROVIDER_ALL;
     const signature =
-      `${provider}|${state.account}||` + scopes.map((scope) => `${scope.id}::${signatureOf(scope.records)}`).join('##');
+      `${provider}|${account}||` + scopes.map((scope) => `${scope.id}::${signatureOf(scope.records)}`).join('##');
     if (!force && signature === state.signature) return;
     state.signature = signature;
     state.provider = provider;

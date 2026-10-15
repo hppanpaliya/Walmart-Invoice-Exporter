@@ -394,3 +394,13 @@ for (const mode of ['multiple', 'single']) {
     assert.equal(sandbox.window.Sidepanel.state.app.downloadInProgress, false);
   });
 }
+
+test('empty response: retries the same order page once before changing its URL', async () => {
+  const sandbox = loadDownloadSandbox();
+  const calls = mockInvoiceResponses(sandbox, (n) => n === 1 ? null : sampleInvoice());
+  const data = await fetchOrderData(sandbox, ORDER_NUMBER, FETCH_OPTIONS);
+  assert.equal(data.orderNumber, ORDER_NUMBER);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, calls[1].url);
+  assert.equal(sandbox.chrome.tabs._calls.update.length, 0);
+});

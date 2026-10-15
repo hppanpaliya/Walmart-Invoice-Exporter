@@ -155,3 +155,22 @@ test('flat-items fallback still works when no categories exist anywhere', () => 
   const items = sandbox.extractOrderDataFromNextData().items;
   assert.equal(items.length, 2);
 });
+
+for (const categoryType of ['UNAVAILABLE', 'CANCELED', 'CANCELLED']) {
+  test(`all-${categoryType} categories remain empty despite legacy payload and DOM copies`, () => {
+    const sandbox = loadSandbox();
+    const excluded = item(7, 'Never charged item', 1, 12.00);
+    const items = sandbox.extractOrderDataFromNextData({
+      id: '200010000000099',
+      groups_2101: [{ categories: [{ type: categoryType, items: [excluded] }] }],
+      groups: [{ items: [excluded] }],
+      items: [excluded],
+    }).items;
+    assert.equal(items.length, 0);
+    assert.equal(items.fromChargedCategories, true);
+    const merged = sandbox.mergeOrderItems([
+      { productName: 'Never charged item', quantity: '1', price: '$12.00' },
+    ], items);
+    assert.equal(merged.length, 0);
+  });
+}

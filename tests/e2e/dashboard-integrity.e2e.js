@@ -71,6 +71,42 @@ test('dashboard refresh, hostile stored text, view navigation and bridge boundar
       assert.equal(await embedded.locator('#exportFormat').inputValue(), 'csv');
       await page.locator('#untrustedSibling').evaluate(el => el.remove());
     });
+    await t.test('an older refresh cannot overwrite a newer invoice snapshot', async () => {
+      await page.evaluate(() => {
+        const original = OrderDb.getAllOrders;
+        window.__restoreOrderRead = () => { OrderDb.getAllOrders = original; };
+        let first = true;
+        OrderDb.getAllOrders = async (...args) => {
+          const records = await original(...args);
+          if (!first) return records;
+          first = false;
+          return new Promise(resolve => {
+            window.__releaseOlderRead = () => resolve(records);
+          });
+        };
+        window.dispatchEvent(new Event('focus'));
+      });
+      try {
+        await page.waitForFunction(() => typeof window.__releaseOlderRead === 'function');
+        await page.evaluate(async () => {
+          const record = await OrderDb.getOrder('200010000000042');
+          await OrderDb.putInvoice(record.orderNumber, { ...record.invoice, orderTotal: '$20.00' });
+          window.dispatchEvent(new Event('focus'));
+        });
+        await page.waitForFunction(() => document.querySelector('#statTotal').textContent === '$20.00');
+        await page.evaluate(async () => {
+          window.__releaseOlderRead();
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        });
+        assert.equal(await page.locator('#statTotal').textContent(), '$20.00');
+      } finally {
+        await page.evaluate(() => {
+          window.__restoreOrderRead();
+          delete window.__restoreOrderRead;
+          delete window.__releaseOlderRead;
+        });
+      }
+    });
     assert.deepEqual(errors, []);
   } finally { await close(); }
 });

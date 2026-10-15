@@ -429,3 +429,14 @@ test('redesigned detail payload never borrows an unrelated order summary', () =>
   const sandbox = loadSandbox({ nextData, url: 'https://www.walmart.com/orders/200010000000042' });
   assert.equal(sandbox.extractOrderDataFromNextData(), null);
 });
+
+test('missing tender remains unknown when known charges exceed the invoice total', () => {
+  const sandbox = loadDetailSandbox();
+  const methods = [
+    { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$70.00', amountSource: 'charge-history' },
+    { brand: 'Visa', ending: 'Ending in 1234', amount: '' },
+  ];
+  const inferred = sandbox.inferOneMissingTenderAmount(methods, '$64.98');
+  assert.equal(inferred[1].amount, '', 'a missing charge must not become a fabricated negative payment');
+  assert.equal(inferred[1].amountSource, undefined);
+});

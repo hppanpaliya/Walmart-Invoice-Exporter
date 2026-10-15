@@ -377,12 +377,10 @@
           timeoutMs,
           `Timeout getting data for order #${orderNumber}`
         );
-        if (!response || !response.data) {
-          throw new Error(`No data received for order #${orderNumber}`);
-        }
-        const problems = invoiceProblems(response.data, orderNumber);
+        const problems = invoiceProblems(response?.data, orderNumber);
         if (problems.length === 0) break;
         if (attempt === 1) {
+          if (!response?.data) throw new Error(`No data received for order #${orderNumber}`);
           throw new Error(`Incomplete invoice for order #${orderNumber}: ${problems.join(", ")}`);
         }
         // Re-read the same page once: load-complete does not guarantee that

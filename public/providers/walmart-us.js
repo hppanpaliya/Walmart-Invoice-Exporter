@@ -1670,11 +1670,11 @@ function extractItemsFromNextData(orderNode) {
 
   let usedCategories = collectItemsFromNextDataGroups(orderNode?.groups_2101, pushItem) === true;
 
-  if (items.length === 0) {
+  if (items.length === 0 && !usedCategories) {
     usedCategories = collectItemsFromNextDataGroups(orderNode?.groups, pushItem) === true;
   }
 
-  if (items.length === 0 && Array.isArray(orderNode?.items)) {
+  if (items.length === 0 && !usedCategories && Array.isArray(orderNode?.items)) {
     orderNode.items.forEach((item) => pushItem(item, ''));
     usedCategories = false;
   }
@@ -1682,7 +1682,7 @@ function extractItemsFromNextData(orderNode) {
   // Tag (non-index array property; invisible to JSON/iteration) so
   // mergeOrderItems knows these items are the charged-truth set and must
   // not be "completed" with DOM rows the traversal deliberately excluded.
-  if (usedCategories && items.length > 0) {
+  if (usedCategories) {
     items.fromChargedCategories = true;
   }
 
@@ -1703,7 +1703,7 @@ function mergeOrderItems(domItems, nextDataItems) {
     return `${productName}|${quantity}`;
   };
 
-  if (payloadItems.length === 0) {
+  if (payloadItems.length === 0 && !nextDataItems?.fromChargedCategories) {
     return scrapedItems;
   }
 
@@ -2266,6 +2266,7 @@ function inferOneMissingTenderAmount(paymentMethodDetails, orderTotal) {
     const cents = parsePaymentAmountCents(entry.amount);
     return cents === null ? sum : sum + cents;
   }, 0);
+  if (knownCents > totalCents) return details;
   return details.map((entry, index) => index === missingIndices[0]
     ? { ...entry, amount: formatPaymentAmountCents(totalCents - knownCents), amountSource: 'order-total-remainder' }
     : entry);
