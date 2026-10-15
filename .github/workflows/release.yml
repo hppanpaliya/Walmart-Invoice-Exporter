@@ -37,6 +37,19 @@ jobs:
       - name: Install dev dependencies
         run: pnpm install --frozen-lockfile
 
+      # This workflow runs independently of CI. Validate this exact commit
+      # before deleting/replacing any published branch release.
+      - name: Validate extractors and export writers
+        run: |
+          pnpm test
+          pnpm run test:vitest
+
+      - name: Install test browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Validate packaged extension workflows
+        run: pnpm run test:e2e
+
       # WXT builds + packages every target from wxt.config.ts — the manifest,
       # file list, and Firefox transforms all live there now (the old
       # cp-list/build-edge.sh/build-firefox.sh machinery is gone). Edge runs
