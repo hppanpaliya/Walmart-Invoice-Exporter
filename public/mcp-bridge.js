@@ -111,12 +111,15 @@ const McpBridge = (() => {
   /** Compact row for list_orders — enough to reason about without the full record. */
   function compactRow(record) {
     const summary = record.summary || {};
-    const items = Array.isArray(summary.items) ? summary.items : [];
+    const invoice = Number(record.invoice?.schemaVersion || 0) >= CONSTANTS.ORDER_SCHEMA_VERSION ? record.invoice : null;
+    const items = Array.isArray(invoice?.items) ? invoice.items : Array.isArray(summary.items) ? summary.items : [];
+    const total = [invoice?.orderTotal, summary.orderTotal, summary.total, record.orderTotal]
+      .find(value => parseMoneyCents(value) !== null);
     return {
       orderNumber: record.orderNumber,
       orderDate: normalizeDashboardDate(record.orderDate || summary.orderDate) || null,
       title: record.title || summary.title || null,
-      total: summary.orderTotal ?? summary.total ?? null,
+      total: total ?? null,
       itemCount: items.length || summary.itemCount || null,
       hasInvoice: Boolean(record.invoice),
       accountKey: record.accountKey || null,
@@ -570,7 +573,7 @@ const McpBridge = (() => {
 
   async function handleCall(message) {
     const { id, tool, args } = message;
-    const handler = TOOLS[tool];
+    const handler = Object.prototype.hasOwnProperty.call(TOOLS, tool) ? TOOLS[tool] : null;
     if (!handler) {
       send({ type: 'result', id, ok: false, error: `Unknown tool "${tool}"` });
       return;
@@ -631,6 +634,7 @@ const McpBridge = (() => {
     state.socket = socket;
 
     socket.onopen = () => {
+      if (state.socket !== socket) return;
       send({
         type: 'hello',
         token: state.config.token,
@@ -642,6 +646,7 @@ const McpBridge = (() => {
     };
 
     socket.onmessage = (event) => {
+      if (state.socket !== socket) return;
       let message;
       try {
         message = JSON.parse(String(event.data));
@@ -652,13 +657,14 @@ const McpBridge = (() => {
       if (message.type === 'hello_ok') {
         state.paired = true;
         console.log('[mcp-bridge] connected to local MCP relay on port', state.config.port);
-      } else if (message.type === 'call') {
+      } else if (message.type === 'call' && state.paired) {
         handleCall(message);
       }
       // 'pong' and anything unknown: nothing to do.
     };
 
     socket.onclose = () => {
+      if (state.socket !== socket) return;
       const wasPaired = state.paired;
       disconnect();
       if (wasPaired) console.log('[mcp-bridge] relay disconnected');

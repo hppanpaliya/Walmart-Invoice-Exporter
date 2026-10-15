@@ -37,6 +37,63 @@ test('bridge stays dormant by default: disabled, no socket, no pairing', () => {
   assert.equal(state.paired, false);
 });
 
+test('bridge summaries prefer current invoices and preserve explicit zero totals', async () => {
+  const sandbox = loadBridge();
+  const db = evalIn(sandbox, 'OrderDb');
+  const tools = evalIn(sandbox, 'McpBridge.TOOLS');
+  await db.putSummaries({ o1: summ('2026-04-01', { orderTotal: '$99.00' }) }, {});
+  await db.putInvoice('o1', { schemaVersion: 3, orderTotal: 0, items: [{ productName: 'Test', price: 0 }] });
+  const result = await tools.spending_summary();
+  assert.equal(result.totalSpent, 0);
+  assert.equal((await tools.list_orders()).orders[0].total, 0);
+});
+
+async function socketBridge() {
+  const s = loadSandbox({ scripts: ['utils.js', 'orderdb.js'] });
+  const sockets = [];
+  let changed;
+  s.setInterval = () => 1;
+  s.clearInterval = () => {};
+  s.chrome.storage.onChanged.addListener = fn => { changed = fn; };
+  s.WebSocket = class {
+    static OPEN = 1;
+    constructor() { this.readyState = 1; this.sent = []; sockets.push(this); }
+    send(value) { this.sent.push(JSON.parse(value)); }
+    close() {}
+  };
+  const keys = evalIn(s, 'CONSTANTS.STORAGE_KEYS');
+  s.chrome.storage.local.set({ [keys.MCP_BRIDGE_ENABLED]: true, [keys.MCP_BRIDGE_TOKEN]: 'test-token' });
+  s.importScripts('mcp-bridge.js');
+  await new Promise(setImmediate);
+  return { s, sockets, keys, changed };
+}
+
+test('relay calls require pairing and only registered own tools can run', async () => {
+  const { sockets } = await socketBridge();
+  const socket = sockets[0];
+  socket.onopen();
+  socket.onmessage({ data: JSON.stringify({ type: 'call', id: 'early', tool: 'ping' }) });
+  await new Promise(setImmediate);
+  assert.ok(!socket.sent.some(m => m.type === 'result'), 'unpaired calls cannot access saved data');
+  socket.onmessage({ data: JSON.stringify({ type: 'hello_ok' }) });
+  socket.onmessage({ data: JSON.stringify({ type: 'call', id: 'ready', tool: 'ping' }) });
+  socket.onmessage({ data: JSON.stringify({ type: 'call', id: 'inherited', tool: 'constructor' }) });
+  await new Promise(setImmediate);
+  assert.equal(socket.sent.find(m => m.id === 'ready').ok, true);
+  assert.match(socket.sent.find(m => m.id === 'inherited').error, /Unknown tool/);
+});
+
+test('a closed socket from an older configuration cannot disconnect its replacement', async () => {
+  const { s, sockets, keys, changed } = await socketBridge();
+  const oldSocket = sockets[0];
+  s.chrome.storage.local.set({ [keys.MCP_BRIDGE_TOKEN]: 'replacement-token' });
+  changed({ [keys.MCP_BRIDGE_TOKEN]: { newValue: 'replacement-token' } }, 'local');
+  await new Promise(setImmediate);
+  const replacement = sockets[1];
+  oldSocket.onclose();
+  assert.equal(evalIn(s, 'McpBridge._state.socket'), replacement);
+});
+
 test('clampPort falls back to the default for junk and out-of-range values', () => {
   const sandbox = loadBridge();
   const clampPort = evalIn(sandbox, 'McpBridge.clampPort');
