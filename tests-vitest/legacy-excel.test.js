@@ -34,6 +34,8 @@ const LEGACY_MULTI_ORDER_HEADERS = [
   'Tax', 'Tip', 'Order Total', 'Delivery Status', 'Product Link',
   'Seller(s)', 'Fulfillment', 'Delivered Date', 'Payment Split',
   'Refund', 'Donations', 'Receipt Barcode', 'Order Type',
+  'Promo Code Amount', '3 Hours or Less Fee', 'Returned 3 Hours or Less Fee',
+  'Other Adjustments', 'Other Adjustments Amount',
 ];
 
 function loadExtractedOrder() {
@@ -101,7 +103,7 @@ test('legacy: convertMultipleOrdersToXlsxLegacy is a SINGLE "Walmart Orders" she
   assert.deepEqual(workbook.worksheets.map((w) => w.name), ['Walmart Orders'], 'exactly one sheet, not Orders+Items');
 
   const sheet = workbook.getWorksheet('Walmart Orders');
-  assert.equal(LEGACY_MULTI_ORDER_HEADERS.length, 28, 'legacy workbook has no tracking-number column');
+  assert.ok(!LEGACY_MULTI_ORDER_HEADERS.includes('Tracking Numbers'), 'legacy workbook has no tracking-number column');
   assert.deepEqual(sheet.getRow(1).values.slice(1), LEGACY_MULTI_ORDER_HEADERS);
 
   // One row per ITEM (not per order) — order fields repeat on every row,
@@ -117,7 +119,7 @@ test('legacy: convertMultipleOrdersToXlsxLegacy is a SINGLE "Walmart Orders" she
     { text: 'Great Value Milk 1 Gallon', hyperlink: 'https://www.walmart.com/ip/10450114' },
     'Walmart.com; Acme Marketplace LLC', 'DELIVERY, SHIPPING', 'Jul 02, 2026',
     'VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84',
-    3.98, 1, { text: 'Barcode', hyperlink: 'https://receipts-query.edge.walmart.com/barcode?data=sanitized' }, 'GLASS',
+    3.98, 1, { text: 'Barcode', hyperlink: 'https://receipts-query.edge.walmart.com/barcode?data=sanitized' }, 'GLASS', '', '', '', '', '',
   ]);
 
   // Order-level fields (address, payment, subtotal...) repeat unchanged on
@@ -189,10 +191,10 @@ test('legacy: configureMultipleOrdersColumnsLegacy appends an optional Thumbnail
   // drop the optional column.
   const withThumbnails = {};
   sandbox.configureMultipleOrdersColumnsLegacy(withThumbnails, { includeThumbnails: true });
-  assert.equal(withThumbnails.columns.length, 29, '28 legacy columns + optional Thumbnail column');
-  assert.equal(withThumbnails.columns[28].header, 'Thumbnail');
+  assert.equal(withThumbnails.columns.length, LEGACY_MULTI_ORDER_HEADERS.length + 1, 'legacy columns plus optional Thumbnail');
+  assert.equal(withThumbnails.columns[LEGACY_MULTI_ORDER_HEADERS.length].header, 'Thumbnail');
 
   const withoutThumbnails = {};
   sandbox.configureMultipleOrdersColumnsLegacy(withoutThumbnails, { includeThumbnails: false });
-  assert.equal(withoutThumbnails.columns.length, 28, 'Thumbnail column omitted by default');
+  assert.equal(withoutThumbnails.columns.length, LEGACY_MULTI_ORDER_HEADERS.length, 'Thumbnail column omitted by default');
 });

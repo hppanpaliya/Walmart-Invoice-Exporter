@@ -103,3 +103,46 @@ test('single and bulk exports omit redundant or zero adjustment rows and cells',
   assert.equal(values[headers.indexOf('Other Adjustments')], '');
   assert.equal(values[headers.indexOf('Other Adjustments Amount')], '');
 });
+
+test('HTML and PDF receipts preserve all financial adjustments and explicit zero totals', () => {
+  const s = loadSandbox({ scripts: ['pdflite.js', 'utils.js'] });
+  const html = s.buildReceiptArticle(invoice);
+  const pdf = Buffer.from(s.buildReceiptPdf(invoice)).toString('latin1');
+  for (const label of ['Promo Code Amount', '3 Hours or Less Fee', 'Returned 3 Hours or Less Fee', 'Eco handling adjustment']) {
+    assert.ok(html.includes(label), `HTML includes ${label}`);
+    assert.ok(pdf.includes(label), `PDF includes ${label}`);
+  }
+  const zero = { orderNumber: '42', items: [], orderTotal: 0, tax: 0 };
+  assert.match(s.buildReceiptArticle(zero), /Order total/);
+  assert.match(Buffer.from(s.buildReceiptPdf(zero)).toString('latin1'), /Order total/);
+});
+
+test('legacy bulk Excel appends adjustment columns without shifting its original columns', async () => {
+  const s = loadSandbox({ scripts: ['utils.js'] });
+  const downloads = captureDownloads(s);
+  await s.convertMultipleOrdersToXlsxLegacy([{ ...invoice, items: [{ productName: 'Test item', quantity: 1, price: '$20.00' }] }], ExcelJS);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(blobBuffer(downloads[0].blob));
+  const sheet = workbook.worksheets[0];
+  const headers = sheet.getRow(1).values;
+  assert.equal(headers[18], 'Order Total');
+  for (const [label, amount] of [['Promo Code Amount', -2], ['3 Hours or Less Fee', 2.95], ['Returned 3 Hours or Less Fee', -2.95], ['Other Adjustments Amount', 0.5]]) {
+    assert.equal(sheet.getRow(2).getCell(headers.indexOf(label)).value, amount, label);
+  }
+});
+
+test('single Excel formats every additional fee as currency', async () => {
+  const s = loadSandbox({ scripts: ['utils.js'] });
+  const downloads = captureDownloads(s);
+  await s.convertSingleOrderToXlsx(invoice, ExcelJS);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(blobBuffer(downloads[0].blob));
+  const expected = new Set(['Promo Code Amount', '3 Hours or Less Fee', 'Returned 3 Hours or Less Fee']);
+  workbook.worksheets[0].eachRow(row => {
+    if (expected.has(row.getCell(1).value)) {
+      assert.equal(row.getCell(2).numFmt, '$#,##0.00');
+      expected.delete(row.getCell(1).value);
+    }
+  });
+  assert.equal(expected.size, 0);
+});

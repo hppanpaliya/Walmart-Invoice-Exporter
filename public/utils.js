@@ -217,6 +217,7 @@ function configureOrderSummaryColumns(worksheet) {
     { header: 'Driver Tip', key: 'driverTip', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Order Total', key: 'orderTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Order Type', key: 'orderType', width: 14, style: { alignment: { horizontal: "center" } } },
+
   ];
 }
 
@@ -462,8 +463,8 @@ function addOrderSummary(worksheet, orderDetails) {
     ['Payment Split', formatPaymentSplit(orderDetails)],
     [
       'Receipt Barcode',
-      orderDetails.barcodeImageUrl
-        ? { text: 'Barcode', hyperlink: orderDetails.barcodeImageUrl }
+      safeExportUrl(orderDetails.barcodeImageUrl)
+        ? { text: 'Barcode', hyperlink: safeExportUrl(orderDetails.barcodeImageUrl) }
         : '',
     ],
     ['Order Type', formatOrderType(orderDetails.orderType, orderDetails.isInStore)],
@@ -799,8 +800,8 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
         .filter(Boolean)
         .join(', ') || orderDetails.address || '',
       deliveryInstructions: orderDetails.deliveryInstructions || '',
-      barcodeLink: orderDetails.barcodeImageUrl
-        ? { text: 'Barcode', hyperlink: orderDetails.barcodeImageUrl }
+      barcodeLink: safeExportUrl(orderDetails.barcodeImageUrl)
+        ? { text: 'Barcode', hyperlink: safeExportUrl(orderDetails.barcodeImageUrl) }
         : '',
     });
   });
@@ -913,6 +914,11 @@ function configureMultipleOrdersColumnsLegacy(worksheet, options = {}) {
     { header: 'Donations', key: 'donations', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Receipt Barcode', key: 'barcodeLink', width: 16, style: { alignment: { horizontal: "center" } } },
     { header: 'Order Type', key: 'orderType', width: 14, style: { alignment: { horizontal: "center" } } },
+    { header: 'Promo Code Amount', key: 'promoCodeAmount', width: 16, style: { numFmt: '$#,##0.00' } },
+    { header: '3 Hours or Less Fee', key: 'threeHoursOrLessFee', width: 18, style: { numFmt: '$#,##0.00' } },
+    { header: 'Returned 3 Hours or Less Fee', key: 'returnedThreeHoursOrLessFee', width: 26, style: { numFmt: '$#,##0.00' } },
+    { header: 'Other Adjustments', key: 'financialAdjustments', width: 38 },
+    { header: 'Other Adjustments Amount', key: 'financialAdjustmentsAmount', width: 22, style: { numFmt: '$#,##0.00' } },
   ];
   if (options.includeThumbnails) {
     columns.push({ header: 'Thumbnail', key: 'thumbnail', width: 9, style: { alignment: { horizontal: "center" } } });
@@ -958,11 +964,16 @@ function addMultipleOrderItemsToWorksheetLegacy(worksheet, items) {
       fulfillmentTypes: item.fulfillmentTypes || '',
       deliveredDate: item.deliveredDate || '',
       paymentSplit: item.paymentSplit || '',
+      promoCodeAmount: excelNumber(item.promoCodeAmount),
+      threeHoursOrLessFee: excelNumber(item.threeHoursOrLessFee),
+      returnedThreeHoursOrLessFee: excelNumber(item.returnedThreeHoursOrLessFee),
+      financialAdjustments: formatFinancialAdjustments(item.financialAdjustments),
+      financialAdjustmentsAmount: financialAdjustmentsTotal(item.financialAdjustments),
       // Blank (not $0.00) when the order had no refund or donation.
       refund: item.refund ? parseNumericValue(item.refund) : '',
       donations: item.donations ? parseNumericValue(item.donations) : '',
-      barcodeLink: item.barcodeImageUrl
-        ? { text: 'Barcode', hyperlink: item.barcodeImageUrl }
+      barcodeLink: safeExportUrl(item.barcodeImageUrl)
+        ? { text: 'Barcode', hyperlink: safeExportUrl(item.barcodeImageUrl) }
         : '',
       orderType: formatOrderType(item.orderType, item.isInStore),
     });
@@ -1054,6 +1065,10 @@ async function convertMultipleOrdersToXlsxLegacy(ordersData, ExcelJS, filename =
         fulfillmentTypes: orderDetails.fulfillmentTypes || '',
         deliveredDate: orderDetails.deliveredDate || '',
         paymentSplit: formatPaymentSplit(orderDetails),
+        promoCodeAmount: orderDetails.promoCodeAmount,
+        threeHoursOrLessFee: orderDetails.threeHoursOrLessFee,
+        returnedThreeHoursOrLessFee: orderDetails.returnedThreeHoursOrLessFee,
+        financialAdjustments: orderDetails.financialAdjustments,
         orderType: orderDetails.orderType || '',
         isInStore: Boolean(orderDetails.isInStore),
       });
@@ -1460,7 +1475,7 @@ ${bodyHtml}
 
 /** Render one "label / amount" totals row, skipping empty values. */
 function receiptTotalsRow(label, value, extraClass = '') {
-  if (!value) return '';
+  if (value === '' || value === null || value === undefined) return '';
   return `<tr${extraClass ? ` class="${extraClass}"` : ''}><td>${escapeHtml(label)}</td><td class="amt">${escapeHtml(value)}</td></tr>`;
 }
 
@@ -1483,14 +1498,15 @@ function buildReceiptArticle(order) {
     )
     .join('');
 
-  const barcodeHtml = order.barcodeImageUrl
-    ? `<img class="barcode" src="${escapeHtml(order.barcodeImageUrl)}" alt="Order receipt barcode">`
+  const barcodeUrl = safeExportUrl(order.barcodeImageUrl);
+  const barcodeHtml = barcodeUrl
+    ? `<img class="barcode" src="${escapeHtml(barcodeUrl)}" alt="Order receipt barcode">`
     : '';
 
   const metaLines = [
     order.address ? `Ship to: ${order.address}` : '',
     formatPaymentMethodDetails(order) ? `Payment: ${formatPaymentMethodDetails(order)}` : '',
-    order.paymentSplit ? `Charged: ${order.paymentSplit}` : '',
+    formatPaymentSplit(order) ? `Charged: ${formatPaymentSplit(order)}` : '',
     order.sellers ? `Sold by: ${order.sellers}` : '',
     order.trackingNumbers ? `Tracking: ${order.trackingNumbers}` : '',
     order.deliveredDate ? `Delivered: ${order.deliveredDate}` : '',
@@ -1512,13 +1528,17 @@ function buildReceiptArticle(order) {
   <table class="totals">
     ${receiptTotalsRow('Subtotal (before savings)', order.subtotalBeforeSavings)}
     ${receiptTotalsRow('Savings', order.savings)}
+    ${receiptTotalsRow('Promo Code Amount', order.promoCodeAmount)}
     ${receiptTotalsRow('Subtotal', order.orderSubtotal)}
     ${receiptTotalsRow('Delivery charges', order.deliveryCharges)}
+    ${receiptTotalsRow('3 Hours or Less Fee', order.threeHoursOrLessFee)}
+    ${receiptTotalsRow('Returned 3 Hours or Less Fee', order.returnedThreeHoursOrLessFee)}
     ${receiptTotalsRow('Bag fee', order.bagFee)}
     ${receiptTotalsRow('Tax', order.tax)}
     ${receiptTotalsRow('Tip', order.tip)}
     ${receiptTotalsRow('Refund', order.refund)}
     ${receiptTotalsRow('Donations', order.donations)}
+    ${otherAdjustmentRows(order.financialAdjustments).map(([label, amount]) => receiptTotalsRow(label, `$${amount.toFixed(2)}`)).join('')}
     ${receiptTotalsRow('Order total', order.orderTotal, 'grand')}
   </table>
   <div class="meta">${metaLines}</div>
@@ -1605,8 +1625,11 @@ const PDF_ITEM_COLUMNS = {
 const PDF_TOTALS_ROWS = [
   ['Subtotal (before savings)', 'subtotalBeforeSavings'],
   ['Savings', 'savings'],
+  ['Promo Code Amount', 'promoCodeAmount'],
   ['Subtotal', 'orderSubtotal'],
   ['Delivery charges', 'deliveryCharges'],
+  ['3 Hours or Less Fee', 'threeHoursOrLessFee'],
+  ['Returned 3 Hours or Less Fee', 'returnedThreeHoursOrLessFee'],
   ['Bag fee', 'bagFee'],
   ['Tax', 'tax'],
   ['Tip', 'tip'],
@@ -1721,14 +1744,26 @@ function drawPdfTotals(doc, cursor, order) {
   const labelRightX = 470;
   const valueRightX = PDF_LAYOUT.RIGHT_EDGE;
   cursor.y += 6;
-  PDF_TOTALS_ROWS.forEach(([label, key]) => {
-    if (!order[key]) return;
-    cursor.ensureRoom(PDF_LAYOUT.ROW_HEIGHT);
-    doc.text(label, labelRightX, cursor.y, { size, align: 'right' });
-    doc.text(String(order[key]), valueRightX, cursor.y, { size, align: 'right' });
-    cursor.y += PDF_LAYOUT.ROW_HEIGHT;
+  const totals = PDF_TOTALS_ROWS.map(([label, key]) => [label, order[key]])
+    .concat(otherAdjustmentRows(order.financialAdjustments).map(([label, amount]) => [label, `$${amount.toFixed(2)}`]));
+  totals.forEach(([label, value]) => {
+    if (value === '' || value === null || value === undefined) return;
+    // Keep long adjustment descriptions readable without overlapping amounts.
+    let remaining = label;
+    let first = true;
+    while (remaining) {
+      let length = 0;
+      while (length < remaining.length && PdfLite.textWidth(remaining.slice(0, length + 1), size, false) <= labelRightX - PDF_LAYOUT.MARGIN_X - 8) length++;
+      if (length < remaining.length) length = remaining.lastIndexOf(' ', length) > 0 ? remaining.lastIndexOf(' ', length) : Math.max(1, length);
+      cursor.ensureRoom(PDF_LAYOUT.ROW_HEIGHT);
+      doc.text(remaining.slice(0, length), labelRightX, cursor.y, { size, align: 'right' });
+      if (first) doc.text(String(value), valueRightX, cursor.y, { size, align: 'right' });
+      first = false;
+      remaining = remaining.slice(length).trim();
+      cursor.y += PDF_LAYOUT.ROW_HEIGHT;
+    }
   });
-  if (order.orderTotal) {
+  if (order.orderTotal !== '' && order.orderTotal !== null && order.orderTotal !== undefined) {
     cursor.ensureRoom(PDF_LAYOUT.ROW_HEIGHT);
     doc.line(360, cursor.y - 9, valueRightX, cursor.y - 9, { width: 1 });
     doc.text('Order total', labelRightX, cursor.y, { size: 10, bold: true, align: 'right' });
@@ -1743,7 +1778,7 @@ function drawPdfMetaLines(doc, cursor, order) {
   const metaLines = [
     order.address ? `Ship to: ${order.address}` : '',
     payment ? `Payment: ${payment}` : '',
-    order.paymentSplit ? `Charged: ${order.paymentSplit}` : '',
+    formatPaymentSplit(order) ? `Charged: ${formatPaymentSplit(order)}` : '',
     order.sellers ? `Sold by: ${order.sellers}` : '',
     order.trackingNumbers ? `Tracking: ${order.trackingNumbers}` : '',
     order.deliveredDate ? `Delivered: ${order.deliveredDate}` : '',
