@@ -12,6 +12,8 @@
     <link rel="stylesheet" href="/view-trends.css">
     <link rel="stylesheet" href="/view-review.css">
     <link rel="stylesheet" href="/view-extras.css">
+    <link rel="stylesheet" href="/view-categories.css">
+    <link rel="stylesheet" href="/view-missed.css">
     <!-- Same load order as sidepanel.html for the shared data layer:
          utils.js defines CONSTANTS/escapeHtml/row-model helpers,
          orderdb.js the IndexedDB store; then the provider registry +
@@ -212,6 +214,8 @@
                 <section class="view-slot" id="viewItems" data-view="items"></section>
                 <section class="view-slot" id="viewTrends" data-view="trends"></section>
                 <section class="view-slot" id="viewReview" data-view="review"></section>
+                <section class="view-slot" id="viewCategories" data-view="categories"></section>
+                <section class="view-slot" id="viewMissed" data-view="missed"></section>
             </main>
 
             <footer>
@@ -233,10 +237,14 @@
          pure computation (no DOM) shared with the unit tests. -->
     <script src="/dashboard.itemstats.js"></script>
     <script src="/dashboard.trendstats.js"></script>
+    <script src="/dashboard.categorystats.js"></script>
+    <script src="/dashboard.missedstats.js"></script>
     <script src="/dashboard.view-items.js"></script>
     <script src="/dashboard.view-trends.js"></script>
     <script src="/dashboard.view-review.js"></script>
     <script src="/dashboard.view-extras.js"></script>
+    <script src="/dashboard.view-categories.js"></script>
+    <script src="/dashboard.view-missed.js"></script>
 </body>
 
 </html>

@@ -207,8 +207,8 @@
   /* ------------------------------------------------------------------ *
    * View registry + hash router (2026-07-19)
    *
-   * The dashboard is a multi-view app: #/overview, #/items, #/trends,
-   * #/orders, #/review. The Overview and Orders views are rendered by this
+   * The dashboard is a multi-view app: #/overview, #/items, #/categories,
+   * #/trends, #/orders, #/missed, #/review. The Overview and Orders views are rendered by this
    * core file; the others live in their own dashboard.view-*.js modules
    * that call WIEDash.registerView(id, {render}) after this script loads.
    * Elements opt into views with a space-separated data-view attribute —
@@ -225,8 +225,10 @@
   const NAV_VIEWS = [
     { id: 'overview', label: 'Overview', icon: navIcon('<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>') },
     { id: 'items', label: 'Items', icon: navIcon('<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>') },
+    { id: 'categories', label: 'Categories', icon: navIcon('<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>') },
     { id: 'trends', label: 'Trends', icon: navIcon('<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>') },
     { id: 'orders', label: 'Orders', icon: navIcon('<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M14 8H8"/><path d="M16 12H8"/><path d="M13 16H8"/>') },
+    { id: 'missed', label: 'Missed items', icon: navIcon('<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>') },
     { id: 'review', label: 'Year in review', icon: navIcon('<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/>') },
   ];
 

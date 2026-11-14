@@ -24,7 +24,7 @@ const ORDER_NUMBER = '200010000000042';
 function sampleInvoice(overrides = {}) {
   return {
     schemaVersion: 3,
-    walmartExtractionVersion: 5,
+    walmartExtractionVersion: 6,
     orderNumber: ORDER_NUMBER,
     orderTotal: '$28.11',
     orderDate: '2026-06-01T00:00:00.000Z',
@@ -81,7 +81,7 @@ test('fetchOrderData: a saved Walmart invoice without the current extraction mar
 
   assert.equal(calls.length, 1, 'legacy saved invoice must hit the Walmart extractor');
   assert.equal(data.orderTotal, '$31.25');
-  assert.equal(stored.invoice.walmartExtractionVersion, 5, 'successful refresh stores the current extractor marker');
+  assert.equal(stored.invoice.walmartExtractionVersion, 6, 'successful refresh stores the current extractor marker');
 });
 
 test('fetchOrderData: re-exporting the SAME order twice only opens a tab once (the second call hits the DB)', async () => {
