@@ -251,3 +251,132 @@ test('Canada marks a fully canceled order as having no charged items without a m
   assert.equal(data.noChargedItems, true);
   assert.ok(!data.extractionWarnings.some((warning) => /No items/.test(warning)));
 });
+
+// ---- Optional details (best effort: never required, never fatal) ----
+
+function orderNodeWith(groups, extraOrderFields = {}) {
+  return {
+    props: { pageProps: { initialData: { data: { order: {
+      id: '200010000000077',
+      type: 'GLASS',
+      orderDate: '2026-09-02T12:00:00.000Z',
+      priceDetails: { subTotal: money(20), grandTotal: money(21.65) },
+      groups_2101: groups,
+      ...extraOrderFields,
+    } } } } },
+  };
+}
+
+test('optional line details are exported when Walmart sends them and left off when it does not', () => {
+  const rich = {
+    ...item(1, 'Peanut Butter, 16 oz', 2, 7.96),
+    isReturnable: true,
+    productInfo: { name: 'Peanut Butter, 16 oz', usItemId: '91', categoryPathId: '0:976759:976794:7433209' },
+    priceInfo: {
+      linePrice: money(7.96),
+      itemPrice: { value: 3.98, displayValue: '$3.98 ea' },
+      unitPrice: { value: 0.249, displayValue: '24.9¢/oz' },
+      strikethroughPrice: money(4.48),
+    },
+    discounts: [{ label: '$1.00 from savings' }],
+  };
+  const weighed = {
+    ...item(2, 'Bananas', 1, 1.24),
+    priceInfo: { linePrice: money(1.24), additionalLines: [{ name: 'Final weight', value: '2.3 lbs' }] },
+  };
+  const plain = item(3, 'Paper Towels', 1, 5.0);
+  const sandbox = loadSandbox({ nextData: orderNodeWith([{
+    status: { statusType: 'DELIVERED' },
+    categories: [
+      { type: 'REGULAR', items: [rich, plain] },
+      { type: 'WEIGHT_ADJUSTED', items: [weighed] },
+      { type: 'SUBSTITUTED', items: [item(4, 'Oat Milk', 1, 4.5)] },
+    ],
+  }]) });
+  const items = sandbox.extractOrderDataFromNextData().items;
+  const byName = (name) => items.find((entry) => entry.productName === name);
+
+  const butter = byName('Peanut Butter, 16 oz');
+  assert.equal(butter.price, '$7.96', 'the line total is unchanged');
+  assert.equal(butter.unitPrice, '$3.98');
+  assert.equal(butter.comparisonPrice, '24.9¢/oz');
+  assert.equal(butter.wasPrice, '$4.48');
+  assert.equal(butter.discount, '$1.00 from savings');
+  assert.equal(butter.categoryPathId, '0:976759:976794:7433209');
+  assert.equal(butter.returnable, true);
+  assert.equal(butter.fulfillment, undefined, 'a regular line carries no fulfillment note');
+
+  assert.equal(byName('Bananas').fulfillment, 'Weight adjusted');
+  assert.equal(byName('Bananas').priceNotes, 'Final weight: 2.3 lbs');
+  assert.equal(byName('Oat Milk').fulfillment, 'Substituted');
+
+  // A line with none of the optional data keeps exactly the historic fields.
+  assert.deepEqual(Object.keys(byName('Paper Towels')).sort(),
+    ['deliveryStatus', 'price', 'productLink', 'productName', 'quantity', 'thumbnailUrl', 'usItemId']);
+});
+
+test('unavailable and canceled lines are reported apart from the charged lines', () => {
+  const categories = [
+    { type: 'REGULAR', items: [item(1, 'Milk, 1 Gallon', 1, 3.97)] },
+    { type: 'UNAVAILABLE', items: [item(2, 'String Cheese, 12-Count', 2, 9.88)] },
+    { type: 'CANCELED', items: [item(3, 'Trash Bags', 1, 6.5)] },
+  ];
+  const sandbox = loadSandbox({ nextData: orderNodeWith([{
+    status: { statusType: 'DELIVERED' },
+    categories,
+    subGroups: [{ categories }], // the duplicate copy must not double anything
+  }]) });
+  const data = sandbox.extractOrderDataFromNextData();
+  assert.deepEqual(Array.from(data.items, (entry) => entry.productName), ['Milk, 1 Gallon'], 'totals still count charged lines only');
+  assert.deepEqual(JSON.parse(JSON.stringify(data.unfulfilledItems)), [
+    { productName: 'String Cheese, 12-Count', quantity: '2', reason: 'Unavailable', price: '$9.88', productLink: 'https://www.walmart.com/ip/92', usItemId: '92' },
+    { productName: 'Trash Bags', quantity: '1', reason: 'Canceled', price: '$6.50', productLink: 'https://www.walmart.com/ip/93', usItemId: '93' },
+  ]);
+  assert.equal(data.orderStatus, 'Delivered');
+});
+
+test('order-level details: status, late delivery, store and return window', () => {
+  const delivered = { status: { statusType: 'DELIVERED', wasDelayed: true }, store: { name: 'Springfield Supercenter' },
+    returnEligibilityMessage: 'Return eligible until Sun, Jan 10', categories: [{ type: 'REGULAR', items: [item(1, 'Milk', 1, 3.97)] }] };
+  const canceled = { status: { statusType: 'CANCELED', wasDelayed: true }, categories: [{ type: 'CANCELED', items: [item(2, 'Eggs', 1, 2.5)] }] };
+
+  const mixed = loadSandbox({ nextData: orderNodeWith([canceled, delivered]) }).extractOrderDataFromNextData();
+  assert.equal(mixed.orderStatus, 'Partly canceled');
+  assert.equal(mixed.wasDelayed, true);
+  assert.equal(mixed.storeName, 'Springfield Supercenter');
+  assert.equal(mixed.returnWindow, 'Return eligible until Sun, Jan 10');
+
+  const allCanceled = loadSandbox({ nextData: orderNodeWith([canceled]) }).extractOrderDataFromNextData();
+  assert.equal(allCanceled.orderStatus, 'Canceled');
+  assert.equal(allCanceled.noChargedItems, true);
+  assert.equal(allCanceled.wasDelayed, undefined, 'a canceled group is not a late delivery');
+  assert.equal(allCanceled.unfulfilledItems.length, 1);
+
+  const inProgress = loadSandbox({ nextData: orderNodeWith([{ status: { statusType: 'IN_PROGRESS' }, categories: [{ type: 'REGULAR', items: [item(1, 'Milk', 1, 3.97)] }] }]) })
+    .extractOrderDataFromNextData();
+  assert.equal(inProgress.orderStatus, 'In progress');
+  assert.equal('wasDelayed' in inProgress, false);
+  assert.equal('unfulfilledItems' in inProgress, false);
+});
+
+test('malformed optional data never fails the order or its lines', () => {
+  const odd = {
+    ...item(1, 'Milk, 1 Gallon', 1, 3.97),
+    isReturnable: 'yes',
+    productInfo: { name: 'Milk, 1 Gallon', usItemId: '91', categoryPathId: { nested: true } },
+    priceInfo: { linePrice: money(3.97), itemPrice: 42, unitPrice: null, strikethroughPrice: 'n/a', additionalLines: 'oops' },
+    discounts: 'none',
+  };
+  const sandbox = loadSandbox({ nextData: orderNodeWith([{
+    status: 'weird', store: 7, returnEligibilityMessage: { text: 1 },
+    categories: [{ type: 'REGULAR', items: [odd] }, { type: 'UNAVAILABLE', items: [null, { productInfo: {} }, 5] }],
+  }]) });
+  const data = sandbox.extractOrderDataFromNextData();
+  assert.equal(data.items.length, 1);
+  assert.equal(data.items[0].productName, 'Milk, 1 Gallon');
+  assert.equal(data.items[0].price, '$3.97');
+  assert.deepEqual(Object.keys(data.items[0]).sort(),
+    ['deliveryStatus', 'price', 'productLink', 'productName', 'quantity', 'thumbnailUrl', 'usItemId']);
+  assert.equal('unfulfilledItems' in data, false, 'unreadable unfulfilled lines are skipped, not invented');
+  assert.equal('orderStatus' in data, false);
+});
