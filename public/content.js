@@ -341,6 +341,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         ),
         [CONSTANTS.MESSAGES.BLOCK_IMAGES]: withImageBlocking(async () => ({ success: true })),
         [CONSTANTS.MESSAGES.GET_ORDER_DATA]: withImageBlocking(async () => {
+          // Walmart's human check can render in place of the order. Say so,
+          // rather than returning an empty invoice that reads as a site change.
+          if (/robot or human/i.test(document.title) || document.querySelector("#px-captcha")) {
+            return { data: null, challenge: true };
+          }
           // scrapeOrder() merges the __NEXT_DATA__ payload and DOM fallback
           // paths, so validating its output covers both extraction strategies.
           // await handles adapters whose scrapeOrder is async; Walmart's sync

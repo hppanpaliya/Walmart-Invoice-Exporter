@@ -5,6 +5,8 @@
 ## [8.8] - October 14, 2026
 
 ### Fixed
+- Recognize Walmart's "Robot or human?" check during downloads and saves. The run stops at the first check instead of failing every remaining order, keeps the orders already finished, explains what to do, and slows later runs in the same session. (#43)
+- "Retry failed" after "Save to library" now saves again instead of downloading files, and saving uses the timing settings from Settings.
 - Retry empty invoice responses on the same page before trying an alternate URL. Never infer a negative missing payment allocation.
 - Keep fully unavailable/canceled category items excluded in both US and Canada. Treat category labels without item arrays as summaries so redesigned invoices still read their rendered items.
 - Refresh older US and Canada extraction caches after these changes, preserving a visible stale-data warning if refresh fails.

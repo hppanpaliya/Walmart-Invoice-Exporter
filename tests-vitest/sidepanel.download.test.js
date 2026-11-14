@@ -417,3 +417,93 @@ test('Canada refreshes invoices saved before the charged-category fix using the 
   assert.ok(calls[0].url.startsWith('https://www.walmart.ca/orders/'));
   assert.equal(data.walmartExtractionVersion, 1);
 });
+
+// Walmart's human check (#43). It is a pause, not a broken order: the run must
+// stop instead of failing every remaining order against the challenge page.
+const SECOND_ORDER = '200010000000043';
+const THIRD_ORDER = '200010000000044';
+
+function captureBanners(sandbox) {
+  const banners = [];
+  const view = sandbox.window.Sidepanel.view;
+  for (const name of ['clearStatusBanner', 'showDownloadProgress', 'updateDownloadProgress', 'hideDownloadProgress', 'setButtonLoading', 'updateDownloadButtonsState']) view[name] = () => {};
+  view.renderStatusBanner = (id, options) => { banners.push({ id, ...options }); return null; };
+  return banners;
+}
+
+/** Answers each order page with its own invoice until `challengeFrom` loads have happened. */
+function mockChallengeAfter(sandbox, challengeFrom) {
+  sandbox.delay = async () => {};
+  const loads = [];
+  sandbox.chrome.tabs.sendMessage = (tabId, message, callback) => {
+    const action = message.method || message.action;
+    let response = {};
+    if (action === 'getOrderData') {
+      const url = sandbox.chrome.tabs._tabsById.get(tabId).url;
+      loads.push(url);
+      response = loads.length >= challengeFrom
+        ? { data: null, challenge: true }
+        : { data: sampleInvoice({ orderNumber: url.match(/orders\/(\d+)/)[1] }) };
+    }
+    if (callback) queueMicrotask(() => callback(response));
+  };
+  return loads;
+}
+
+test('human check: a /blocked redirect is reported as a challenge and the alternate URL is not tried', async () => {
+  const sandbox = loadDownloadSandbox();
+  sandbox.delay = async () => {};
+  const tabs = sandbox.chrome.tabs;
+  const originalCreate = tabs.create.bind(tabs);
+  tabs.create = (properties, callback) => originalCreate(properties, (tab) => {
+    tab.url = 'https://www.walmart.com/blocked?url=L29yZGVycw==&g=b';
+    callback(tab);
+  });
+
+  await assert.rejects(
+    () => fetchOrderData(sandbox, ORDER_NUMBER, { timeoutMs: 40, stabilizeDelayMs: 0 }),
+    (error) => error.walmartChallenge === true
+  );
+
+  assert.equal(tabs._calls.create.length, 1);
+  assert.equal(tabs._calls.update.length, 0, 'a second URL would only deepen the block');
+});
+
+for (const mode of ['multiple', 'single']) {
+  test(`human check: ${mode} export stops at the challenge, keeps finished orders and offers Retry without a failure report`, async () => {
+    const sandbox = loadDownloadSandbox();
+    const downloads = captureDownloads(sandbox);
+    const banners = captureBanners(sandbox);
+    sandbox.window.Sidepanel.state.app.exportFormat = 'csv';
+    sandbox.window.Sidepanel.state.app.orderSettleMs = 0;
+    const loads = mockChallengeAfter(sandbox, 2);
+
+    await sandbox.window.Sidepanel.download.downloadSelectedOrders(mode, [ORDER_NUMBER, SECOND_ORDER, THIRD_ORDER]);
+
+    assert.equal(loads.length, 2, 'the third order must not be requested once Walmart raised the check');
+    assert.ok(downloads.length > 0, 'the order finished before the check is still exported');
+    const result = banners.find((banner) => banner.id === 'downloadResultBanner');
+    assert.equal(result.variant, 'warning');
+    assert.match(result.message, /check that you are human/);
+    assert.match(result.message, /1 of 3 exported/);
+    assert.doesNotMatch(result.message, /\d+ failed/);
+    assert.match(result.actionHtml, /Retry failed/);
+    assert.equal(banners.some((banner) => banner.id === 'extractionWarning'), false, 'a challenge must never ask the user to file a report');
+    assert.equal(sandbox.window.Sidepanel.state.app.downloadInProgress, false);
+  });
+}
+
+test('human check: saving to the library stops at the challenge and stores only finished orders', async () => {
+  const sandbox = loadDownloadSandbox();
+  const banners = captureBanners(sandbox);
+  const OrderDb = evalIn(sandbox, 'OrderDb');
+  mockChallengeAfter(sandbox, 2);
+
+  await sandbox.window.Sidepanel.download.loadSelectedOrdersToDb([ORDER_NUMBER, SECOND_ORDER, THIRD_ORDER]);
+
+  const result = banners.find((banner) => banner.id === 'downloadResultBanner');
+  assert.equal(result.variant, 'warning');
+  assert.match(result.message, /1 of 3 saved/);
+  assert.ok((await OrderDb.getOrder(ORDER_NUMBER)).invoice);
+  assert.equal((await OrderDb.getOrder(SECOND_ORDER))?.invoice || null, null);
+});

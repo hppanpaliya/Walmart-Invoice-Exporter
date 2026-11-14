@@ -361,9 +361,44 @@
       return response.data;
     };
 
+    // Walmart answers a burst of page loads with its "Robot or human?" page
+    // (/blocked). That is a pause, not a site change or a broken order (#43):
+    // surface it as its own error so the run stops instead of failing every
+    // remaining order against the challenge page.
+    const isChallengeUrl = (value) => {
+      try {
+        const parsed = new URL(value);
+        return /(^|\.)walmart\.(com|ca)$/i.test(parsed.hostname) && /^\/blocked(\/|$)/.test(parsed.pathname);
+      } catch (error) {
+        return false;
+      }
+    };
+
+    const challengeError = (orderNumber) => {
+      const error = new Error(`Walmart asked for a human check while loading order #${orderNumber}`);
+      error.walmartChallenge = true;
+      return error;
+    };
+
+    const tabShowsChallenge = async (tabId) => {
+      try {
+        const live = await ChromeApi.tabsGet(tabId);
+        return isChallengeUrl((live && (live.pendingUrl || live.url)) || "");
+      } catch (error) {
+        return false;
+      }
+    };
+
     const fetchFromUrl = async (orderNumber, url, options = {}, providerId = null) => {
       const { timeoutMs = app.orderTimeoutMs, stabilizeDelayMs = app.orderSettleMs } = options;
-      const tab = await ensureTab(url, timeoutMs);
+      let tab;
+      try {
+        tab = await ensureTab(url, timeoutMs);
+      } catch (error) {
+        if (downloadTab && (await tabShowsChallenge(downloadTab.id))) throw challengeError(orderNumber);
+        throw error;
+      }
+      if (await tabShowsChallenge(tab.id)) throw challengeError(orderNumber);
 
       try {
         await ChromeApi.tabsSendMessage(tab.id, { action: CONSTANTS.MESSAGES.BLOCK_IMAGES });
@@ -374,21 +409,31 @@
       await delay(stabilizeDelayMs);
 
       let response;
-      for (let attempt = 0; attempt < 2; attempt++) {
-        response = await promiseWithTimeout(
-          ChromeApi.tabsSendMessage(tab.id, { method: CONSTANTS.MESSAGES.GET_ORDER_DATA }),
-          timeoutMs,
-          `Timeout getting data for order #${orderNumber}`
-        );
-        const problems = invoiceProblems(response?.data, orderNumber);
-        if (problems.length === 0) break;
-        if (attempt === 1) {
-          if (!response?.data) throw new Error(`No data received for order #${orderNumber}`);
-          throw new Error(`Incomplete invoice for order #${orderNumber}: ${problems.join(", ")}`);
+      try {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          response = await promiseWithTimeout(
+            ChromeApi.tabsSendMessage(tab.id, { method: CONSTANTS.MESSAGES.GET_ORDER_DATA }),
+            timeoutMs,
+            `Timeout getting data for order #${orderNumber}`
+          );
+          if (response?.challenge) throw challengeError(orderNumber);
+          const problems = invoiceProblems(response?.data, orderNumber);
+          if (problems.length === 0) break;
+          if (attempt === 1) {
+            if (!response?.data) throw new Error(`No data received for order #${orderNumber}`);
+            throw new Error(`Incomplete invoice for order #${orderNumber}: ${problems.join(", ")}`);
+          }
+          // Re-read the same page once: load-complete does not guarantee that
+          // Walmart has populated the invoice. A second miss tries the next URL.
+          await delay(Math.max(stabilizeDelayMs, CONSTANTS.TIMING.RETRY_DELAY));
         }
-        // Re-read the same page once: load-complete does not guarantee that
-        // Walmart has populated the invoice. A second miss tries the next URL.
-        await delay(Math.max(stabilizeDelayMs, CONSTANTS.TIMING.RETRY_DELAY));
+      } catch (error) {
+        // The challenge page has no content script, so it first shows up as a
+        // messaging failure or an empty read.
+        if (!error?.walmartChallenge && (await tabShowsChallenge(tab.id))) {
+          throw challengeError(orderNumber);
+        }
+        throw error;
       }
 
       // IndexedDB is the only durable store for invoices now (spec §4.1) —
@@ -449,11 +494,14 @@
       try {
         return await fetchFromUrl(orderNumber, primaryUrl, options, providerId);
       } catch (error) {
+        // A second URL would hit the same challenge and deepen the block.
+        if (error?.walmartChallenge) throw error;
         console.error(`Primary fetch failed for order #${orderNumber}:`, error);
         try {
           if (!fallbackUrl || fallbackUrl === primaryUrl) throw error;
           return await fetchFromUrl(orderNumber, fallbackUrl, options, providerId);
         } catch (fallbackError) {
+          if (fallbackError?.walmartChallenge) throw fallbackError;
           if (isUsableInvoiceData(storedInvoice, orderNumber)) {
             console.warn(
               `Both fetches failed for order #${orderNumber}; falling back to stale stored data`
@@ -527,6 +575,11 @@
    * @param {Function} [params.onProgress] - (current, total, orderNumber, actionText) => void
    * @returns {Promise<{failedOrders: string[], cancelled: boolean}>}
    */
+  // Doubles after each human check Walmart raises in this panel session, so a
+  // retried run does not repeat the pace that triggered it.
+  let challengePaceMultiplier = 1;
+  const MAX_CHALLENGE_PACE_MULTIPLIER = 8;
+
   async function runDownloadQueue({ selectedOrders, actionText, options, onOrder, errorPrefix, onProgress }) {
     const failedOrders = [];
 
@@ -543,14 +596,43 @@
       try {
         await onOrder(orderNumber, options);
       } catch (error) {
+        if (error?.walmartChallenge) {
+          console.warn(`${errorPrefix} #${orderNumber}: Walmart asked for a human check; stopping the run.`);
+          challengePaceMultiplier = Math.min(challengePaceMultiplier * 2, MAX_CHALLENGE_PACE_MULTIPLIER);
+          return {
+            failedOrders: failedOrders.concat(selectedOrders.slice(i)),
+            cancelled: false,
+            challenged: true,
+          };
+        }
         console.error(`${errorPrefix} #${orderNumber}:`, error);
         failedOrders.push(orderNumber);
       }
 
-      await delay(CONSTANTS.TIMING.RETRY_DELAY);
+      await delay(CONSTANTS.TIMING.RETRY_DELAY * challengePaceMultiplier);
     }
 
-    return { failedOrders, cancelled: false };
+    return { failedOrders, cancelled: false, challenged: false };
+  }
+
+  /**
+   * Result text for a run Walmart interrupted with its human check. The
+   * unfinished orders are not broken, so this explains what to do instead of
+   * listing them as failures.
+   * @param {number} done - orders finished before the check
+   * @param {number} total - orders in the run
+   * @param {string} verb - "exported" or "saved"
+   * @returns {string} safe HTML
+   */
+  function challengeResultMessage(done, total, verb) {
+    const adapter =
+      typeof ProviderRegistry !== "undefined" && app && app.provider ? ProviderRegistry.getById(app.provider) : null;
+    const ordersUrl = (adapter && adapter.ordersListUrl) || CONSTANTS.URLS.WALMART_ORDERS;
+    return (
+      `Walmart paused this run to check that you are human — ${done} of ${total} ${verb}. ` +
+      `<a href="${escapeHtml(ordersUrl)}" target="_blank" rel="noopener noreferrer">Open Walmart</a>, ` +
+      `complete the check, then press Retry failed. Your orders are fine; the rest will run more slowly.`
+    );
   }
 
   /** Currently selected export format (XLSX default). */
@@ -690,7 +772,7 @@
    * @param {string} params.message - Pre-escaped/safe HTML.
    * @param {string[]} [params.retryOrders] - When non-empty, adds "Retry failed".
    */
-  function showDownloadResultBanner({ variant, message, retryOrders }) {
+  function showDownloadResultBanner({ variant, message, retryOrders, onRetry }) {
     const hasRetry = Array.isArray(retryOrders) && retryOrders.length > 0;
     const banner = view.renderStatusBanner("downloadResultBanner", {
       variant,
@@ -705,7 +787,11 @@
       if (retryButton) {
         retryButton.addEventListener("click", () => {
           view.clearStatusBanner("downloadResultBanner");
-          downloadSelectedOrders(app && app.exportMode, retryOrders);
+          if (typeof onRetry === "function") {
+            onRetry(retryOrders);
+          } else {
+            downloadSelectedOrders(app && app.exportMode, retryOrders);
+          }
         });
       }
     }
@@ -786,7 +872,7 @@
       try {
         if (activeMode === CONSTANTS.EXPORT_MODES.SINGLE) {
           const collectedOrdersData = [];
-          const { failedOrders, cancelled } = await runDownloadQueue({
+          const { failedOrders, cancelled, challenged } = await runDownloadQueue({
             selectedOrders,
             actionText: CONSTANTS.TEXT.COLLECTING,
             options: { timeoutMs: app.orderTimeoutMs, stabilizeDelayMs: app.orderSettleMs },
@@ -833,13 +919,15 @@
             });
           } else {
             showDownloadResultBanner({
-              variant: "danger",
-              message: `${collectedOrdersData.length} of ${selectedOrders.length} exported — ${failedOrders.length} failed (${escapeHtml(formatFailedOrders(failedOrders))})`,
+              variant: challenged ? "warning" : "danger",
+              message: challenged
+                ? challengeResultMessage(collectedOrdersData.length, selectedOrders.length, "exported")
+                : `${collectedOrdersData.length} of ${selectedOrders.length} exported — ${failedOrders.length} failed (${escapeHtml(formatFailedOrders(failedOrders))})`,
               retryOrders: failedOrders,
             });
           }
         } else {
-          const { failedOrders, cancelled } = await runDownloadQueue({
+          const { failedOrders, cancelled, challenged } = await runDownloadQueue({
             selectedOrders,
             actionText: CONSTANTS.TEXT.DOWNLOADING,
             options: { timeoutMs: app.orderTimeoutMs, stabilizeDelayMs: app.orderSettleMs },
@@ -871,8 +959,10 @@
             });
           } else {
             showDownloadResultBanner({
-              variant: "danger",
-              message: `${succeeded} of ${selectedOrders.length} exported — ${failedOrders.length} failed (${escapeHtml(formatFailedOrders(failedOrders))})`,
+              variant: challenged ? "warning" : "danger",
+              message: challenged
+                ? challengeResultMessage(succeeded, selectedOrders.length, "exported")
+                : `${succeeded} of ${selectedOrders.length} exported — ${failedOrders.length} failed (${escapeHtml(formatFailedOrders(failedOrders))})`,
               retryOrders: failedOrders,
             });
           }
@@ -949,13 +1039,10 @@
       };
 
       try {
-        const { failedOrders, cancelled } = await runDownloadQueue({
+        const { failedOrders, cancelled, challenged } = await runDownloadQueue({
           selectedOrders,
           actionText: CONSTANTS.TEXT.COLLECTING,
-          options: {
-            timeoutMs: CONSTANTS.TIMING.COLLECTION_TIMEOUT,
-            stabilizeDelayMs: CONSTANTS.TIMING.PAGE_LOAD_WAIT,
-          },
+          options: { timeoutMs: app.orderTimeoutMs, stabilizeDelayMs: app.orderSettleMs },
           errorPrefix: "Failed to load data for order",
           onOrder: async (orderNumber, options) => {
             // fetchOrderData stores the invoice in IndexedDB as a side effect.
@@ -982,9 +1069,12 @@
           });
         } else {
           showDownloadResultBanner({
-            variant: "danger",
-            message: `${succeeded} of ${selectedOrders.length} saved — ${failedOrders.length} failed (${escapeHtml(formatFailedOrders(failedOrders))})`,
+            variant: challenged ? "warning" : "danger",
+            message: challenged
+              ? challengeResultMessage(succeeded, selectedOrders.length, "saved")
+              : `${succeeded} of ${selectedOrders.length} saved — ${failedOrders.length} failed (${escapeHtml(formatFailedOrders(failedOrders))})`,
             retryOrders: failedOrders,
+            onRetry: (orders) => loadSelectedOrdersToDb(orders),
           });
         }
       } catch (error) {
