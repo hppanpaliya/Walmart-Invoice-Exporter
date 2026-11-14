@@ -58,3 +58,8 @@ store-assets/video/tour-4k.mp4
 # never commit copies.
 _site/
 site/assets/
+
+# Local analysis output and session transcripts (never part of the extension)
+graphify-out/
+graphify-runs/
+session-ses_*.md
