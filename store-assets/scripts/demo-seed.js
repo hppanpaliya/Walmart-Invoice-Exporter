@@ -110,4 +110,31 @@ function buildDemoRecords({ months = 14, now = new Date() } = {}) {
   return records;
 }
 
-module.exports = { CATALOG, buildDemoRecords };
+// The tour's live-collection scene reads the mock order pages, whose
+// fixtures carry short placeholder item names. Show catalog names instead.
+const MOCK_ITEM_NAMES = {
+  'Great Value Milk 1 Gallon': 'Horizon Organic Whole Milk, Half Gallon',
+  'Bananas, each': 'Dole Bananas, each',
+  'AA Batteries 8-pack': 'Duracell Coppertop AA Batteries, 8-pack',
+  '=HYPERLINK Product "Deal", 2-pack': 'Kleenex Ultra Soft Facial Tissues, 2-pack',
+};
+
+/**
+ * Rename the mock fixtures' items in place (every string that is exactly a
+ * placeholder name, wherever it sits in the payload).
+ * @param {Object} payload - a private copy of a fixture payload
+ * @returns {Object} the same payload
+ */
+function withDemoItemNames(payload) {
+  const walk = (node) => {
+    if (!node || typeof node !== 'object') return;
+    for (const [key, value] of Object.entries(node)) {
+      if (typeof value === 'string' && Object.prototype.hasOwnProperty.call(MOCK_ITEM_NAMES, value)) node[key] = MOCK_ITEM_NAMES[value];
+      else walk(value);
+    }
+  };
+  walk(payload);
+  return payload;
+}
+
+module.exports = { CATALOG, buildDemoRecords, withDemoItemNames };

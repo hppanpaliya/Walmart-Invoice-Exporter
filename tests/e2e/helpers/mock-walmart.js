@@ -52,16 +52,16 @@ function generateCert() {
   return { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath), dir };
 }
 
-function handleRequest(req, res, detailHtml = null) {
+function handleRequest(req, res, detailHtml = null, transformPayload = (payload) => payload) {
   const url = new URL(req.url, 'https://www.walmart.com');
   if (/^\/orders\/\d+/.test(url.pathname)) {
     res.writeHead(200, { 'content-type': 'text/html' });
-    res.end(detailHtml || mockHtml('Order details', detailPayload));
+    res.end(detailHtml || mockHtml('Order details', transformPayload(JSON.parse(JSON.stringify(detailPayload)))));
     return;
   }
   if (url.pathname.startsWith('/orders')) {
     res.writeHead(200, { 'content-type': 'text/html' });
-    res.end(mockHtml('Purchase history', buildListPayload()));
+    res.end(mockHtml('Purchase history', transformPayload(buildListPayload())));
     return;
   }
   res.writeHead(200, { 'content-type': 'text/html' });
@@ -70,12 +70,16 @@ function handleRequest(req, res, detailHtml = null) {
 
 /**
  * Start the mock: HTTPS origin + CONNECT proxy.
+ * @param {Object} [options]
+ * @param {string} [options.detailHtml] - serve this HTML for every order page
+ * @param {Function} [options.transformPayload] - maps each fixture payload (a
+ *        private copy) before it is served, e.g. to rename items for store media
  * @returns {Promise<{proxyPort: number, close: () => Promise<void>}>}
  */
-async function startMockWalmart({ detailHtml = null } = {}) {
+async function startMockWalmart({ detailHtml = null, transformPayload } = {}) {
   const { key, cert, dir } = generateCert();
 
-  const origin = https.createServer({ key, cert }, (req, res) => handleRequest(req, res, detailHtml));
+  const origin = https.createServer({ key, cert }, (req, res) => handleRequest(req, res, detailHtml, transformPayload));
   await new Promise((resolve) => origin.listen(0, '127.0.0.1', resolve));
   const originPort = origin.address().port;
 

@@ -43,7 +43,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const { launch, seedOrderHistory } = require(path.join(__dirname, '..', '..', 'tests', 'e2e', 'helpers', 'harness'));
-const { buildDemoRecords } = require('./demo-seed');
+const { buildDemoRecords, withDemoItemNames } = require('./demo-seed');
 
 const OUT = path.join(__dirname, 'video-raw'); // gitignored scratch output
 fs.rmSync(OUT, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
@@ -211,6 +211,7 @@ const TOUR_RUNTIME = () => {
 
 (async () => {
   const { context, extensionId, panel, close } = await launch({
+    mockOptions: { transformPayload: withDemoItemNames },
     viewport: { width: W, height: H },
   });
   try {
