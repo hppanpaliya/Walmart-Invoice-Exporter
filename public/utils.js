@@ -1320,8 +1320,12 @@ function buildAccountingDescription(order) {
 function buildAccountingCsvRows(ordersData, preset) {
   const ordersArray = Array.isArray(ordersData) ? ordersData : [ordersData];
   // Orders with an UNKNOWN total (summary-built, never scanned) are skipped
-  // outright — a fabricated $0.00 transaction corrupts a bank import.
-  const withTotals = ordersArray.filter((order) => String(order.orderTotal || '').trim() !== '');
+  // outright — a fabricated $0.00 transaction corrupts a bank import. A fully
+  // canceled order has a real $0.00 total, but no money moved, so it is left
+  // out of a bank-statement import for the same reason.
+  const withTotals = ordersArray.filter(
+    (order) => String(order.orderTotal || '').trim() !== '' && parseNumericValue(order.orderTotal) !== 0
+  );
   const spentAmount = (order) => -Math.abs(parseNumericValue(order.orderTotal));
 
   if (preset === CONSTANTS.CSV_PRESETS.XERO) {

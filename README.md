@@ -159,6 +159,13 @@ See [docs/PORTS.md](./docs/PORTS.md) for the full list of differences.
 
 ## What's New
 
+### Version 8.8 (November 14, 2026)
+- **Far fewer false "Walmart may have changed their website" alerts**: fully canceled orders, slow-loading order pages and Walmart's "Robot or human?" check are handled for what they are. Alerts name the affected order and the reason, and ask for a report only when something unexpected happened
+- **Walmart's human check no longer fails a whole run**: the run stops, finished orders are kept, and "Retry failed" picks up the rest
+- **Walmart's redesigned invoice page** is supported: items, totals, fees and order details
+- **Complete payment splits**: the amount per payment method, including gift cards and PayPal
+- **Refunds, promo codes and express fees** are kept in Excel, CSV, receipt and PDF exports
+
 ### Version 8.2 (July 19, 2026)
 - **MCP does much more**: new read tools (`search_orders`, `spending_summary`, `export_orders`) and — behind a new off-by-default Settings toggle, **"Allow AI tools to collect data"** — action tools that let AI start order collection (`start_collection`, with filters and progress polling) and fetch invoices in a background tab (`collect_invoices`). Requires [walmart-invoice-mcp](https://www.npmjs.com/package/walmart-invoice-mcp) v0.2+
 
@@ -399,7 +406,7 @@ The extension is built with WXT/Vite and a modular design for maintainability:
 
 For a complete list of changes, see [CHANGELOG.md](./CHANGELOG.md)
 
-**Latest (v8.0):** Full-app Spending Dashboard (inline invoice drill-down, interactive click-to-scope charts, insights card, month-group selection), fast request-based collection with automatic classic fallback, Walmart's own order filters as collection options, multi-account support, a complete light/dark redesign, and the new WXT build system.
+**Latest (v8.8):** Fewer false alerts, Walmart's redesigned invoice page, complete payment splits. **Since v8.0:** Full-app Spending Dashboard (inline invoice drill-down, interactive click-to-scope charts, insights card, month-group selection), fast request-based collection with automatic classic fallback, Walmart's own order filters as collection options, multi-account support, a complete light/dark redesign, and the new WXT build system.
 
 ## Support
 

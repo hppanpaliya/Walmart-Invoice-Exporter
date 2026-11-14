@@ -2,9 +2,11 @@
 
 ## [Unreleased]
 
-## [8.8] - October 14, 2026
+## [8.8] - November 14, 2026
 
 ### Fixed
+- QuickBooks and Xero exports leave out fully canceled orders. They have a $0.00 total, and an empty transaction corrupts a bank import.
+- "Reset settings to defaults" also turns off "Allow AI tools to collect data", so local AI access is read-only again when it is re-enabled.
 - Recognize Walmart's "Robot or human?" check during downloads and saves. The run stops at the first check instead of failing every remaining order, keeps the orders already finished, explains what to do, and slows later runs in the same session. (#43)
 - Fully canceled orders are saved and exported as complete orders with no charged items, instead of failing on every retry or raising a missing-items warning. They are left out of the dashboard's average order.
 - The extraction notice asks for a report only for unexpected problems. Information Walmart did not provide (per-payment amounts, a refused refresh) is shown as a notice with nothing to report.

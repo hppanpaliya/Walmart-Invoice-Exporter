@@ -47,6 +47,7 @@ test('Sidepanel.settings exposes renderSettings/SETTINGS_DEFAULTS/deleteAllSaved
     'legacyExcel',
     // MCP bridge: reset turns it off and restores the port, but deliberately
     // leaves the pairing token alone (see SETTINGS_DEFAULTS in the source).
+    'mcpBridgeAllowActions',
     'mcpBridgeEnabled',
     'mcpBridgePort',
     'orderSettleMs',
@@ -62,6 +63,7 @@ test('Sidepanel.settings exposes renderSettings/SETTINGS_DEFAULTS/deleteAllSaved
   // Local MCP access is opt-in (default off), on the bridge's default port.
   assert.equal(settings.SETTINGS_DEFAULTS.mcpBridgeEnabled, false);
   assert.equal(settings.SETTINGS_DEFAULTS.mcpBridgePort, 8924);
+  assert.equal(settings.SETTINGS_DEFAULTS.mcpBridgeAllowActions, false);
   // Advanced timings default from the shared spec table (utils.js).
   assert.equal(settings.SETTINGS_DEFAULTS.collectPageDelayMs, 1000);
   assert.equal(settings.SETTINGS_DEFAULTS.orderTimeoutMs, 10000);

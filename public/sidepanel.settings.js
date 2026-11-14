@@ -48,6 +48,9 @@
   // the token, so re-enabling doesn't silently break an existing pairing.
   SETTINGS_DEFAULTS[CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_ENABLED] = false;
   SETTINGS_DEFAULTS[CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_PORT] = CONSTANTS.MCP_BRIDGE.DEFAULT_PORT;
+  // The separate "Allow AI tools to collect data" opt-in is reset too, so
+  // re-enabling the bridge later starts read-only again.
+  SETTINGS_DEFAULTS[CONSTANTS.STORAGE_KEYS.MCP_BRIDGE_ALLOW_ACTIONS] = false;
 
   const THEME_OPTIONS = [
     { value: "system", label: "System" },
