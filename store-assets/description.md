@@ -1,6 +1,6 @@
 # Chrome Web Store description (copy–paste)
 
-> Publish this together with v8.2 — it describes the new UI and the MCP
+> Publish this together with v8.8 — it describes the new UI and the MCP
 > feature (including the opt-in AI collection actions). The short "summary"
 > field and the detailed description are below.
 
@@ -66,9 +66,14 @@ Walmart Invoice Exporter collects every order from walmart.com/orders, saves it 
 
 ☆ Need to merge multiple Excel files afterwards? https://hppanpaliya.github.io/excel-merger
 
-★ WHAT'S NEW IN 8.3
-• Charged‑invoice line extraction, duplicate handling and in‑store order retry (PR #23)
-• Split‑tender extraction improvements and missing‑tender warning (PR #21)
+★ WHAT'S NEW IN 8.8
+• Far fewer false "Walmart may have changed their website" alerts: canceled orders, slow‑loading pages and Walmart's "Robot or human?" check are now handled for what they are
+• If Walmart pauses a run to check that you are human, finished orders are kept and "Retry failed" picks up the rest
+• Alerts name the affected order and the reason, and only ask for a report when something unexpected happened
+• Works with Walmart's redesigned invoice page
+• Payment splits show the amount per payment method, including gift cards and PayPal
+• Refunds, promo codes and express fees are kept in Excel, CSV, receipt and PDF exports
+• Charged‑invoice line extraction, duplicate handling and in‑store order retry
 • Full-app dashboard: expandable inline invoices, interactive monthly chart, and a new insights card
 • Fast collection with "only new orders" support and automatic classic fallback
 • Walmart's own order filters (type + date range) as collection options

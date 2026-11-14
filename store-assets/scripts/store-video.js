@@ -12,11 +12,11 @@
  * (verified: it just letterboxes). The 4K master is built encode-side
  * (lanczos) by generate-store-video.sh.
  *
- * DIRECTION (ad cut, ~80s) — structure: HOOK → REVEAL → MAKE IT YOURS →
- * PAYOFFS (in dark) → OBJECTIONS → CTA. No intro card: the store page
- * already shows the name and icon, so the first frame is the product doing
- * its core verb, live. The settings visit comes EARLY and flips dark mode,
- * so most of the runtime plays in dark.
+ * DIRECTION (ad cut, ~80s) — structure: TITLE → HOOK → REVEAL → MAKE IT
+ * YOURS → PAYOFFS (in dark) → OBJECTIONS → CTA. A ~2s branded title card
+ * opens the cut (frame one is the product name, not a mid-dashboard drop),
+ * then the product does its core verb, live. The settings visit comes EARLY
+ * and flips dark mode, so most of the runtime plays in dark.
  *
  *   1. Cold open   — "Check for new orders" clicked on camera; real progress,
  *                    two new orders join the list. Hook: "one click".
@@ -230,7 +230,20 @@ const TOUR_RUNTIME = () => {
     await frame.waitForSelector('.order-list .order-row', { timeout: 10000 });
     await dash.waitForTimeout(600);
     await dash.evaluate(TOUR_RUNTIME);
-    const stopCapture = await startCapture(dash, OUT); // roll camera on scene 1, not page load
+    // Branded open: the title card is already fully faded in when the camera
+    // rolls, so the video opens on the product name instead of dropping the
+    // viewer mid-dashboard — and the first narration line starts ~2.5s in,
+    // clear of any player/encoder start clipping.
+    await dash.evaluate((icon) => window.__tour.card({
+      iconUrl: icon,
+      title: 'Walmart Invoice Exporter',
+      sub: 'Your Walmart orders — <b>collected, exported, understood</b>',
+    }), `chrome-extension://${extensionId}/images/icon128.png`);
+    await dash.waitForTimeout(800);
+    const stopCapture = await startCapture(dash, OUT);
+    await dash.waitForTimeout(1900);                       // hold the title
+    await dash.evaluate(() => window.__tour.hideCard());
+    await dash.waitForTimeout(700);                        // fade reveals the live dashboard
 
     const hold = (ms) => dash.waitForTimeout(ms);
     const cap = (html) => dash.evaluate((h) => window.__tour.caption(h), html);
@@ -296,79 +309,88 @@ const TOUR_RUNTIME = () => {
       () => /completed/i.test((document.querySelector('#progress') || {}).textContent || ''),
       { timeout: 15000 }
     ).catch(() => {});
-    await hold(2400);
+    await hold(1500);
 
     /* ---- 2. Reveal: the click becomes answers. ---- */
     await scene('reveal');
     await cap('…turned into <b>answers</b>');
-    await hold(2200);
-    await scrollTo(430, 1100);      // chart in full view
     await hold(1600);
+    await scrollTo(430, 1100);      // chart in full view
+    await hold(1000);
 
     /* ---- 3. Yours (early): settings walk, format cycle, dark flip. ---- */
     await scene('settings');
     await cap('Make it yours — <b>every default is a setting</b>');
     await click(frame.locator('#settingsButton'), 700);
-    await hold(1500);
-    await frameScrollToSection('Collection', 1600);
-    await frameScrollToSection('Export', 1200);
+    await hold(1000);
+    await frameScrollToSection('Collection', 1100);
+    await frameScrollToSection('Export', 900);
     // Cycle the default export format through every mode — the point is the
     // breadth — and land back on Excel.
     await cap('Excel, CSV, JSON, receipts, PDF — <b>your call</b>');
     await curTo(frame.locator('#settingsExportFormat'), 500);
     for (const fmt of ['csv', 'json', 'receipt', 'pdf', 'xlsx']) {
       await frame.selectOption('#settingsExportFormat', fmt).catch(() => {});
-      await hold(700);
+      await hold(550);
     }
-    await hold(400);
+    await hold(300);
+
+    /* ---- 3b. Dark: the theme flip gets its own narration beat. ---- */
+    await scene('dark');
     await frameScrollToSection('Appearance', 1100);
     await cap('Light, dark, or follow your system — <b>one tap</b>');
     await click(frame.locator('#themeControl [data-theme-choice="dark"]'), 700);
-    await hold(2200);
+    await hold(1300);
     // Leave settings so the order list is on stage for the scenes ahead.
     await click(frame.locator('#settingsBackButton'), 500);
-    await hold(700);
+    await hold(600);
 
     /* ---- 4. Drill (dark): click a month, everything rescopes. ---- */
     await scene('drill');
     await cap('Click any month — see <b>exactly where it went</b>');
     await scrollTo(430, 900);
     await click(dash.locator('.cbar').first(), 800);
-    await hold(1900);
+    await hold(1300);
     await scrollTo(0, 900);
-    await hold(1400);
+    await hold(900);
     await cap('');
     await click(dash.locator('#backChip'));
-    await hold(800);
+    await hold(600);
 
     /* ---- 5. Montage (dark): fast payoff beats. ---- */
     await scene('items');
     await cap('Every price hike, <b>caught</b>');
     await click(dash.locator('[data-nav="items"]'));
-    await hold(2900);
+    await hold(2200);
 
     await scene('trends');
     await cap('Your habits, <b>charted</b>');
     await click(dash.locator('[data-nav="trends"]'));
-    await hold(1600);
+    await hold(1000);
     await scrollTo(360, 1000);
-    await hold(1200);
+    await hold(700);
     await scrollTo(0, 600);
 
     /* ---- 6. Receipts (dark): a row becomes a full invoice. ---- */
     await scene('receipts');
     await cap('Every order, down to <b>the last cent</b>');
     await click(dash.locator('[data-nav="orders"]'));
-    await hold(1500);
+    await hold(1000);
     const invoiceRow = dash.locator('tr.order-row:has(.saved-chip)').first();
-    await invoiceRow.scrollIntoViewIfNeeded();
-    await hold(500);
+    // Smooth-scroll (never scrollIntoViewIfNeeded — its instant snap reads
+    // as a jump cut on camera).
+    await invoiceRow.evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    await hold(900);
     await click(invoiceRow, 700);
     await dash.waitForSelector('.detail-wrap', { timeout: 10000 });
     await hold(600);
-    await dash.locator('.detail-wrap').scrollIntoViewIfNeeded();
+    await dash.evaluate(() => {
+      const el = document.querySelector('.detail-wrap');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    await hold(900);
     await dash.evaluate(() => window.scrollBy({ top: -140, behavior: 'smooth' }));
-    await hold(2500);
+    await hold(1400);
 
     /* ---- 7. Take it with you (dark): two clicks. ---- */
     await scene('export');
@@ -379,9 +401,9 @@ const TOUR_RUNTIME = () => {
     await click(boxes.nth(0), 700);
     await hold(300);
     await click(boxes.nth(1), 450);
-    await hold(700);
+    await hold(500);
     await curTo(frame.locator('#singleFileDownload'), 500);
-    await hold(1500);
+    await hold(1000);
 
     /* ---- 8. MCP (dark): one toggle connects Claude. ---- */
     await scene('mcp');
@@ -405,15 +427,15 @@ const TOUR_RUNTIME = () => {
     await cap('No accounts. No servers. <b>Nothing leaves your device.</b>');
     await frameScrollToSection('Data on this device', 1300);
     await curTo(frame.locator('#deleteAllDataButton'), 700); // point, never click
-    await hold(2500);
+    await hold(2000);
 
     /* ---- 9. Kicker (dark): year in review. ---- */
     await scene('kicker');
     await cap('Your year at Walmart — <b>yours to keep</b>');
     await click(dash.locator('[data-nav="review"]'));
-    await hold(2300);
+    await hold(1500);
     await scrollTo(380, 1000);
-    await hold(1300);
+    await hold(800);
 
     /* ---- 10. CTA card. ---- */
     await scene('cta');
@@ -427,7 +449,7 @@ const TOUR_RUNTIME = () => {
     }), `chrome-extension://${extensionId}/images/icon128.png`);
     // Reset the theme behind the opaque outro card (no visible flash).
     await dash.evaluate(() => chrome.storage.local.set({ theme: 'system' }));
-    await hold(3800);
+    await hold(3000);
     await settleScene(); // let the CTA narration finish before cutting
     await hold(800);     // breathing room so the end doesn't slam shut
 
