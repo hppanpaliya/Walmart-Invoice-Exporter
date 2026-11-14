@@ -268,6 +268,7 @@
     });
     applyViewVisibility();
     renderRegisteredView(id);
+    fitStatValues();
   }
 
   /** Render one registered view, but only when active data is newer than its last render. */
@@ -770,6 +771,24 @@
    * Sections above the table
    * ------------------------------------------------------------------ */
 
+  /**
+   * Shrink a headline figure until it fits its tile. The tiles keep a fixed
+   * share of the row, so a five-digit total at laptop widths would otherwise
+   * run past the edge and lose its last digits.
+   */
+  function fitStatValues() {
+    if (typeof getComputedStyle !== 'function') return;
+    document.querySelectorAll('#statsSection .stat-value').forEach((el) => {
+      el.style.fontSize = '';
+      if (!el.clientWidth) return; // hidden tile or inactive view
+      let size = parseFloat(getComputedStyle(el).fontSize);
+      while (el.scrollWidth > el.clientWidth && size > 12) {
+        size -= 1;
+        el.style.fontSize = `${size}px`;
+      }
+    });
+  }
+
   /** Fill the stat strip + headline from the scoped stats. */
   function renderStats(model, scopedStats, now) {
     const monthScoped = Boolean(state.selectedMonth);
@@ -816,6 +835,7 @@
     // negative (fees/adjustments exceeding line savings), but the total-savings
     // figure is only meaningful as "money kept", so floor it at zero.
     $('statSaved').textContent = formatMoney(Math.max(0, Number(stats.totalSavings) || 0));
+    fitStatValues();
   }
 
   /** Live Chart.js instance for the by-month chart (null while the CSS fallback renders). */
@@ -1461,6 +1481,7 @@
       ? `All providers — one total per currency, never converted, from ${invoicesLabel}`
       : `All providers, from ${invoicesLabel}`;
     $('statOrders').textContent = String(combined.invoiceCount);
+    fitStatValues();
 
     renderProviderBreakdown(combined);
     notifyViews({ now, combined: true });
@@ -1761,6 +1782,18 @@
   }
   // …plus a refresh whenever the page regains focus…
   window.addEventListener('focus', () => refresh());
+  // Tile widths change with the window, a scrollbar appearing, or the panel
+  // rail loading, so the headline figures are refitted whenever the strip resizes.
+  let fitStatFrame = 0;
+  const scheduleStatFit = () => {
+    cancelAnimationFrame(fitStatFrame);
+    fitStatFrame = requestAnimationFrame(fitStatValues);
+  };
+  if (typeof ResizeObserver === 'function' && $('statsSection')) {
+    new ResizeObserver(scheduleStatFit).observe($('statsSection'));
+  } else {
+    window.addEventListener('resize', scheduleStatFit);
+  }
   // …plus any same-origin postMessage from the embedded panel (future
   // panel→dashboard notifications land here without a contract change).
   window.addEventListener('message', (event) => {

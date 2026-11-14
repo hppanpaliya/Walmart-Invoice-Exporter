@@ -127,6 +127,33 @@ test('full-page dashboard', async (t) => {
       await download.path();
     });
 
+    await t.test('headline figures stay inside their tiles for a five-digit total', async () => {
+      // A long-time customer: one large invoice pushes the year into five digits.
+      await panel.evaluate(async () => {
+        const now = new Date();
+        const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        const orderNumber = '200099000009001';
+        await OrderDb.putSummaries({ [orderNumber]: { orderDate: iso, orderTotal: 24680.13, subTotal: 22800, itemCount: 1, status: 'Delivered', items: [{ name: 'Home appliance bundle', quantity: 1 }] } }, {});
+        await OrderDb.putInvoice(orderNumber, {
+          schemaVersion: 3, orderDate: iso, orderNumber, orderSubtotal: 22800, tax: 1880.13, tip: 0, orderTotal: 24680.13, savings: 1500,
+          items: [{ productName: 'Home appliance bundle', quantity: 1, price: 22800 }],
+        });
+      });
+      for (const width of [1280, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.reload();
+        await page.locator('[data-nav="overview"]').click();
+        await page.waitForSelector('#statTotal', { state: 'visible', timeout: 10000 });
+        await page.waitForFunction(() => /\d{2},\d{3}/.test(document.getElementById('statTotal').textContent));
+        // Two frames: the fit runs on the frame after the strip settles.
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const overflowing = await page.evaluate(() => [...document.querySelectorAll('#statsSection .stat-value')]
+          .filter((el) => el.clientWidth && el.scrollWidth > el.clientWidth)
+          .map((el) => el.textContent.trim()));
+        assert.deepStrictEqual(overflowing, [], `no headline figure is cut off at ${width}px`);
+      }
+    });
+
     assert.deepStrictEqual(pageErrors, [], 'no uncaught page errors');
   } finally {
     await close();
