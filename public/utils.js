@@ -672,6 +672,83 @@ function canceledOrderNote(order) {
   return order?.noChargedItems === true ? 'Canceled: no items were charged' : '';
 }
 
+/**
+ * Walmart's top-level departments, keyed by the id that leads an item's
+ * category path ("0:<department>:<aisle>:…"). An id that is not listed
+ * simply has no name: the column stays blank and the dashboard falls back
+ * to classifying by product name.
+ */
+const WALMART_DEPARTMENTS = {
+  '976759': 'Food',
+  '1115193': 'Household Essentials',
+  '1085666': 'Beauty',
+  '1005862': 'Personal Care',
+  '976760': 'Health and Medicine',
+  '5431': 'Pharmacy',
+  '3944': 'Electronics',
+  '2636': 'Video Games',
+  '4044': 'Home',
+  '1072864': 'Home Improvement',
+  '5428': 'Patio & Garden',
+  '5438': 'Clothing',
+  '3891': 'Jewelry',
+  '5440': 'Pets',
+  '5427': 'Baby',
+  '4171': 'Toys',
+  '3920': 'Books',
+  '4096': 'Movies & TV Shows',
+  '4104': 'Music',
+  '2637': 'Party & Occasions',
+  '4125': 'Sports & Outdoors',
+  '91083': 'Auto & Tires',
+  '1229749': 'Office Supplies',
+  '1334134': 'Arts, Crafts & Sewing',
+};
+
+/** The department id from a category path such as "0:976759:976794" (or ''). */
+function walmartDepartmentId(categoryPathId) {
+  const parts = String(categoryPathId || '').split(':').filter(Boolean);
+  if (parts.length === 0) return '';
+  return parts[0] === '0' ? (parts[1] || '') : parts[0];
+}
+
+/** The department name for a category path, or '' when it is not known. */
+function walmartDepartmentName(categoryPathId) {
+  return WALMART_DEPARTMENTS[walmartDepartmentId(categoryPathId)] || '';
+}
+
+/**
+ * One status for the whole order. Walmart's own status when the invoice
+ * carries it; otherwise only what the saved data proves.
+ * @param {Object} order
+ * @returns {string}
+ */
+function orderStatusLabel(order) {
+  return String(order?.orderStatus || '').trim() || (order?.noChargedItems === true ? 'Canceled' : '');
+}
+
+/** Fulfillment and pricing remarks for one exported line (e.g. "Weight adjusted; Final weight: 2.3 lbs"). */
+function itemNoteLabel(item) {
+  return [item?.fulfillment, item?.priceNotes].map((part) => String(part || '').trim()).filter(Boolean).join('; ');
+}
+
+/** 'Yes' / 'No' for a known answer, '' when Walmart did not say. */
+function yesNoLabel(value) {
+  return value === true ? 'Yes' : value === false ? 'No' : '';
+}
+
+/** Lines that were ordered but never charged, across the given orders. */
+function collectUnfulfilledRows(ordersArray) {
+  const rows = [];
+  (Array.isArray(ordersArray) ? ordersArray : []).forEach((order) => {
+    (Array.isArray(order?.unfulfilledItems) ? order.unfulfilledItems : []).forEach((item) => {
+      if (!item || !String(item.productName || '').trim()) return;
+      rows.push({ order, item });
+    });
+  });
+  return rows;
+}
+
 /** Keep unrecognized Walmart adjustment labels and amounts visible in Excel. */
 function formatFinancialAdjustments(adjustments) {
   return meaningfulFinancialAdjustments(adjustments)
@@ -778,6 +855,12 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
     { header: 'Ship To', key: 'address', width: 36 },
     { header: 'Delivery Instructions', key: 'deliveryInstructions', width: 24 },
     { header: 'Receipt Barcode', key: 'barcodeLink', width: 14 },
+    // Appended after the historic columns so existing spreadsheets keep working.
+    { header: 'Order Status', key: 'orderStatus', width: 16 },
+    { header: 'Late Delivery', key: 'lateDelivery', width: 12, style: { alignment: { horizontal: 'center' } } },
+    { header: 'Store', key: 'storeName', width: 26 },
+    { header: 'Return Window', key: 'returnWindow', width: 30 },
+    { header: 'Items Not Fulfilled', key: 'unfulfilledCount', width: 12, style: { numFmt: '#,##0', alignment: { horizontal: 'center' } } },
   ];
 
   ordersArray.forEach((orderDetails) => {
@@ -815,6 +898,13 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
       barcodeLink: safeExportUrl(orderDetails.barcodeImageUrl)
         ? { text: 'Barcode', hyperlink: safeExportUrl(orderDetails.barcodeImageUrl) }
         : '',
+      orderStatus: orderStatusLabel(orderDetails),
+      lateDelivery: orderDetails.wasDelayed === true ? 'Yes' : '',
+      storeName: orderDetails.storeName || '',
+      returnWindow: orderDetails.returnWindow || '',
+      unfulfilledCount: Array.isArray(orderDetails.unfulfilledItems) && orderDetails.unfulfilledItems.length > 0
+        ? orderDetails.unfulfilledItems.length
+        : '',
     });
   });
   polishWorksheet(ordersSheet);
@@ -830,6 +920,14 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
     { header: 'Status', key: 'deliveryStatus', width: 16 },
     { header: 'Order Type', key: 'orderType', width: 11, style: { alignment: { horizontal: 'center' } } },
     { header: 'Product Link', key: 'productLink', width: 46, style: { font: STYLES.linkFont } },
+    // Appended; blank wherever Walmart did not send the detail.
+    { header: 'Price Each', key: 'unitPrice', width: 11, style: { numFmt: '$#,##0.00' } },
+    { header: 'Was Price', key: 'wasPrice', width: 11, style: { numFmt: '$#,##0.00' } },
+    { header: 'Savings', key: 'discount', width: 20 },
+    { header: 'Price per Unit', key: 'comparisonPrice', width: 14 },
+    { header: 'Category', key: 'category', width: 22 },
+    { header: 'Note', key: 'note', width: 30 },
+    { header: 'Returnable', key: 'returnable', width: 11, style: { alignment: { horizontal: 'center' } } },
   ];
   if (options.includeThumbnails) {
     itemColumns.push({ header: 'Thumbnail', key: 'thumbnail', width: 9, style: { alignment: { horizontal: 'center' } } });
@@ -853,6 +951,13 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
         productLink: productLink && productLink !== 'N/A'
           ? { text: truncateText(productName), hyperlink: productLink }
           : '',
+        unitPrice: excelNumber(item.unitPrice),
+        wasPrice: excelNumber(item.wasPrice),
+        discount: item.discount || '',
+        comparisonPrice: item.comparisonPrice || '',
+        category: walmartDepartmentName(item.categoryPathId),
+        note: itemNoteLabel(item),
+        returnable: yesNoLabel(item.returnable),
       });
     });
   });
@@ -865,6 +970,34 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
       allItems.map(({ item }) => item),
       itemsSheet.columns.length
     );
+  }
+
+  // ----- Sheet 3 (only when needed): ordered but never charged -----
+  const unfulfilledRows = collectUnfulfilledRows(ordersArray);
+  if (unfulfilledRows.length > 0) {
+    const unfulfilledSheet = workbook.addWorksheet('Not Fulfilled');
+    unfulfilledSheet.columns = [
+      { header: 'Order Number', key: 'orderNumber', width: 20 },
+      { header: 'Order Date', key: 'orderDate', width: 14 },
+      { header: 'Product Name', key: 'productName', width: 64 },
+      { header: 'Qty', key: 'quantity', width: 7, style: { numFmt: '#,##0', alignment: { horizontal: 'center' } } },
+      { header: 'Reason', key: 'reason', width: 14 },
+      { header: 'Price (Not Charged)', key: 'price', width: 14, style: { numFmt: '$#,##0.00' } },
+      { header: 'Product Link', key: 'productLink', width: 46, style: { font: STYLES.linkFont } },
+    ];
+    unfulfilledRows.forEach(({ order, item }) => {
+      const link = safeExportUrl(item.productLink);
+      unfulfilledSheet.addRow({
+        orderNumber: order.orderNumber || '',
+        orderDate: order.orderDate || '',
+        productName: item.productName || '',
+        quantity: excelNumber(item.quantity),
+        reason: item.reason || '',
+        price: excelNumber(item.price),
+        productLink: link && link !== 'N/A' ? { text: truncateText(item.productName || ''), hyperlink: link } : '',
+      });
+    });
+    polishWorksheet(unfulfilledSheet);
   }
 
   // Download
@@ -1222,6 +1355,12 @@ const ORDER_CSV_COLUMNS = [
   ['Tracking Numbers', (o) => o.trackingNumbers || ''],
   ['Receipt Barcode URL', (o) => o.barcodeImageUrl || ''],
   ['Order Type', (o) => formatOrderType(o.orderType, o.isInStore)],
+  // Appended after the historic columns.
+  ['Order Status', (o) => orderStatusLabel(o)],
+  ['Late Delivery', (o) => (o.wasDelayed === true ? 'Yes' : '')],
+  ['Store', (o) => o.storeName || ''],
+  ['Return Window', (o) => o.returnWindow || ''],
+  ['Items Not Fulfilled', (o) => (Array.isArray(o.unfulfilledItems) && o.unfulfilledItems.length > 0 ? o.unfulfilledItems.length : '')],
 ];
 
 /** Item-level CSV columns (one row per item) — the "items sheet" equivalent. */
@@ -1233,6 +1372,14 @@ const ITEM_CSV_COLUMNS = [
   ['Price', (o, item) => parseNumericValue(item.price)],
   ['Delivery Status', (o, item) => item.deliveryStatus || ''],
   ['Product Link', (o, item) => safeExportUrl(item.productLink)],
+  // Appended; blank wherever Walmart did not send the detail.
+  ['Price Each', (o, item) => csvMoney(item.unitPrice, { blankWhenEmpty: true })],
+  ['Was Price', (o, item) => csvMoney(item.wasPrice, { blankWhenEmpty: true })],
+  ['Savings', (o, item) => item.discount || ''],
+  ['Price per Unit', (o, item) => item.comparisonPrice || ''],
+  ['Category', (o, item) => walmartDepartmentName(item.categoryPathId)],
+  ['Note', (o, item) => itemNoteLabel(item)],
+  ['Returnable', (o, item) => yesNoLabel(item.returnable)],
 ];
 
 /**
