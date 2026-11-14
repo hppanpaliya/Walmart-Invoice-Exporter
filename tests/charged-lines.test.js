@@ -204,3 +204,50 @@ test('Canada does not fall back to ordered items when all charged categories are
     scripts: ['utils.js', 'providers/base.js', 'providers/registry.js', 'providers/walmart-ca.js'] });
   assert.equal(evalIn(sandbox, 'WalmartCaProvider').scrapeOrder({}).items.length, 0);
 });
+
+for (const categoryType of ['CANCELED', 'UNAVAILABLE']) {
+  test(`a fully ${categoryType} order is marked as having no charged items and raises no missing-items warning`, () => {
+    const sandbox = loadSandbox();
+    const excluded = item(7, 'Never charged item', 1, 12.00);
+    const data = sandbox.extractOrderDataFromNextData({
+      id: '200010000000099',
+      groups_2101: [{ categories: [{ type: categoryType, items: [excluded] }] }],
+    });
+    assert.equal(data.items.length, 0);
+    assert.equal(data.noChargedItems, true);
+    const warnings = sandbox.computeExtractionWarnings({ ...data, orderNumber: '200010000000099', orderTotal: '$0.00' });
+    assert.ok(!warnings.some((warning) => /No items/.test(warning)));
+  });
+}
+
+test('an order whose items simply could not be read is NOT marked as having no charged items', () => {
+  const sandbox = loadSandbox();
+  const data = sandbox.extractOrderDataFromNextData({ id: '200010000000099', groups_2101: [{ items: [] }] });
+  assert.equal(data.items.length, 0);
+  assert.equal('noChargedItems' in data, false);
+  const warnings = sandbox.computeExtractionWarnings({ ...data, orderNumber: '200010000000099', orderTotal: '$5.00' });
+  assert.ok(warnings.some((warning) => /No items/.test(warning)));
+});
+
+test('a normal order never carries the no-charged-items marker', () => {
+  const sandbox = loadSandbox();
+  const data = sandbox.extractOrderDataFromNextData({
+    id: '200010000000099',
+    groups_2101: [{ categories: [{ type: 'REGULAR', items: [item(1, 'Milk, 1 Gallon', 1, 3.97)] }] }],
+  });
+  assert.equal(data.items.length, 1);
+  assert.equal('noChargedItems' in data, false);
+});
+
+test('Canada marks a fully canceled order as having no charged items without a missing-items warning', () => {
+  const nextData = orderNodeWithCategories();
+  const order = nextData.props.pageProps.initialData.data.order;
+  const excluded = item(7, 'Never charged', 1, 12);
+  order.groups_2101 = [{ categories: [{ type: 'CANCELED', items: [excluded] }], items: [excluded] }];
+  order.items = [excluded];
+  const sandbox = loadSandbox({ nextData, url: 'https://www.walmart.ca/orders/200010000000099',
+    scripts: ['utils.js', 'providers/base.js', 'providers/registry.js', 'providers/walmart-ca.js'] });
+  const data = evalIn(sandbox, 'WalmartCaProvider').scrapeOrder({});
+  assert.equal(data.noChargedItems, true);
+  assert.ok(!data.extractionWarnings.some((warning) => /No items/.test(warning)));
+});

@@ -88,7 +88,9 @@ function computeDashboardStats(records) {
       .some((value) => parseOptionalNumericValue(value) !== null);
     if (hasTotal) {
       totalSpend += total;
-      totaledOrders += 1;
+      // A fully canceled order was never a purchase; its $0 total must not
+      // pull the average order down.
+      if (invoice.noChargedItems !== true) totaledOrders += 1;
     }
 
     totalTips += money(invoice.tip, summary.driverTip);

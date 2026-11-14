@@ -913,6 +913,19 @@ function extractItemsFromNextData(orderNode) {
   return items;
 }
 
+/**
+ * A fully canceled order has a charged-categories tree with no charged lines.
+ * Mark it, so an honest "nothing was charged" is not mistaken for a failed
+ * read (which would be retried forever or reported as a site change).
+ * @param {Array} items - result of extractItemsFromNextData
+ * @returns {{noChargedItems?: true}}
+ */
+function noChargedItemsFlag(items) {
+  return Array.isArray(items) && items.length === 0 && items.fromChargedCategories === true
+    ? { noChargedItems: true }
+    : {};
+}
+
 function mergeOrderItems(domItems, nextDataItems) {
   const scrapedItems = Array.isArray(domItems) ? domItems : [];
   const payloadItems = Array.isArray(nextDataItems) ? nextDataItems : [];
@@ -1013,6 +1026,8 @@ function extractOrderDataFromNextData() {
   const addressDetails = extractNextDataAddressDetails(orderNode);
   const shipmentDetails = extractNextDataShipmentDetails(orderNode);
 
+  const chargedItems = extractItemsFromNextData(orderNode);
+
   return {
     orderNumber: normalizeOrderNumberValue(orderNode?.id || orderNode?.displayId),
     orderDate:
@@ -1042,7 +1057,8 @@ function extractOrderDataFromNextData() {
     paymentMethods,
     paymentMethodDetails,
     paymentMessages,
-    items: extractItemsFromNextData(orderNode),
+    items: chargedItems,
+    ...noChargedItemsFlag(chargedItems),
   };
 }
 
@@ -1500,6 +1516,7 @@ function scrapeOrderData() {
     paymentMethodDetails,
     paymentMessages: paymentMessages.join('; '),
     items,
+    ...(nextDataOrder?.noChargedItems === true && items.length === 0 ? { noChargedItems: true } : {}),
   };
 }
 
@@ -1517,7 +1534,9 @@ function computeExtractionWarnings(data) {
   try {
     const items = Array.isArray(data?.items) ? data.items : [];
 
-    if (items.length === 0) {
+    if (items.length === 0 && data?.noChargedItems === true) {
+      // Fully canceled: Walmart charged no lines, so there is nothing to read.
+    } else if (items.length === 0) {
       warnings.push("No items were extracted for this order");
     } else if (items.every((item) => !cleanText(item?.productName || ""))) {
       warnings.push("All extracted items have a blank product name");

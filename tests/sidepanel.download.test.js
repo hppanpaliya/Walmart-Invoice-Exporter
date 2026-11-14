@@ -521,3 +521,61 @@ test('human check: saving to the library stops at the challenge and stores only 
   assert.ok((await OrderDb.getOrder(ORDER_NUMBER)).invoice);
   assert.equal((await OrderDb.getOrder(SECOND_ORDER))?.invoice || null, null);
 });
+
+// A fully canceled order has no charged lines. That is a real, complete
+// invoice — not a failed read to retry forever or report as a site change.
+test('canceled order: an invoice with no charged items is saved and exported instead of failing', async () => {
+  const sandbox = loadDownloadSandbox();
+  const downloads = captureDownloads(sandbox);
+  const banners = captureBanners(sandbox);
+  sandbox.window.Sidepanel.state.app.exportFormat = 'csv';
+  sandbox.window.Sidepanel.state.app.orderSettleMs = 0;
+  const calls = mockInvoiceResponses(sandbox, () => sampleInvoice({ items: [], orderTotal: '$0.00', noChargedItems: true }));
+
+  await sandbox.window.Sidepanel.download.downloadSelectedOrders('single', [ORDER_NUMBER]);
+
+  assert.equal(calls.length, 1, 'no re-read and no alternate URL for a complete canceled order');
+  assert.ok(downloads.length > 0);
+  const result = banners.find((banner) => banner.id === 'downloadResultBanner');
+  assert.equal(result.variant, 'success');
+  assert.equal(banners.some((banner) => banner.id === 'extractionWarning'), false);
+});
+
+test('canceled order: an empty invoice WITHOUT the no-charged-items marker is still rejected', async () => {
+  const sandbox = loadDownloadSandbox();
+  mockInvoiceResponses(sandbox, () => sampleInvoice({ items: [] }));
+
+  await assert.rejects(() => fetchOrderData(sandbox, ORDER_NUMBER, FETCH_OPTIONS), /Incomplete invoice/);
+});
+
+// Only unexpected problems should send users to GitHub. Limits on Walmart's
+// side are worth a notice, never a bug report.
+test('extraction notice: information Walmart did not provide is shown without a report request', () => {
+  const sandbox = loadDownloadSandbox();
+  const banner = sandbox.window.Sidepanel.view.buildExtractionWarningBanner([
+    { orderNumber: ORDER_NUMBER, warnings: ['Split tender across 2 payment methods, but 2 per-tender amounts were unavailable after checking the order page and charge history'] },
+    { orderNumber: '200010000000043', warnings: ['Walmart could not refresh this saved invoice, so older saved data was exported'] },
+  ]);
+
+  assert.equal(banner.variant, 'info');
+  assert.match(banner.message, /order ending 0042/);
+  assert.match(banner.message, /nothing to report/);
+  assert.doesNotMatch(banner.message, /github\.com/);
+});
+
+test('extraction notice: an unexpected problem still asks for the pre-filled report', () => {
+  const sandbox = loadDownloadSandbox();
+  const banner = sandbox.window.Sidepanel.view.buildExtractionWarningBanner([
+    { orderNumber: ORDER_NUMBER, warnings: ['Split tender across 2 payment methods, but 1 per-tender amount was unavailable after checking the order page and charge history'] },
+    { orderNumber: '200010000000043', warnings: ['All extracted items have a blank product name'] },
+  ]);
+
+  assert.equal(banner.variant, 'warning');
+  assert.match(banner.message, /github\.com\/hppanpaliya\/Walmart-Invoice-Exporter\/issues\/new/);
+  assert.doesNotMatch(banner.message, /200010000000042/, 'order numbers stay masked');
+});
+
+test('extraction notice: no warnings means no banner', () => {
+  const sandbox = loadDownloadSandbox();
+  assert.equal(sandbox.window.Sidepanel.view.buildExtractionWarningBanner([]), null);
+});

@@ -75,7 +75,9 @@
       if (!normalizedOrderNumber || normalizedOrderNumber !== expectedOrderNumber) {
         problems.push("missing or mismatched order number");
       }
-      if (!hasUsableOrderItems(data)) problems.push("no usable items");
+      // A fully canceled order legitimately has no charged lines.
+      const nothingCharged = data.noChargedItems === true && Array.isArray(data.items) && data.items.length === 0;
+      if (!nothingCharged && !hasUsableOrderItems(data)) problems.push("no usable items");
       const orderTotal = String(data.orderTotal ?? "").trim();
       const numericTotal = orderTotal.replace(/[^0-9.-]/g, "");
       if (!/\d/.test(numericTotal) || !Number.isFinite(Number(numericTotal))) {

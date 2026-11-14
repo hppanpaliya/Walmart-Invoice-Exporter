@@ -174,6 +174,21 @@
     return value || "Some invoice information was unavailable";
   }
 
+  /**
+   * Whether a warning points at something we can fix. Per-tender amounts
+   * Walmart never published and a refresh Walmart refused are limits on
+   * Walmart's side: worth telling the user, not worth a bug report.
+   * @param {string} reason - raw extraction warning
+   * @returns {boolean}
+   */
+  function isReportableExtractionReason(reason) {
+    const value = String(reason || "").trim();
+    return !(
+      /^Split tender across \d+ payment methods/.test(value) ||
+      /^Walmart could not refresh this saved invoice/.test(value)
+    );
+  }
+
   function normalizeExtractionDiagnostics(diagnostics) {
     const seen = new Set();
     return (Array.isArray(diagnostics) ? diagnostics : []).flatMap((entry) => {
@@ -184,7 +199,7 @@
         const key = `${order}\n${reason}`;
         if (seen.has(key)) return [];
         seen.add(key);
-        return [{ order, reason }];
+        return [{ order, reason, reportable: isReportableExtractionReason(warning) }];
       });
     });
   }
@@ -216,9 +231,15 @@
     return `${CONSTANTS.URLS.GITHUB_ISSUES}?${params.toString()}`;
   }
 
-  function showExtractionWarning(diagnostics = []) {
+  /**
+   * Banner content for a run's extraction warnings, or null when there are
+   * none. Separate from rendering so the wording rules can be tested.
+   * @param {Array} diagnostics
+   * @returns {{variant: string, message: string, dismissible: boolean}|null}
+   */
+  function buildExtractionWarningBanner(diagnostics = []) {
     const details = normalizeExtractionDiagnostics(diagnostics);
-    if (details.length === 0) return;
+    if (details.length === 0) return null;
 
     const visible = details.slice(0, 5);
     const remaining = details.length - visible.length;
@@ -226,16 +247,26 @@
       .map(({ order, reason }) => `<li><strong>${escapeHtml(order)}:</strong> ${escapeHtml(reason)}</li>`)
       .join("");
     const more = remaining > 0 ? `<li>And ${remaining} more detected problem${remaining === 1 ? "" : "s"}</li>` : "";
+    // Ask for a report only when something unexpected happened.
+    const reportable = details.some((detail) => detail.reportable);
     const reportUrl = buildExtractionReportUrl(diagnostics);
+    const guidance = reportable
+      ? `Your files may still be usable. Please <a href="${escapeHtml(reportUrl)}" target="_blank" rel="noopener noreferrer">send this pre-filled report</a> so we can investigate. Order numbers are masked for privacy.`
+      : `Your files are still usable. Walmart did not provide this information, so there is nothing to report.`;
 
-    renderStatusBanner("extractionWarning", {
-      variant: "warning",
+    return {
+      variant: reportable ? "warning" : "info",
       message:
-        `<strong>Some invoice information needs attention.</strong>` +
+        `<strong>${reportable ? "Some invoice information needs attention." : "Some invoice information was not available from Walmart."}</strong>` +
         `<ul>${detailList}${more}</ul>` +
-        `Your files may still be usable. Please <a href="${escapeHtml(reportUrl)}" target="_blank" rel="noopener noreferrer">send this pre-filled report</a> so we can investigate. Order numbers are masked for privacy.`,
+        guidance,
       dismissible: true,
-    });
+    };
+  }
+
+  function showExtractionWarning(diagnostics = []) {
+    const banner = buildExtractionWarningBanner(diagnostics);
+    if (banner) renderStatusBanner("extractionWarning", banner);
   }
 
   /**
@@ -1512,6 +1543,7 @@
     clearStatusBanner,
     clearOffTabWarning,
     buildExtractionReportUrl,
+    buildExtractionWarningBanner,
     showExtractionWarning,
     updateFilterNotice,
     setUIEnabled,
