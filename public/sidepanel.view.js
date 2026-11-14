@@ -135,6 +135,24 @@
     return banner;
   }
 
+  /**
+   * Text for a collection that ended before the end of the order history.
+   * The orders gathered so far are kept either way, so this says what
+   * happened and what to do, not that something is broken.
+   * @param {{reason: string, page: number}} interruption
+   * @param {number} orderCount - orders collected before it stopped
+   * @returns {string}
+   */
+  function collectionInterruptedMessage(interruption, orderCount) {
+    const count = Number(orderCount) || 0;
+    const kept = `${count} order${count === 1 ? "" : "s"} ${count === 1 ? "was" : "were"} collected and kept`;
+    if (interruption && interruption.reason === "challenge") {
+      return `Walmart paused collection to check that you are human — ${kept}. Open Walmart, complete the check, then load your orders again to get the rest.`;
+    }
+    const page = interruption && interruption.page ? ` on page ${interruption.page}` : "";
+    return `Collection stopped early${page} because Walmart's order history did not load — ${kept}. Load your orders again to get the rest.`;
+  }
+
   /** Remove a named status banner if present (no-op otherwise). */
   function clearStatusBanner(id) {
     const existing = document.getElementById(id);
@@ -377,7 +395,7 @@
    *   response — surfaced live in the loading text (spec v7.1 §A "Loading
    *   state").
    */
-  function updateProgressUI(currentPage, pageLimit, inProgress, orderCount = 0) {
+  function updateProgressUI(currentPage, pageLimit, inProgress, orderCount = 0, interruption = null) {
     const progressElement = document.getElementById("progress") || createProgressElement();
     progressElement.style.display = "block";
 
@@ -392,6 +410,8 @@
         <span class="loading-spinner" style="border-color: var(--primary); border-top-color: transparent;"></span>
         Loading page ${currentPage}… · ${count} order${count === 1 ? "" : "s"} found
       `;
+    } else if (interruption) {
+      progressElement.textContent = `Collection stopped early on page ${interruption.page || currentPage}.`;
     } else {
       progressElement.textContent = `Collection ${pageLimit > 0 && currentPage >= pageLimit ? "reached limit" : "completed"}. Total pages: ${currentPage}`;
     }
@@ -1541,6 +1561,7 @@
     getStatusRegion,
     renderStatusBanner,
     clearStatusBanner,
+    collectionInterruptedMessage,
     clearOffTabWarning,
     buildExtractionReportUrl,
     buildExtractionWarningBanner,

@@ -260,3 +260,60 @@ test('collection loop advances through every page, not just page 1', async () =>
   );
   assert.equal(CollectionState.currentPage, 3, 'reached the final page');
 });
+
+/** Wait until the crawl loop has stopped (finishCollection flips isCollecting). */
+async function waitForCollectionToStop(state) {
+  const started = Date.now();
+  while (state.isCollecting) {
+    if (Date.now() - started > 5000) throw new Error('collection did not stop');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+test('a crawl that lands on Walmart\'s human check stops and reports why', async () => {
+  const s = loadBackgroundSandbox();
+  const state = evalIn(s, 'CollectionState');
+  state.isCollecting = true;
+  state.tabId = 1;
+  state.currentPage = 3;
+  state.allOrderNumbers.add('200010000000042');
+  let messagesSent = 0;
+  s.chrome.tabs.get = (_id, callback) => callback({ id: 1, url: 'https://www.walmart.com/blocked?url=L29yZGVycw==' });
+  s.chrome.tabs.sendMessage = (_id, _message, callback) => { messagesSent += 1; callback({}); };
+  s.collectOrderNumbers();
+  await waitForCollectionToStop(state);
+  assert.equal(messagesSent, 0, 'the challenge page is not asked for orders');
+  assert.deepEqual(toPlain(state.interruption), { reason: 'challenge', page: 3 });
+  const response = await getProgress(s);
+  assert.deepEqual(toPlain(response.interruption), { reason: 'challenge', page: 3 });
+  assert.deepEqual(toPlain(response.orderNumbers), ['200010000000042'], 'orders collected before the check are kept');
+});
+
+test('a human check rendered in place of the order list also stops the crawl', async () => {
+  const s = loadBackgroundSandbox();
+  const state = evalIn(s, 'CollectionState');
+  state.isCollecting = true;
+  state.tabId = 1;
+  s.chrome.tabs.get = (_id, callback) => callback({ id: 1, url: 'https://www.walmart.com/orders' });
+  s.chrome.tabs.sendMessage = (_id, _message, callback) => queueMicrotask(() => callback({ challenge: true, orderNumbers: [] }));
+  s.collectOrderNumbers();
+  await waitForCollectionToStop(state);
+  assert.equal(toPlain(state.interruption).reason, 'challenge');
+});
+
+test('running out of retries is reported as an incomplete crawl, and a new crawl clears it', async () => {
+  const s = loadBackgroundSandbox();
+  const state = evalIn(s, 'CollectionState');
+  state.isCollecting = true;
+  state.tabId = 1;
+  state.currentPage = 2;
+  state.retryCount = state.maxRetries;
+  state.fastAttempted = true; // the other mode was already tried
+  s.retryCollection();
+  await waitForCollectionToStop(state);
+  assert.deepEqual(toPlain(state.interruption), { reason: 'incomplete', page: 2 });
+  state.reset();
+  assert.equal(state.interruption, null);
+  s.saveSessionState(); // a new crawl saves its first page without the old reason
+  assert.equal('interruption' in toPlain(await getProgress(s)), false, 'a fresh crawl reports no interruption');
+});

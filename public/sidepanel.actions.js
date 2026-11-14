@@ -204,6 +204,7 @@
     const pageLimit = parseInt(pageLimitInput ? pageLimitInput.value : "0", 10);
     // A fresh run invalidates last run's "no orders found" explanation.
     view.clearStatusBanner("collectionEmptyResult");
+    view.clearStatusBanner("collectionInterrupted");
     setCollectionButtonsState({ running: true });
     view.setButtonLoading(startButton, true);
     // Reveal the list/download sections the moment collection starts (spec
@@ -550,11 +551,18 @@
       } else {
         const justFinished = app.collectionInProgress; // was collecting on the previous poll
         app.collectionInProgress = false;
-        if (matches) view.updateProgressUI(response.currentPage, response.pageLimit, false);
+        if (matches) view.updateProgressUI(response.currentPage, response.pageLimit, false, 0, response.interruption || null);
         // A collection that ran to completion and found NOTHING deserves an
         // explanation, not a silent empty list — the usual cause is an
         // over-narrow order-type/date filter in Options (2026-07-19).
-        if (justFinished && matches && (response.orderNumbers || []).length === 0) {
+        if (justFinished && matches && response.interruption) {
+          // Stopped before the end of the history: say so, and that nothing was lost.
+          view.renderStatusBanner("collectionInterrupted", {
+            variant: "warning",
+            message: view.collectionInterruptedMessage(response.interruption, (response.orderNumbers || []).length),
+            dismissible: true,
+          });
+        } else if (justFinished && matches && (response.orderNumbers || []).length === 0) {
           view.renderStatusBanner("collectionEmptyResult", {
             variant: "warning",
             message:

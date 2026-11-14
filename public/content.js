@@ -306,6 +306,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const ctx = providerContext;
       const handlers = {
         [CONSTANTS.MESSAGES.COLLECT_ORDER_NUMBERS]: withImageBlocking(async (req) => {
+          // Walmart's human check can render in place of the order list.
+          if (/robot or human/i.test(document.title) || document.querySelector("#px-captcha")) {
+            return { challenge: true, orderNumbers: [] };
+          }
           const result = await provider.collectOrderNumbers({ ...ctx, currentPage: Number(req.currentPage || 1) });
           // Stamp which Walmart account this page was collected under, so the
           // background can partition the records per account.

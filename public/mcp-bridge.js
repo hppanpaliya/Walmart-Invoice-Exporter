@@ -277,6 +277,10 @@ const McpBridge = (() => {
         currentPage: CollectionState.currentPage || 0,
         pageLimit: CollectionState.pageLimit || 0,
         ordersFound: CollectionState.allOrderNumbers ? CollectionState.allOrderNumbers.size : 0,
+        // Set when the last run stopped before the end of the history.
+        ...(CollectionState.interruption && !CollectionState.isCollecting
+          ? { stoppedEarly: CollectionState.interruption.reason, stoppedAtPage: CollectionState.interruption.page }
+          : {}),
       };
     },
 

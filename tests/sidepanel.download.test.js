@@ -579,3 +579,16 @@ test('extraction notice: no warnings means no banner', () => {
   const sandbox = loadDownloadSandbox();
   assert.equal(sandbox.window.Sidepanel.view.buildExtractionWarningBanner([]), null);
 });
+
+test('collection stopped early: the notice says what happened, what was kept, and what to do', () => {
+  const sandbox = loadDownloadSandbox();
+  const view = sandbox.window.Sidepanel.view;
+  const check = view.collectionInterruptedMessage({ reason: 'challenge', page: 4 }, 37);
+  assert.match(check, /check that you are human/);
+  assert.match(check, /37 orders were collected and kept/);
+  assert.match(check, /load your orders again/);
+  const incomplete = view.collectionInterruptedMessage({ reason: 'incomplete', page: 2 }, 1);
+  assert.match(incomplete, /stopped early on page 2/);
+  assert.match(incomplete, /1 order was collected and kept/);
+  assert.doesNotMatch(incomplete, /human/);
+});
