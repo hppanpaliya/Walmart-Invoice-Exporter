@@ -117,6 +117,16 @@ test('HTML and PDF receipts preserve all financial adjustments and explicit zero
   assert.match(Buffer.from(s.buildReceiptPdf(zero)).toString('latin1'), /Order total/);
 });
 
+test('a fully canceled order is labeled in the HTML and PDF receipts', () => {
+  const s = loadSandbox({ scripts: ['pdflite.js', 'utils.js'] });
+  const canceled = { orderNumber: '42', orderDate: 'Oct 05, 2026', items: [], orderTotal: '$0.00', noChargedItems: true };
+  assert.match(s.buildReceiptArticle(canceled), /Canceled: no items were charged/);
+  assert.match(Buffer.from(s.buildReceiptPdf(canceled)).toString('latin1'), /Canceled: no items were charged/);
+  const charged = { ...invoice, items: [{ productName: 'Test item', quantity: 1, price: '$20.00' }] };
+  assert.doesNotMatch(s.buildReceiptArticle(charged), /Canceled:/);
+  assert.doesNotMatch(Buffer.from(s.buildReceiptPdf(charged)).toString('latin1'), /Canceled:/);
+});
+
 test('legacy bulk Excel appends adjustment columns without shifting its original columns', async () => {
   const s = loadSandbox({ scripts: ['utils.js'] });
   const downloads = captureDownloads(s);

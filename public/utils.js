@@ -655,9 +655,21 @@ function excelNumber(value) {
  * @returns {string}
  */
 function orderDataLabel(orderDetails) {
-  return orderDetails?.dataSource === 'summary'
-    ? 'Summary only — not scanned yet (run Download Selected for prices, fees, payment)'
-    : 'Full invoice';
+  if (orderDetails?.dataSource === 'summary') {
+    return 'Summary only — not scanned yet (run Download Selected for prices, fees, payment)';
+  }
+  // A fully canceled order is complete as saved: it has no lines and no charge.
+  return orderDetails?.noChargedItems === true ? 'Canceled — nothing was charged' : 'Full invoice';
+}
+
+/**
+ * Receipt line explaining an order with no item lines. Without it a fully
+ * canceled order prints as an empty receipt.
+ * @param {Object} order
+ * @returns {string}
+ */
+function canceledOrderNote(order) {
+  return order?.noChargedItems === true ? 'Canceled: no items were charged' : '';
 }
 
 /** Keep unrecognized Walmart adjustment labels and amounts visible in Excel. */
@@ -1508,6 +1520,7 @@ function buildReceiptArticle(order) {
     : '';
 
   const metaLines = [
+    canceledOrderNote(order),
     order.address ? `Ship to: ${order.address}` : '',
     formatPaymentMethodDetails(order) ? `Payment: ${formatPaymentMethodDetails(order)}` : '',
     formatPaymentSplit(order) ? `Charged: ${formatPaymentSplit(order)}` : '',
@@ -1780,6 +1793,7 @@ function drawPdfTotals(doc, cursor, order) {
 function drawPdfMetaLines(doc, cursor, order) {
   const payment = formatPaymentMethodDetails(order);
   const metaLines = [
+    canceledOrderNote(order),
     order.address ? `Ship to: ${order.address}` : '',
     payment ? `Payment: ${payment}` : '',
     formatPaymentSplit(order) ? `Charged: ${formatPaymentSplit(order)}` : '',

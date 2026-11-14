@@ -165,3 +165,11 @@ test('CONSTANTS exposes the export formats used by the panel', () => {
   const formats = toPlain(evalIn(sandbox, 'CONSTANTS.EXPORT_FORMATS'));
   assert.deepEqual(formats, { XLSX: 'xlsx', CSV: 'csv', JSON: 'json', RECEIPT: 'receipt', PDF: 'pdf' });
 });
+
+test('orderDataLabel tells a fully canceled order apart from a full invoice', () => {
+  const sandbox = loadUtils();
+  assert.equal(sandbox.orderDataLabel({ orderNumber: '1', items: [], orderTotal: '$0.00', noChargedItems: true }), 'Canceled — nothing was charged');
+  assert.equal(sandbox.orderDataLabel({ orderNumber: '2', items: [{ productName: 'Item' }], orderTotal: '$5.00' }), 'Full invoice');
+  assert.match(sandbox.orderDataLabel({ orderNumber: '3', dataSource: 'summary', noChargedItems: true }), /^Summary only/);
+  assert.match(sandbox.buildReceiptArticle({ orderNumber: '1', items: [], orderTotal: '$0.00', noChargedItems: true }), /Canceled: no items were charged/);
+});
