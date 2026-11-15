@@ -2,7 +2,7 @@
 
 This document records the future plans for the Walmart Invoice Exporter and the status of each. Most of the original list shipped in the 6.5–6.12 release train (one roadmap item per point release). It also records the engineering principles every future change must respect.
 
-Last updated: 2026-07-10
+Last updated: 2026-11-14
 
 ## Features & Status
 
@@ -25,6 +25,18 @@ Last updated: 2026-07-10
 9. ✅ SHIPPED 6.11 (built-in dependency-free PDF writer) — **True PDF invoice generation per order** — Deferred from v6.4, which ships a printable HTML receipt instead. Rationale: PDF generation adds real complexity; the HTML receipt covers most needs today.
 
 10. ✅ SHIPPED 6.10 — **QuickBooks/Xero-specific export presets** — v6.4 ships a generic accounting-friendly CSV first. Rationale: validate demand with the generic format before committing to per-tool presets.
+
+11. 🔨 BUILT, not released (branch `feature/order-insights`) — **Spending by category** (issue #28) — A Categories view on the dashboard. A product's category comes from Walmart's own department when the saved invoice carries its category path, from the product name otherwise, and from the user's own choice above both.
+
+12. 🔨 BUILT, not released — **Missed items view** — Unavailable, canceled, substituted and weight-adjusted items, plus late deliveries. Only invoices read by extraction version 6 or later carry this; the view says how many orders that covers.
+
+13. 🔨 BUILT, not released — **Per-item and per-order detail in exports** — Price each, was price, savings, comparison price, department, returnable, a fulfillment note; order status, late delivery, store, return window, items not fulfilled. Appended columns, plus a "Not Fulfilled" sheet in Excel.
+
+14. 🔨 BUILT, not released — **Collection-stopped-early notice** — The panel says when Walmart's human check or a page that did not load ended a collection before the end of the history.
+
+15. 🔨 BUILT, not released — **The same optional details for Walmart Canada** — The Canada adapter reads the same fields (extraction version 2 for Canada). Unit-tested only; not checked against a live Canadian account.
+
+16. ⏳ OPEN — **Department ids not in the table** — An item whose department id is unknown gets no department name and is categorized by its product name. `6163033` (Services) was added in 8.9; add others as they are confirmed.
 
 ## Engineering Principles
 

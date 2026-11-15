@@ -1,6 +1,18 @@
 # Changelog
 
-## [Unreleased]
+## [8.9] - Unreleased
+
+### Added
+- A notice when a collection stops before the end of the order history, either because Walmart asked for a human check or because a page did not load. It says how many orders were kept and what to do. The local AI bridge reports the same through `get_collection_progress`.
+- More detail per item when Walmart sends it: the price of one item, the "was" price, savings, the comparison price (per oz, per lb), Walmart's department, whether it can still be returned, and whether it was substituted, weight adjusted or returned.
+- More detail per order: one overall status, late delivery, the store that filled it, the return window, and the items that were ordered but never charged.
+- Walmart.com and Walmart.ca both read these details.
+- Excel and CSV: the new details as columns appended after the existing ones, and a "Not Fulfilled" sheet in Excel when any order has unfulfilled items.
+- Dashboard: a Categories view (spending by category, from Walmart's department where known and from the product name otherwise, with your own overrides) and a Missed items view (unavailable, canceled, substituted and weight-adjusted items, and late deliveries).
+
+### Changed
+- Invoices saved by earlier versions (Walmart.com and Walmart.ca) are fetched again the first time they are exported, so they gain the new details. That first export takes as long as a first-time export.
+- Every new detail is optional. An order without it exports as before, with the new cells left blank.
 
 ## [8.8] - November 14, 2026
 
