@@ -159,6 +159,14 @@ See [docs/PORTS.md](./docs/PORTS.md) for the full list of differences.
 
 ## What's New
 
+### Version 8.9 (November 14, 2026)
+- **More detail in exports**: price each, "was" price, savings, price per unit, Walmart's department, returnable, and whether an item was substituted, weight adjusted or returned. Per order: status, late delivery, store, return window and items not fulfilled. New columns are added after the existing ones, plus a "Not Fulfilled" sheet in Excel
+- **Dashboard: Categories view**: spending by category, from Walmart's own department where it is known, with your own overrides
+- **Dashboard: Missed items view**: unavailable, canceled, substituted and weight-adjusted items, and late deliveries
+- **Collection stopped early** is now explained: how many orders were kept and what to do
+- Works on Walmart.com and Walmart.ca. Every new detail is optional: an order without it exports as before
+- Saved invoices are fetched again on their first export after the update, so that export is slower once
+
 ### Version 8.8 (November 14, 2026)
 - **Far fewer false "Walmart may have changed their website" alerts**: fully canceled orders, slow-loading order pages and Walmart's "Robot or human?" check are handled for what they are. Alerts name the affected order and the reason, and ask for a report only when something unexpected happened
 - **Walmart's human check no longer fails a whole run**: the run stops, finished orders are kept, and "Retry failed" picks up the rest
@@ -406,7 +414,7 @@ The extension is built with WXT/Vite and a modular design for maintainability:
 
 For a complete list of changes, see [CHANGELOG.md](./CHANGELOG.md)
 
-**Latest (v8.8):** Fewer false alerts, Walmart's redesigned invoice page, complete payment splits. **Since v8.0:** Full-app Spending Dashboard (inline invoice drill-down, interactive click-to-scope charts, insights card, month-group selection), fast request-based collection with automatic classic fallback, Walmart's own order filters as collection options, multi-account support, a complete light/dark redesign, and the new WXT build system.
+**Latest (v8.9):** Item and order details in exports, Categories and Missed items dashboard views. **v8.8:** Fewer false alerts, Walmart's redesigned invoice page, complete payment splits. **Since v8.0:** Full-app Spending Dashboard (inline invoice drill-down, interactive click-to-scope charts, insights card, month-group selection), fast request-based collection with automatic classic fallback, Walmart's own order filters as collection options, multi-account support, a complete light/dark redesign, and the new WXT build system.
 
 ## Support
 

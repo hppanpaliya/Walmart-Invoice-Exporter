@@ -1,6 +1,6 @@
 # Changelog
 
-## [8.9] - Unreleased
+## [8.9] - November 14, 2026
 
 ### Added
 - A notice when a collection stops before the end of the order history, either because Walmart asked for a human check or because a page did not load. It says how many orders were kept and what to do. The local AI bridge reports the same through `get_collection_progress`.

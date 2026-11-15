@@ -1,6 +1,6 @@
 # Chrome Web Store description (copy–paste)
 
-> Publish this together with v8.8 — it describes the new UI and the MCP
+> Publish this together with v8.9 — it describes the new UI and the MCP
 > feature (including the opt-in AI collection actions). The short "summary"
 > field and the detailed description are below.
 
@@ -66,7 +66,13 @@ Walmart Invoice Exporter collects every order from walmart.com/orders, saves it 
 
 ☆ Need to merge multiple Excel files afterwards? https://hppanpaliya.github.io/excel-merger
 
-★ WHAT'S NEW IN 8.8
+★ WHAT'S NEW IN 8.9
+• More detail in Excel and CSV: price each, "was" price, savings, price per unit, Walmart's department, and whether an item was substituted, weight adjusted, returned or never charged
+• Order status, late deliveries, the store that filled the order and the return window
+• New dashboard views: spending by category (you can change any category) and missed items (unavailable, canceled, substituted)
+• If a collection stops early, the panel says how many orders were kept and what to do
+
+★ ALSO IN 8.8
 • Far fewer false "Walmart may have changed their website" alerts: canceled orders, slow‑loading pages and Walmart's "Robot or human?" check are now handled for what they are
 • If Walmart pauses a run to check that you are human, finished orders are kept and "Retry failed" picks up the rest
 • Alerts name the affected order and the reason, and only ask for a report when something unexpected happened

@@ -145,7 +145,8 @@ test('full-page dashboard', async (t) => {
       assert.ok(scopes.some((scope) => scope[product] === 'pets'), 'the choice is stored for the product');
 
       await page.reload();
-      await page.waitForSelector('.cbar', { timeout: 10000 });
+      // The view is kept in the URL hash, so the page comes back on Categories.
+      await page.waitForSelector('[data-nav="categories"]', { timeout: 10000 });
       await page.locator('[data-nav="categories"]').click();
       await page.locator('#scopeSelect').selectOption('all');
       const pets = page.locator('#viewCategories details.cat-category').filter({ has: page.locator('.cat-category-title', { hasText: 'Pets' }) });
