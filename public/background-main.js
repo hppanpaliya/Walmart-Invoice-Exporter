@@ -94,8 +94,13 @@ const CollectionState = {
   fastAttempted: false,
   classicExhausted: false,
 
+  // Why the last crawl ended before the end of the history, or null when it
+  // ran to completion: { reason: 'challenge' | 'incomplete', page }.
+  interruption: null,
+
   // Reset state for new collection
   reset() {
+    this.interruption = null;
     this.currentPage = 1;
     this.retryCount = 0;
     this.initialPageLoaded = false;
@@ -144,6 +149,7 @@ function loadSessionState() {
         CollectionState.allOrderSummaries = saved.orderSummaries || {};
         CollectionState.currentPage = saved.currentPage || 1;
         CollectionState.pageLimit = saved.pageLimit || 0;
+        CollectionState.interruption = saved.interruption || null;
         console.log(`Restored ${CollectionState.allOrderNumbers.size} orders from session state.`);
       }
       resolve();
@@ -162,6 +168,7 @@ function saveSessionState() {
     pageLimit: CollectionState.pageLimit,
     isCollecting: CollectionState.isCollecting,
   };
+  if (CollectionState.interruption) dataToSave.interruption = CollectionState.interruption;
 
   chrome.storage.session.set({ [CollectionState.sessionKey]: dataToSave }, () => {
     if (chrome.runtime.lastError) {
@@ -354,6 +361,11 @@ function handleGetProgress(_request, sendResponse) {
     if (CollectionState.provider && CollectionState.provider !== DEFAULT_PROVIDER_ID) {
       payload.provider = CollectionState.provider;
     }
+    // Present only when the last crawl stopped early, so a complete crawl
+    // keeps the historic response shape.
+    if (CollectionState.interruption && !CollectionState.isCollecting) {
+      payload.interruption = CollectionState.interruption;
+    }
     sendResponse(payload);
   };
 
@@ -446,6 +458,27 @@ function isOrdersListUrl(url) {
   return adapter ? adapter.isOrdersListUrl(url) : false;
 }
 
+/** Walmart serves its "Robot or human?" check at /blocked on its own hosts. */
+function isChallengeTabUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return /(^|\.)walmart\.(com|ca)$/i.test(parsed.hostname) && /^\/blocked(\/|$)/.test(parsed.pathname);
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * End a crawl that could not reach the end of the history, remembering why,
+ * so the panel can say so instead of reporting a normal completion.
+ * @param {'challenge'|'incomplete'} reason
+ */
+function interruptCollection(reason) {
+  CollectionState.interruption = { reason, page: CollectionState.currentPage };
+  console.warn(`[collect] Collection stopped early (${reason}) on page ${CollectionState.currentPage}.`);
+  finishCollection();
+}
+
 // Collection always runs in its OWN background tab — never in a tab the
 // user is looking at (owner decision: reverted the 6.20 in-tab collection).
 function startCollection(url) {
@@ -519,7 +552,9 @@ function collectAllFast() {
     }
     console.warn(`[collect] Fast Collect unavailable (${why}); using the classic loop.`);
     CollectionState.fastFetch = false;
+    const accountKey = CollectionState.accountKey;
     CollectionState.reset();
+    CollectionState.accountKey = accountKey;
     // Classic must not bounce back into fast within the same run.
     CollectionState.fastAttempted = true;
     CollectionState.initialPageLoaded = true;
@@ -549,7 +584,7 @@ function collectAllFast() {
           runClassicInstead("no response");
           return;
         }
-        if (response.fallbackToClassic) {
+        if (response.fallbackToClassic && !response.orderNumbers?.length) {
           runClassicInstead("adapter requested fallback");
           return;
         }
@@ -595,7 +630,8 @@ function collectAllFast() {
             console.log(
               `[collect] Fast Collect stored ${response.orderNumbers.length} orders across ${response.pages || "?"} page(s).`
             );
-            finishCollection();
+            if (response.fallbackToClassic) runClassicInstead("partial API history");
+            else finishCollection();
           });
       }
     );
@@ -663,6 +699,11 @@ function collectOrderNumbers() {
   // The user can navigate a reused tab away mid-collection — verify we are
   // still on the orders list before asking it for a page.
   chrome.tabs.get(CollectionState.tabId, (tab) => {
+    // Walmart's human check replaces the list: retrying only deepens the block.
+    if (!chrome.runtime.lastError && tab && isChallengeTabUrl(tab.pendingUrl || tab.url)) {
+      interruptCollection('challenge');
+      return;
+    }
     if (chrome.runtime.lastError || !tab || !isOrdersListUrl(tab.url)) {
       console.warn(
         `[collect] Tab is no longer on the ${CollectionState.provider} orders list (url: ${tab && tab.url}); retrying. ` +
@@ -684,6 +725,11 @@ function collectOrderNumbers() {
     if (chrome.runtime.lastError) {
       console.error("Error collecting order numbers:", chrome.runtime.lastError);
       retryCollection();
+      return;
+    }
+
+    if (response && response.challenge) {
+      interruptCollection('challenge');
       return;
     }
 
@@ -829,7 +875,7 @@ function retryCollection() {
   }
 
   console.log("Max retries reached. Finishing collection.");
-  finishCollection();
+  interruptCollection('incomplete');
 }
 
 /**

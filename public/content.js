@@ -12,6 +12,20 @@ const ImageBlocker = (() => {
   const originalSetAttribute = HTMLImageElement.prototype.setAttribute;
   const CSP_META_SELECTOR = 'meta[data-wie-img-csp="true"]';
 
+  function removeImage(img) {
+    // Card logos carry the tender brand in alt text. Preserve that text for
+    // extraction without retaining a loadable image or changing the layout.
+    const alt = img.getAttribute('alt');
+    if (alt) {
+      const label = document.createElement('span');
+      label.hidden = true;
+      label.setAttribute('data-wie-image-alt', alt);
+      img.replaceWith(label);
+    } else {
+      img.remove();
+    }
+  }
+
   function removeAllImages() {
     // Remove background images from elements
     const allElements = document.getElementsByTagName("*");
@@ -24,7 +38,7 @@ const ImageBlocker = (() => {
     // Remove all img elements
     const images = document.querySelectorAll("img");
     images.forEach((img) => {
-      img.remove();
+      removeImage(img);
     });
 
     // Remove picture elements
@@ -99,13 +113,16 @@ const ImageBlocker = (() => {
     observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
-          if (node.nodeName === "IMG" || node.nodeName === "PICTURE") {
+          if (node.nodeName === "IMG") {
+            removeImage(node);
+          } else if (node.nodeName === "PICTURE") {
+            Array.from(node.getElementsByTagName('img')).forEach(removeImage);
             node.remove();
           }
           if (node.getElementsByTagName) {
             const images = node.getElementsByTagName("img");
             const pictures = node.getElementsByTagName("picture");
-            Array.from(images).forEach((img) => img.remove());
+            Array.from(images).forEach(removeImage);
             Array.from(pictures).forEach((pic) => pic.remove());
           }
         });
@@ -289,6 +306,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const ctx = providerContext;
       const handlers = {
         [CONSTANTS.MESSAGES.COLLECT_ORDER_NUMBERS]: withImageBlocking(async (req) => {
+          // Walmart's human check can render in place of the order list.
+          if (/robot or human/i.test(document.title) || document.querySelector("#px-captcha")) {
+            return { challenge: true, orderNumbers: [] };
+          }
           const result = await provider.collectOrderNumbers({ ...ctx, currentPage: Number(req.currentPage || 1) });
           // Stamp which Walmart account this page was collected under, so the
           // background can partition the records per account.
@@ -324,6 +345,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         ),
         [CONSTANTS.MESSAGES.BLOCK_IMAGES]: withImageBlocking(async () => ({ success: true })),
         [CONSTANTS.MESSAGES.GET_ORDER_DATA]: withImageBlocking(async () => {
+          // Walmart's human check can render in place of the order. Say so,
+          // rather than returning an empty invoice that reads as a site change.
+          if (/robot or human/i.test(document.title) || document.querySelector("#px-captcha")) {
+            return { data: null, challenge: true };
+          }
           // scrapeOrder() merges the __NEXT_DATA__ payload and DOM fallback
           // paths, so validating its output covers both extraction strategies.
           // await handles adapters whose scrapeOrder is async; Walmart's sync

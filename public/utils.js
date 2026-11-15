@@ -17,8 +17,54 @@ const STYLES = {
  * @returns {number} The parsed number value
  */
 function parseNumericValue(value) {
-  if (typeof value === 'number') return value;
-  return Number(String(value || '').replace(/[^0-9.-]+/g, '')) || 0;
+  return parseOptionalNumericValue(value) ?? 0;
+}
+
+/** Preserve the distinction between a missing money value and an explicit zero. */
+function parseOptionalNumericValue(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const numeric = String(value ?? '').replace(/[^0-9.-]+/g, '');
+  if (!/\d/.test(numeric)) return null;
+  const parsed = Number(numeric);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** First available finite amount, including zero (invoice before summary). */
+function resolveMoneyValue(...values) {
+  for (const value of values) {
+    const amount = parseOptionalNumericValue(value);
+    if (amount !== null) return amount;
+  }
+  return 0;
+}
+
+/** Only ordinary web links may become clickable spreadsheet hyperlinks. */
+function safeExportUrl(value) {
+  try {
+    const url = new URL(String(value ?? ''));
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) return '';
+    return url.href;
+  } catch (_) { return ''; }
+}
+
+function paymentEndingIdentity(value) {
+  const text = String(value || '').toLowerCase();
+  return text.match(/ending\s+in\s+([a-z0-9]{4})\b/)?.[1] || '';
+}
+
+function isOtherTenderAlias(entry, details) {
+  const brand = String(entry?.brand || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const ending = paymentEndingIdentity(entry?.ending);
+  return brand === 'other' && ending && details.some((candidate) => {
+    const candidateBrand = String(candidate?.brand || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    return candidate !== entry && candidateBrand && candidateBrand !== 'other' &&
+      paymentEndingIdentity(candidate?.ending) === ending;
+  });
+}
+
+function withoutOtherTenderAliases(details) {
+  const list = Array.isArray(details) ? details : [];
+  return list.filter((entry) => !isOtherTenderAlias(entry, list));
 }
 
 /**
@@ -35,14 +81,93 @@ function formatPaymentMethodDetails(orderDetails) {
     return orderDetails?.paymentMethods || '';
   }
 
-  return details
+  const labels = withoutOtherTenderAliases(details)
     .map((entry) => {
-      const primary = [entry.brand, entry.ending].filter(Boolean).join(' - ');
-      const amount = entry.amount ? `Amount: ${entry.amount}` : '';
-      return [primary, amount].filter(Boolean).join(' | ');
+      const brand = String(entry?.brand || '').trim();
+      const ending = String(entry?.ending || '').trim();
+      if (!brand) return ending;
+      if (!ending) return brand;
+      const normalizedBrand = brand.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normalizedEnding = ending.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if ((normalizedBrand === 'wmtrc' || normalizedBrand === 'walmartcash')
+        && normalizedEnding.includes('walmartcash')) return ending;
+      return `${brand} - ${ending}`;
+    })
+    .filter((label, index, all) => label && all.findIndex((other) => other.toLowerCase() === label.toLowerCase()) === index)
+    .join(' || ');
+  return labels || orderDetails?.paymentMethods || '';
+}
+
+function dedupePaymentSplitText(value) {
+  const seen = new Set();
+  const retained = [];
+  String(value || '').split(/\s*;\s*/).forEach((part) => {
+    if (!part) return;
+    const separator = part.lastIndexOf(':');
+    if (separator < 0) {
+      retained.push(part);
+      return;
+    }
+    const labelText = part.slice(0, separator).trim();
+    const label = part.slice(0, separator).toLowerCase().replace(/\bwmtrc\b/g, '').replace(/[^a-z0-9]/g, '');
+    const amount = part.slice(separator + 1).replace(/\s/g, '').toLowerCase();
+    const key = `${label}|${amount}`;
+    if (seen.has(key)) return;
+    const ending = paymentEndingIdentity(labelText);
+    const isOtherAlias = /^other\b/i.test(labelText) && ending && retained.some((previous) => {
+      const previousSeparator = previous.lastIndexOf(':');
+      if (previousSeparator < 0) return false;
+      const previousLabel = previous.slice(0, previousSeparator).trim();
+      const previousAmount = previous.slice(previousSeparator + 1).replace(/\s/g, '').toLowerCase();
+      return !/^other\b/i.test(previousLabel) && previousAmount === amount &&
+        paymentEndingIdentity(previousLabel) === ending;
+    });
+    if (isOtherAlias) return;
+    const duplicatesOtherAlias = !/^other\b/i.test(labelText) && ending && retained.some((previous) => {
+      const previousSeparator = previous.lastIndexOf(':');
+      if (previousSeparator < 0) return false;
+      const previousLabel = previous.slice(0, previousSeparator).trim();
+      const previousAmount = previous.slice(previousSeparator + 1).replace(/\s/g, '').toLowerCase();
+      return /^other\b/i.test(previousLabel) && previousAmount === amount &&
+        paymentEndingIdentity(previousLabel) === ending;
+    });
+    if (duplicatesOtherAlias) {
+      const index = retained.findIndex((previous) => {
+        const previousSeparator = previous.lastIndexOf(':');
+        const previousLabel = previous.slice(0, previousSeparator).trim();
+        return /^other\b/i.test(previousLabel) && paymentEndingIdentity(previousLabel) === ending;
+      });
+      if (index >= 0) retained.splice(index, 1);
+    }
+    seen.add(key);
+    retained.push(part);
+  });
+  return retained.join('; ');
+}
+
+/** Use the explicit split when available; recover it from tender details for older invoices. */
+function formatPaymentSplit(orderDetails) {
+  const split = String(orderDetails?.paymentSplit || '').trim();
+  if (split) return dedupePaymentSplitText(split);
+  const details = Array.isArray(orderDetails?.paymentMethodDetails)
+    ? orderDetails.paymentMethodDetails
+    : [];
+  return dedupePaymentSplitText(withoutOtherTenderAliases(details)
+    .map((entry) => {
+      const amount = String(entry?.amount || '').trim();
+      if (!amount) return '';
+      const brand = String(entry?.brand || '').trim();
+      const ending = String(entry?.ending || '').trim();
+      const normalizedBrand = brand.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normalizedEnding = ending.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const label = (normalizedBrand === 'wmtrc' || normalizedBrand === 'walmartcash')
+        && normalizedEnding.includes('walmartcash')
+        ? ending
+        : [brand, ending].filter(Boolean).join(' ');
+      return label ? `${label}: ${amount}` : amount;
     })
     .filter(Boolean)
-    .join(' || ');
+    .join('; '));
 }
 
 /**
@@ -92,6 +217,7 @@ function configureOrderSummaryColumns(worksheet) {
     { header: 'Driver Tip', key: 'driverTip', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Order Total', key: 'orderTotal', width: 15, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Order Type', key: 'orderType', width: 14, style: { alignment: { horizontal: "center" } } },
+
   ];
 }
 
@@ -225,13 +351,13 @@ function buildSummaryItemRows(orderNumbers, orderSummaries = {}, invoiceByOrder 
 function addItemsToWorksheet(worksheet, items) {
   items.forEach((item) => {
     const productName = item.productName || "";
-    const productLink = item.productLink || "";
+    const productLink = safeExportUrl(item.productLink);
     const row = worksheet.addRow({
       productName,
-      productLink: {
+      productLink: productLink ? {
         text: truncateText(productName),
         hyperlink: productLink
-      },
+      } : '',
       quantity: excelNumber(item.quantity),
       price: excelNumber(item.price),
       deliveryStatus: item.deliveryStatus,
@@ -248,8 +374,11 @@ function styleSingleOrderWorksheet(worksheet) {
   const currencyLabels = new Set([
     'Subtotal (Before Savings)',
     'Savings',
+    'Promo Code Amount',
     'Subtotal',
     'Delivery Charges',
+    '3 Hours or Less Fee',
+    'Returned 3 Hours or Less Fee',
     'Bag Fee',
     'Tax',
     'Tip',
@@ -300,7 +429,7 @@ function styleMultipleOrdersWorksheet(worksheet) {
  */
 function addOrderSummary(worksheet, orderDetails) {
   // Add empty row for spacing
-  worksheet.addRow([]);
+  worksheet.addRow({});
 
   const paymentMethodsDetailed = formatPaymentMethodDetails(orderDetails);
 
@@ -316,23 +445,26 @@ function addOrderSummary(worksheet, orderDetails) {
     ['Payment Messages', orderDetails.paymentMessages],
     ['Subtotal (Before Savings)', excelNumber(orderDetails.subtotalBeforeSavings)],
     ['Savings', excelNumber(orderDetails.savings)],
+    ['Promo Code Amount', excelNumber(orderDetails.promoCodeAmount)],
     ['Subtotal', excelNumber(orderDetails.orderSubtotal)],
     ['Delivery Charges', excelNumber(orderDetails.deliveryCharges)],
+    ['3 Hours or Less Fee', excelNumber(orderDetails.threeHoursOrLessFee)],
+    ['Returned 3 Hours or Less Fee', excelNumber(orderDetails.returnedThreeHoursOrLessFee)],
     ['Bag Fee', excelNumber(orderDetails.bagFee)],
     ['Tax', excelNumber(orderDetails.tax)],
     ['Tip', excelNumber(orderDetails.tip)],
     ['Refund', excelNumber(orderDetails.refund)],
     ['Donations', excelNumber(orderDetails.donations)],
+    ...otherAdjustmentRows(orderDetails.financialAdjustments),
     ['Order Total', excelNumber(orderDetails.orderTotal)],
     ['Seller(s)', orderDetails.sellers || ''],
     ['Fulfillment', orderDetails.fulfillmentTypes || ''],
     ['Delivered Date', orderDetails.deliveredDate || ''],
-    ['Tracking Numbers', orderDetails.trackingNumbers || ''],
-    ['Payment Split', orderDetails.paymentSplit || ''],
+    ['Payment Split', formatPaymentSplit(orderDetails)],
     [
       'Receipt Barcode',
-      orderDetails.barcodeImageUrl
-        ? { text: 'Barcode', hyperlink: orderDetails.barcodeImageUrl }
+      safeExportUrl(orderDetails.barcodeImageUrl)
+        ? { text: 'Barcode', hyperlink: safeExportUrl(orderDetails.barcodeImageUrl) }
         : '',
     ],
     ['Order Type', formatOrderType(orderDetails.orderType, orderDetails.isInStore)],
@@ -344,7 +476,7 @@ function addOrderSummary(worksheet, orderDetails) {
   const summaryRows = rows
     .filter(([, value]) => !(value === '' || value === null || value === undefined))
     .map(([label, value]) => {
-      const row = worksheet.addRow([label, value]);
+      const row = worksheet.addRow({ productName: label, quantity: value });
       row.font = { ...STYLES.productFont, bold: true };
       return row;
     });
@@ -364,7 +496,7 @@ function addOrderSummary(worksheet, orderDetails) {
   ]);
   summaryRows.forEach((row) => {
     const label = row.getCell(1).value;
-    if (!currencyLabels.has(label)) return;
+    if (!currencyLabels.has(label) && !String(label || '').startsWith('Other Adjustments (')) return;
     row.getCell(2).numFmt = "$#,##0.00";
     row.getCell(2).font = { ...STYLES.productFont, bold: true };
     row.getCell(1).font = { ...STYLES.productFont, bold: true };
@@ -523,9 +655,134 @@ function excelNumber(value) {
  * @returns {string}
  */
 function orderDataLabel(orderDetails) {
-  return orderDetails?.dataSource === 'summary'
-    ? 'Summary only — not scanned yet (run Download Selected for prices, fees, payment)'
-    : 'Full invoice';
+  if (orderDetails?.dataSource === 'summary') {
+    return 'Summary only — not scanned yet (run Download Selected for prices, fees, payment)';
+  }
+  // A fully canceled order is complete as saved: it has no lines and no charge.
+  return orderDetails?.noChargedItems === true ? 'Canceled — nothing was charged' : 'Full invoice';
+}
+
+/**
+ * Receipt line explaining an order with no item lines. Without it a fully
+ * canceled order prints as an empty receipt.
+ * @param {Object} order
+ * @returns {string}
+ */
+function canceledOrderNote(order) {
+  return order?.noChargedItems === true ? 'Canceled: no items were charged' : '';
+}
+
+/**
+ * Walmart's top-level departments, keyed by the id that leads an item's
+ * category path ("0:<department>:<aisle>:…"). An id that is not listed
+ * simply has no name: the column stays blank and the dashboard falls back
+ * to classifying by product name.
+ */
+const WALMART_DEPARTMENTS = {
+  '976759': 'Food',
+  '1115193': 'Household Essentials',
+  '1085666': 'Beauty',
+  '1005862': 'Personal Care',
+  '976760': 'Health and Medicine',
+  '5431': 'Pharmacy',
+  '3944': 'Electronics',
+  '2636': 'Video Games',
+  '4044': 'Home',
+  '1072864': 'Home Improvement',
+  '5428': 'Patio & Garden',
+  '5438': 'Clothing',
+  '3891': 'Jewelry',
+  '5440': 'Pets',
+  '5427': 'Baby',
+  '4171': 'Toys',
+  '3920': 'Books',
+  '4096': 'Movies & TV Shows',
+  '4104': 'Music',
+  '2637': 'Party & Occasions',
+  '4125': 'Sports & Outdoors',
+  '91083': 'Auto & Tires',
+  '1229749': 'Office Supplies',
+  '1334134': 'Arts, Crafts & Sewing',
+  '6163033': 'Services',
+};
+
+/** The department id from a category path such as "0:976759:976794" (or ''). */
+function walmartDepartmentId(categoryPathId) {
+  const parts = String(categoryPathId || '').split(':').filter(Boolean);
+  if (parts.length === 0) return '';
+  return parts[0] === '0' ? (parts[1] || '') : parts[0];
+}
+
+/** The department name for a category path, or '' when it is not known. */
+function walmartDepartmentName(categoryPathId) {
+  return WALMART_DEPARTMENTS[walmartDepartmentId(categoryPathId)] || '';
+}
+
+/**
+ * One status for the whole order. Walmart's own status when the invoice
+ * carries it; otherwise only what the saved data proves.
+ * @param {Object} order
+ * @returns {string}
+ */
+function orderStatusLabel(order) {
+  return String(order?.orderStatus || '').trim() || (order?.noChargedItems === true ? 'Canceled' : '');
+}
+
+/** Fulfillment and pricing remarks for one exported line (e.g. "Weight adjusted; Final weight: 2.3 lbs"). */
+function itemNoteLabel(item) {
+  return [item?.fulfillment, item?.priceNotes].map((part) => String(part || '').trim()).filter(Boolean).join('; ');
+}
+
+/** 'Yes' / 'No' for a known answer, '' when Walmart did not say. */
+function yesNoLabel(value) {
+  return value === true ? 'Yes' : value === false ? 'No' : '';
+}
+
+/** Lines that were ordered but never charged, across the given orders. */
+function collectUnfulfilledRows(ordersArray) {
+  const rows = [];
+  (Array.isArray(ordersArray) ? ordersArray : []).forEach((order) => {
+    (Array.isArray(order?.unfulfilledItems) ? order.unfulfilledItems : []).forEach((item) => {
+      if (!item || !String(item.productName || '').trim()) return;
+      rows.push({ order, item });
+    });
+  });
+  return rows;
+}
+
+/** Keep unrecognized Walmart adjustment labels and amounts visible in Excel. */
+function formatFinancialAdjustments(adjustments) {
+  return meaningfulFinancialAdjustments(adjustments)
+    .map((entry) => {
+      return `${entry.label}: ${entry.amount}`;
+    })
+    .join('; ');
+}
+
+function meaningfulFinancialAdjustments(adjustments) {
+  const redundant = /^(?:items?(?:\s*\(\s*\d+\s*\)|\s+\d+\s+items?)?|subtotal(?:\s+\(\s*\d+\s+items?\s*\))?(?:\s+after\s+savings)?|free\s+(?:shipping|delivery)(?:\s*,?\s*no\s+order\s+minimum)?|no\s+order\s+minimum)$/i;
+  return (Array.isArray(adjustments) ? adjustments : []).flatMap((entry) => {
+    const label = String(entry?.label || '').trim();
+    const amount = String(entry?.amount || '').trim();
+    if (!label || !amount || redundant.test(label)) return [];
+    const numeric = parseOptionalNumericValue(amount);
+    if (numeric === null || numeric === 0) return [];
+    return [{ label, amount, numeric }];
+  });
+}
+
+function financialAdjustmentsTotal(adjustments) {
+  const entries = meaningfulFinancialAdjustments(adjustments);
+  if (entries.length === 0) return '';
+  const cents = entries.reduce((sum, entry) => sum + Math.round(entry.numeric * 100), 0);
+  return cents / 100;
+}
+
+function otherAdjustmentRows(adjustments) {
+  const entries = meaningfulFinancialAdjustments(adjustments);
+  if (entries.length === 0) return [];
+  const details = entries.map(({ label, amount }) => `${label}: ${amount}`).join('; ');
+  return [[`Other Adjustments (${details})`, financialAdjustmentsTotal(adjustments)]];
 }
 
 
@@ -577,13 +834,18 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
     { header: 'Items', key: 'itemCount', width: 7, style: { numFmt: '#,##0', alignment: { horizontal: 'center' } } },
     { header: 'Subtotal (Before Savings)', key: 'subtotalBeforeSavings', width: 13, style: { numFmt: '$#,##0.00' } },
     { header: 'Savings', key: 'savings', width: 10, style: { numFmt: '$#,##0.00' } },
+    { header: 'Promo Code Amount', key: 'promoCodeAmount', width: 13, style: { numFmt: '$#,##0.00' } },
     { header: 'Subtotal', key: 'orderSubtotal', width: 11, style: { numFmt: '$#,##0.00' } },
     { header: 'Delivery Charges', key: 'deliveryCharges', width: 10, style: { numFmt: '$#,##0.00' } },
+    { header: '3 Hours or Less Fee', key: 'threeHoursOrLessFee', width: 14, style: { numFmt: '$#,##0.00' } },
+    { header: 'Returned 3 Hours or Less Fee', key: 'returnedThreeHoursOrLessFee', width: 19, style: { numFmt: '$#,##0.00' } },
     { header: 'Bag Fee', key: 'bagFee', width: 9, style: { numFmt: '$#,##0.00' } },
     { header: 'Tax', key: 'tax', width: 9, style: { numFmt: '$#,##0.00' } },
     { header: 'Tip', key: 'tip', width: 9, style: { numFmt: '$#,##0.00' } },
     { header: 'Refund', key: 'refund', width: 10, style: { numFmt: '$#,##0.00' } },
     { header: 'Donations', key: 'donations', width: 10, style: { numFmt: '$#,##0.00' } },
+    { header: 'Other Adjustments', key: 'financialAdjustments', width: 38 },
+    { header: 'Other Adjustments Amount', key: 'financialAdjustmentsAmount', width: 16, style: { numFmt: '$#,##0.00' } },
     { header: 'Order Total', key: 'orderTotal', width: 12, style: { numFmt: '$#,##0.00' } },
     { header: 'Payment Method', key: 'paymentMethods', width: 32 },
     { header: 'Payment Split', key: 'paymentSplit', width: 32 },
@@ -591,10 +853,15 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
     { header: 'Seller(s)', key: 'sellers', width: 24 },
     { header: 'Fulfillment', key: 'fulfillmentTypes', width: 14 },
     { header: 'Delivered Date', key: 'deliveredDate', width: 14 },
-    { header: 'Tracking Numbers', key: 'trackingNumbers', width: 24 },
     { header: 'Ship To', key: 'address', width: 36 },
     { header: 'Delivery Instructions', key: 'deliveryInstructions', width: 24 },
     { header: 'Receipt Barcode', key: 'barcodeLink', width: 14 },
+    // Appended after the historic columns so existing spreadsheets keep working.
+    { header: 'Order Status', key: 'orderStatus', width: 16 },
+    { header: 'Late Delivery', key: 'lateDelivery', width: 12, style: { alignment: { horizontal: 'center' } } },
+    { header: 'Store', key: 'storeName', width: 26 },
+    { header: 'Return Window', key: 'returnWindow', width: 30 },
+    { header: 'Items Not Fulfilled', key: 'unfulfilledCount', width: 12, style: { numFmt: '#,##0', alignment: { horizontal: 'center' } } },
   ];
 
   ordersArray.forEach((orderDetails) => {
@@ -606,27 +873,38 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
       itemCount: Array.isArray(orderDetails.items) ? orderDetails.items.length : '',
       subtotalBeforeSavings: excelNumber(orderDetails.subtotalBeforeSavings),
       savings: excelNumber(orderDetails.savings),
+      promoCodeAmount: excelNumber(orderDetails.promoCodeAmount),
       orderSubtotal: excelNumber(orderDetails.orderSubtotal),
       deliveryCharges: excelNumber(orderDetails.deliveryCharges),
+      threeHoursOrLessFee: excelNumber(orderDetails.threeHoursOrLessFee),
+      returnedThreeHoursOrLessFee: excelNumber(orderDetails.returnedThreeHoursOrLessFee),
       bagFee: excelNumber(orderDetails.bagFee),
       tax: excelNumber(orderDetails.tax),
       tip: excelNumber(orderDetails.tip),
       refund: excelNumber(orderDetails.refund),
       donations: excelNumber(orderDetails.donations),
+      financialAdjustments: formatFinancialAdjustments(orderDetails.financialAdjustments),
+      financialAdjustmentsAmount: financialAdjustmentsTotal(orderDetails.financialAdjustments),
       orderTotal: excelNumber(orderDetails.orderTotal),
       paymentMethods: formatPaymentMethodDetails(orderDetails) || orderDetails.paymentMethods || '',
-      paymentSplit: orderDetails.paymentSplit || '',
+      paymentSplit: formatPaymentSplit(orderDetails),
       paymentMessages: orderDetails.paymentMessages || '',
       sellers: orderDetails.sellers || '',
       fulfillmentTypes: orderDetails.fulfillmentTypes || '',
       deliveredDate: orderDetails.deliveredDate || '',
-      trackingNumbers: orderDetails.trackingNumbers || '',
       address: [orderDetails.addressRecipient, orderDetails.addressLine || orderDetails.address]
         .filter(Boolean)
         .join(', ') || orderDetails.address || '',
       deliveryInstructions: orderDetails.deliveryInstructions || '',
-      barcodeLink: orderDetails.barcodeImageUrl
-        ? { text: 'Barcode', hyperlink: orderDetails.barcodeImageUrl }
+      barcodeLink: safeExportUrl(orderDetails.barcodeImageUrl)
+        ? { text: 'Barcode', hyperlink: safeExportUrl(orderDetails.barcodeImageUrl) }
+        : '',
+      orderStatus: orderStatusLabel(orderDetails),
+      lateDelivery: orderDetails.wasDelayed === true ? 'Yes' : '',
+      storeName: orderDetails.storeName || '',
+      returnWindow: orderDetails.returnWindow || '',
+      unfulfilledCount: Array.isArray(orderDetails.unfulfilledItems) && orderDetails.unfulfilledItems.length > 0
+        ? orderDetails.unfulfilledItems.length
         : '',
     });
   });
@@ -643,6 +921,14 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
     { header: 'Status', key: 'deliveryStatus', width: 16 },
     { header: 'Order Type', key: 'orderType', width: 11, style: { alignment: { horizontal: 'center' } } },
     { header: 'Product Link', key: 'productLink', width: 46, style: { font: STYLES.linkFont } },
+    // Appended; blank wherever Walmart did not send the detail.
+    { header: 'Price Each', key: 'unitPrice', width: 11, style: { numFmt: '$#,##0.00' } },
+    { header: 'Was Price', key: 'wasPrice', width: 11, style: { numFmt: '$#,##0.00' } },
+    { header: 'Savings', key: 'discount', width: 20 },
+    { header: 'Price per Unit', key: 'comparisonPrice', width: 14 },
+    { header: 'Category', key: 'category', width: 22 },
+    { header: 'Note', key: 'note', width: 30 },
+    { header: 'Returnable', key: 'returnable', width: 11, style: { alignment: { horizontal: 'center' } } },
   ];
   if (options.includeThumbnails) {
     itemColumns.push({ header: 'Thumbnail', key: 'thumbnail', width: 9, style: { alignment: { horizontal: 'center' } } });
@@ -654,7 +940,7 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
     (orderDetails.items || []).forEach((item) => {
       allItems.push({ orderDetails, item });
       const productName = item.productName || '';
-      const productLink = item.productLink || '';
+      const productLink = safeExportUrl(item.productLink);
       itemsSheet.addRow({
         orderNumber: orderDetails.orderNumber || '',
         orderDate: orderDetails.orderDate || '',
@@ -666,6 +952,13 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
         productLink: productLink && productLink !== 'N/A'
           ? { text: truncateText(productName), hyperlink: productLink }
           : '',
+        unitPrice: excelNumber(item.unitPrice),
+        wasPrice: excelNumber(item.wasPrice),
+        discount: item.discount || '',
+        comparisonPrice: item.comparisonPrice || '',
+        category: walmartDepartmentName(item.categoryPathId),
+        note: itemNoteLabel(item),
+        returnable: yesNoLabel(item.returnable),
       });
     });
   });
@@ -678,6 +971,34 @@ async function convertMultipleOrdersToXlsx(ordersData, ExcelJS, filename = null,
       allItems.map(({ item }) => item),
       itemsSheet.columns.length
     );
+  }
+
+  // ----- Sheet 3 (only when needed): ordered but never charged -----
+  const unfulfilledRows = collectUnfulfilledRows(ordersArray);
+  if (unfulfilledRows.length > 0) {
+    const unfulfilledSheet = workbook.addWorksheet('Not Fulfilled');
+    unfulfilledSheet.columns = [
+      { header: 'Order Number', key: 'orderNumber', width: 20 },
+      { header: 'Order Date', key: 'orderDate', width: 14 },
+      { header: 'Product Name', key: 'productName', width: 64 },
+      { header: 'Qty', key: 'quantity', width: 7, style: { numFmt: '#,##0', alignment: { horizontal: 'center' } } },
+      { header: 'Reason', key: 'reason', width: 14 },
+      { header: 'Price (Not Charged)', key: 'price', width: 14, style: { numFmt: '$#,##0.00' } },
+      { header: 'Product Link', key: 'productLink', width: 46, style: { font: STYLES.linkFont } },
+    ];
+    unfulfilledRows.forEach(({ order, item }) => {
+      const link = safeExportUrl(item.productLink);
+      unfulfilledSheet.addRow({
+        orderNumber: order.orderNumber || '',
+        orderDate: order.orderDate || '',
+        productName: item.productName || '',
+        quantity: excelNumber(item.quantity),
+        reason: item.reason || '',
+        price: excelNumber(item.price),
+        productLink: link && link !== 'N/A' ? { text: truncateText(item.productName || ''), hyperlink: link } : '',
+      });
+    });
+    polishWorksheet(unfulfilledSheet);
   }
 
   // Download
@@ -734,12 +1055,16 @@ function configureMultipleOrdersColumnsLegacy(worksheet, options = {}) {
     { header: 'Seller(s)', key: 'sellers', width: 26, style: { alignment: { horizontal: "center" } } },
     { header: 'Fulfillment', key: 'fulfillmentTypes', width: 16, style: { alignment: { horizontal: "center" } } },
     { header: 'Delivered Date', key: 'deliveredDate', width: 18, style: { alignment: { horizontal: "center" } } },
-    { header: 'Tracking Numbers', key: 'trackingNumbers', width: 28, style: { alignment: { horizontal: "center" } } },
     { header: 'Payment Split', key: 'paymentSplit', width: 40, style: { alignment: { horizontal: "center" } } },
     { header: 'Refund', key: 'refund', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Donations', key: 'donations', width: 12, style: { numFmt: "$#,##0.00", alignment: { horizontal: "center" } } },
     { header: 'Receipt Barcode', key: 'barcodeLink', width: 16, style: { alignment: { horizontal: "center" } } },
     { header: 'Order Type', key: 'orderType', width: 14, style: { alignment: { horizontal: "center" } } },
+    { header: 'Promo Code Amount', key: 'promoCodeAmount', width: 16, style: { numFmt: '$#,##0.00' } },
+    { header: '3 Hours or Less Fee', key: 'threeHoursOrLessFee', width: 18, style: { numFmt: '$#,##0.00' } },
+    { header: 'Returned 3 Hours or Less Fee', key: 'returnedThreeHoursOrLessFee', width: 26, style: { numFmt: '$#,##0.00' } },
+    { header: 'Other Adjustments', key: 'financialAdjustments', width: 38 },
+    { header: 'Other Adjustments Amount', key: 'financialAdjustmentsAmount', width: 22, style: { numFmt: '$#,##0.00' } },
   ];
   if (options.includeThumbnails) {
     columns.push({ header: 'Thumbnail', key: 'thumbnail', width: 9, style: { alignment: { horizontal: "center" } } });
@@ -756,7 +1081,7 @@ function configureMultipleOrdersColumnsLegacy(worksheet, options = {}) {
 function addMultipleOrderItemsToWorksheetLegacy(worksheet, items) {
   items.forEach((item) => {
     const productName = item.productName || "";
-    const productLink = item.productLink || "";
+    const productLink = safeExportUrl(item.productLink);
     worksheet.addRow({
       orderNumber: item.orderNumber || '',
       orderDate: item.orderDate || '',
@@ -772,10 +1097,10 @@ function addMultipleOrderItemsToWorksheetLegacy(worksheet, items) {
       quantity: parseNumericValue(item.quantity),
       price: parseNumericValue(item.price),
       deliveryStatus: item.deliveryStatus || '',
-      productLink: {
+      productLink: productLink ? {
         text: truncateText(productName),
         hyperlink: productLink
-      },
+      } : '',
       deliveryCharges: parseNumericValue(item.deliveryCharges),
       bagFee: parseNumericValue(item.bagFee),
       tax: parseNumericValue(item.tax),
@@ -784,13 +1109,17 @@ function addMultipleOrderItemsToWorksheetLegacy(worksheet, items) {
       sellers: item.sellers || '',
       fulfillmentTypes: item.fulfillmentTypes || '',
       deliveredDate: item.deliveredDate || '',
-      trackingNumbers: item.trackingNumbers || '',
       paymentSplit: item.paymentSplit || '',
+      promoCodeAmount: excelNumber(item.promoCodeAmount),
+      threeHoursOrLessFee: excelNumber(item.threeHoursOrLessFee),
+      returnedThreeHoursOrLessFee: excelNumber(item.returnedThreeHoursOrLessFee),
+      financialAdjustments: formatFinancialAdjustments(item.financialAdjustments),
+      financialAdjustmentsAmount: financialAdjustmentsTotal(item.financialAdjustments),
       // Blank (not $0.00) when the order had no refund or donation.
       refund: item.refund ? parseNumericValue(item.refund) : '',
       donations: item.donations ? parseNumericValue(item.donations) : '',
-      barcodeLink: item.barcodeImageUrl
-        ? { text: 'Barcode', hyperlink: item.barcodeImageUrl }
+      barcodeLink: safeExportUrl(item.barcodeImageUrl)
+        ? { text: 'Barcode', hyperlink: safeExportUrl(item.barcodeImageUrl) }
         : '',
       orderType: formatOrderType(item.orderType, item.isInStore),
     });
@@ -881,8 +1210,11 @@ async function convertMultipleOrdersToXlsxLegacy(ordersData, ExcelJS, filename =
         sellers: orderDetails.sellers || '',
         fulfillmentTypes: orderDetails.fulfillmentTypes || '',
         deliveredDate: orderDetails.deliveredDate || '',
-        trackingNumbers: orderDetails.trackingNumbers || '',
-        paymentSplit: orderDetails.paymentSplit || '',
+        paymentSplit: formatPaymentSplit(orderDetails),
+        promoCodeAmount: orderDetails.promoCodeAmount,
+        threeHoursOrLessFee: orderDetails.threeHoursOrLessFee,
+        returnedThreeHoursOrLessFee: orderDetails.returnedThreeHoursOrLessFee,
+        financialAdjustments: orderDetails.financialAdjustments,
         orderType: orderDetails.orderType || '',
         isInStore: Boolean(orderDetails.isInStore),
       });
@@ -943,7 +1275,7 @@ function csvEscape(value) {
     return String(value);
   }
   let text = String(value ?? '');
-  if (/^[=+\-@\t\r]/.test(text)) {
+  if (/^[\u0000-\u0020\u00a0]*[=+\-@]|^[\t\r\n]/.test(text)) {
     text = `'${text}`;
   }
   if (/[",\r\n]/.test(text)) {
@@ -1003,16 +1335,20 @@ const ORDER_CSV_COLUMNS = [
   ['Delivery Instructions', (o) => o.deliveryInstructions || ''],
   ['Payment Method', (o) => formatPaymentMethodDetails(o)],
   ['Payment Messages', (o) => o.paymentMessages || ''],
-  ['Payment Split', (o) => o.paymentSplit || ''],
+  ['Payment Split', (o) => formatPaymentSplit(o)],
   ['Subtotal (Before Savings)', (o) => csvMoney(o.subtotalBeforeSavings)],
   ['Savings', (o) => csvMoney(o.savings)],
+  ['Promo Code Amount', (o) => csvMoney(o.promoCodeAmount, { blankWhenEmpty: true })],
   ['Subtotal', (o) => csvMoney(o.orderSubtotal)],
   ['Delivery Charges', (o) => csvMoney(o.deliveryCharges)],
+  ['3 Hours or Less Fee', (o) => csvMoney(o.threeHoursOrLessFee, { blankWhenEmpty: true })],
+  ['Returned 3 Hours or Less Fee', (o) => csvMoney(o.returnedThreeHoursOrLessFee, { blankWhenEmpty: true })],
   ['Bag Fee', (o) => csvMoney(o.bagFee)],
   ['Tax', (o) => csvMoney(o.tax)],
   ['Tip', (o) => csvMoney(o.tip)],
   ['Refund', (o) => csvMoney(o.refund, { blankWhenEmpty: true })],
   ['Donations', (o) => csvMoney(o.donations, { blankWhenEmpty: true })],
+  ['Other Adjustments', (o) => formatFinancialAdjustments(o.financialAdjustments)],
   ['Order Total', (o) => csvMoney(o.orderTotal)],
   ['Seller(s)', (o) => o.sellers || ''],
   ['Fulfillment', (o) => o.fulfillmentTypes || ''],
@@ -1020,6 +1356,12 @@ const ORDER_CSV_COLUMNS = [
   ['Tracking Numbers', (o) => o.trackingNumbers || ''],
   ['Receipt Barcode URL', (o) => o.barcodeImageUrl || ''],
   ['Order Type', (o) => formatOrderType(o.orderType, o.isInStore)],
+  // Appended after the historic columns.
+  ['Order Status', (o) => orderStatusLabel(o)],
+  ['Late Delivery', (o) => (o.wasDelayed === true ? 'Yes' : '')],
+  ['Store', (o) => o.storeName || ''],
+  ['Return Window', (o) => o.returnWindow || ''],
+  ['Items Not Fulfilled', (o) => (Array.isArray(o.unfulfilledItems) && o.unfulfilledItems.length > 0 ? o.unfulfilledItems.length : '')],
 ];
 
 /** Item-level CSV columns (one row per item) — the "items sheet" equivalent. */
@@ -1030,7 +1372,15 @@ const ITEM_CSV_COLUMNS = [
   ['Quantity', (o, item) => parseNumericValue(item.quantity)],
   ['Price', (o, item) => parseNumericValue(item.price)],
   ['Delivery Status', (o, item) => item.deliveryStatus || ''],
-  ['Product Link', (o, item) => item.productLink || ''],
+  ['Product Link', (o, item) => safeExportUrl(item.productLink)],
+  // Appended; blank wherever Walmart did not send the detail.
+  ['Price Each', (o, item) => csvMoney(item.unitPrice, { blankWhenEmpty: true })],
+  ['Was Price', (o, item) => csvMoney(item.wasPrice, { blankWhenEmpty: true })],
+  ['Savings', (o, item) => item.discount || ''],
+  ['Price per Unit', (o, item) => item.comparisonPrice || ''],
+  ['Category', (o, item) => walmartDepartmentName(item.categoryPathId)],
+  ['Note', (o, item) => itemNoteLabel(item)],
+  ['Returnable', (o, item) => yesNoLabel(item.returnable)],
 ];
 
 /**
@@ -1130,8 +1480,12 @@ function buildAccountingDescription(order) {
 function buildAccountingCsvRows(ordersData, preset) {
   const ordersArray = Array.isArray(ordersData) ? ordersData : [ordersData];
   // Orders with an UNKNOWN total (summary-built, never scanned) are skipped
-  // outright — a fabricated $0.00 transaction corrupts a bank import.
-  const withTotals = ordersArray.filter((order) => String(order.orderTotal || '').trim() !== '');
+  // outright — a fabricated $0.00 transaction corrupts a bank import. A fully
+  // canceled order has a real $0.00 total, but no money moved, so it is left
+  // out of a bank-statement import for the same reason.
+  const withTotals = ordersArray.filter(
+    (order) => String(order.orderTotal || '').trim() !== '' && parseNumericValue(order.orderTotal) !== 0
+  );
   const spentAmount = (order) => -Math.abs(parseNumericValue(order.orderTotal));
 
   if (preset === CONSTANTS.CSV_PRESETS.XERO) {
@@ -1285,7 +1639,7 @@ ${bodyHtml}
 
 /** Render one "label / amount" totals row, skipping empty values. */
 function receiptTotalsRow(label, value, extraClass = '') {
-  if (!value) return '';
+  if (value === '' || value === null || value === undefined) return '';
   return `<tr${extraClass ? ` class="${extraClass}"` : ''}><td>${escapeHtml(label)}</td><td class="amt">${escapeHtml(value)}</td></tr>`;
 }
 
@@ -1308,14 +1662,16 @@ function buildReceiptArticle(order) {
     )
     .join('');
 
-  const barcodeHtml = order.barcodeImageUrl
-    ? `<img class="barcode" src="${escapeHtml(order.barcodeImageUrl)}" alt="Order receipt barcode">`
+  const barcodeUrl = safeExportUrl(order.barcodeImageUrl);
+  const barcodeHtml = barcodeUrl
+    ? `<img class="barcode" src="${escapeHtml(barcodeUrl)}" alt="Order receipt barcode">`
     : '';
 
   const metaLines = [
+    canceledOrderNote(order),
     order.address ? `Ship to: ${order.address}` : '',
     formatPaymentMethodDetails(order) ? `Payment: ${formatPaymentMethodDetails(order)}` : '',
-    order.paymentSplit ? `Charged: ${order.paymentSplit}` : '',
+    formatPaymentSplit(order) ? `Charged: ${formatPaymentSplit(order)}` : '',
     order.sellers ? `Sold by: ${order.sellers}` : '',
     order.trackingNumbers ? `Tracking: ${order.trackingNumbers}` : '',
     order.deliveredDate ? `Delivered: ${order.deliveredDate}` : '',
@@ -1337,13 +1693,17 @@ function buildReceiptArticle(order) {
   <table class="totals">
     ${receiptTotalsRow('Subtotal (before savings)', order.subtotalBeforeSavings)}
     ${receiptTotalsRow('Savings', order.savings)}
+    ${receiptTotalsRow('Promo Code Amount', order.promoCodeAmount)}
     ${receiptTotalsRow('Subtotal', order.orderSubtotal)}
     ${receiptTotalsRow('Delivery charges', order.deliveryCharges)}
+    ${receiptTotalsRow('3 Hours or Less Fee', order.threeHoursOrLessFee)}
+    ${receiptTotalsRow('Returned 3 Hours or Less Fee', order.returnedThreeHoursOrLessFee)}
     ${receiptTotalsRow('Bag fee', order.bagFee)}
     ${receiptTotalsRow('Tax', order.tax)}
     ${receiptTotalsRow('Tip', order.tip)}
     ${receiptTotalsRow('Refund', order.refund)}
     ${receiptTotalsRow('Donations', order.donations)}
+    ${otherAdjustmentRows(order.financialAdjustments).map(([label, amount]) => receiptTotalsRow(label, `$${amount.toFixed(2)}`)).join('')}
     ${receiptTotalsRow('Order total', order.orderTotal, 'grand')}
   </table>
   <div class="meta">${metaLines}</div>
@@ -1430,8 +1790,11 @@ const PDF_ITEM_COLUMNS = {
 const PDF_TOTALS_ROWS = [
   ['Subtotal (before savings)', 'subtotalBeforeSavings'],
   ['Savings', 'savings'],
+  ['Promo Code Amount', 'promoCodeAmount'],
   ['Subtotal', 'orderSubtotal'],
   ['Delivery charges', 'deliveryCharges'],
+  ['3 Hours or Less Fee', 'threeHoursOrLessFee'],
+  ['Returned 3 Hours or Less Fee', 'returnedThreeHoursOrLessFee'],
   ['Bag fee', 'bagFee'],
   ['Tax', 'tax'],
   ['Tip', 'tip'],
@@ -1546,14 +1909,26 @@ function drawPdfTotals(doc, cursor, order) {
   const labelRightX = 470;
   const valueRightX = PDF_LAYOUT.RIGHT_EDGE;
   cursor.y += 6;
-  PDF_TOTALS_ROWS.forEach(([label, key]) => {
-    if (!order[key]) return;
-    cursor.ensureRoom(PDF_LAYOUT.ROW_HEIGHT);
-    doc.text(label, labelRightX, cursor.y, { size, align: 'right' });
-    doc.text(String(order[key]), valueRightX, cursor.y, { size, align: 'right' });
-    cursor.y += PDF_LAYOUT.ROW_HEIGHT;
+  const totals = PDF_TOTALS_ROWS.map(([label, key]) => [label, order[key]])
+    .concat(otherAdjustmentRows(order.financialAdjustments).map(([label, amount]) => [label, `$${amount.toFixed(2)}`]));
+  totals.forEach(([label, value]) => {
+    if (value === '' || value === null || value === undefined) return;
+    // Keep long adjustment descriptions readable without overlapping amounts.
+    let remaining = label;
+    let first = true;
+    while (remaining) {
+      let length = 0;
+      while (length < remaining.length && PdfLite.textWidth(remaining.slice(0, length + 1), size, false) <= labelRightX - PDF_LAYOUT.MARGIN_X - 8) length++;
+      if (length < remaining.length) length = remaining.lastIndexOf(' ', length) > 0 ? remaining.lastIndexOf(' ', length) : Math.max(1, length);
+      cursor.ensureRoom(PDF_LAYOUT.ROW_HEIGHT);
+      doc.text(remaining.slice(0, length), labelRightX, cursor.y, { size, align: 'right' });
+      if (first) doc.text(String(value), valueRightX, cursor.y, { size, align: 'right' });
+      first = false;
+      remaining = remaining.slice(length).trim();
+      cursor.y += PDF_LAYOUT.ROW_HEIGHT;
+    }
   });
-  if (order.orderTotal) {
+  if (order.orderTotal !== '' && order.orderTotal !== null && order.orderTotal !== undefined) {
     cursor.ensureRoom(PDF_LAYOUT.ROW_HEIGHT);
     doc.line(360, cursor.y - 9, valueRightX, cursor.y - 9, { width: 1 });
     doc.text('Order total', labelRightX, cursor.y, { size: 10, bold: true, align: 'right' });
@@ -1566,9 +1941,10 @@ function drawPdfTotals(doc, cursor, order) {
 function drawPdfMetaLines(doc, cursor, order) {
   const payment = formatPaymentMethodDetails(order);
   const metaLines = [
+    canceledOrderNote(order),
     order.address ? `Ship to: ${order.address}` : '',
     payment ? `Payment: ${payment}` : '',
-    order.paymentSplit ? `Charged: ${order.paymentSplit}` : '',
+    formatPaymentSplit(order) ? `Charged: ${formatPaymentSplit(order)}` : '',
     order.sellers ? `Sold by: ${order.sellers}` : '',
     order.trackingNumbers ? `Tracking: ${order.trackingNumbers}` : '',
     order.deliveredDate ? `Delivered: ${order.deliveredDate}` : '',
@@ -1976,6 +2352,12 @@ const CONSTANTS = {
   // — invoices stored by older versions may contain doubled items and $0.00
   // prices and are not trusted by exports or the dashboard.
   ORDER_SCHEMA_VERSION: 3,
+  // Bump when Walmart invoice extraction changes so saved v3 invoices are
+  // re-fetched once instead of being exported forever through the DB fast path.
+  // 6: per-line price, category and fulfillment details; order status and unfulfilled lines.
+  WALMART_US_EXTRACTION_VERSION: 6,
+  // Canada 2: the same optional details as Walmart US 6.
+  WALMART_CA_EXTRACTION_VERSION: 2,
 
   // Export file formats
   EXPORT_FORMATS: {
@@ -2052,8 +2434,16 @@ function isPayloadQualitySummary(summary) {
  * share it with sidepanel.dashboard.js.
  */
 function normalizeDashboardDate(rawDate) {
-  const text = String(rawDate || '');
-  if (/^\d{4}-\d{2}/.test(text)) return text.slice(0, 10);
+  const text = String(rawDate || '').trim();
+  if (/^\d{4}-\d{2}/.test(text)) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})(?:$|[T\s])/.exec(text);
+    if (!match) return '';
+    const [, year, month, day] = match.map(Number);
+    const date = new Date(0);
+    date.setUTCFullYear(year, month - 1, day);
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+      ? text.slice(0, 10) : '';
+  }
   if (!text) return '';
   const parsed = new Date(text);
   if (isNaN(parsed.getTime())) return '';
@@ -2098,7 +2488,7 @@ function parseWalmartTitleDate(text) {
   const day = Number(match[2]);
   const year = Number(match[3]);
   if (monthIndex < 0 || day < 1 || day > 31) return '';
-  return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return normalizeDashboardDate(`${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
 }
 
 /**
@@ -2122,7 +2512,8 @@ function buildOrderRowModel(orderNumber, record, sessionTitle) {
   const invoice = (record && record.invoice) || null;
 
   let rawDate = (summary && summary.orderDate) || (record && record.orderDate) || (invoice && invoice.orderDate) || '';
-  let normalizedDate = normalizeDashboardDate(rawDate);
+  let normalizedDate = [summary?.orderDate, record?.orderDate, invoice?.orderDate]
+    .map(normalizeDashboardDate).find(Boolean) || '';
   if (!normalizedDate) {
     // The delivery date Walmart shows ("Delivered on …") — stored on list
     // summaries (ISO) and on downloaded invoices ('Jul 02, 2026', possibly
@@ -2160,9 +2551,9 @@ function buildOrderRowModel(orderNumber, record, sessionTitle) {
     (invoice && Array.isArray(invoice.items) ? invoice.items.length : '') ??
     '';
 
-  const total = (summary && summary.orderTotal) || (invoice && invoice.orderTotal) || '';
-
   const hasInvoice = Boolean(invoice) && Number(invoice.schemaVersion || 0) >= CONSTANTS.ORDER_SCHEMA_VERSION;
+  const total = [hasInvoice ? invoice.orderTotal : null, summary?.orderTotal, invoice?.orderTotal]
+    .find((value) => parseOptionalNumericValue(value) !== null) ?? '';
 
   const summaryItems =
     summary && Array.isArray(summary.items)
@@ -2223,6 +2614,16 @@ const LIST_RANGE_OPTIONS = [
  * @param {string} [customTo] - 'YYYY-MM-DD', only used when rangeValue === 'custom'
  * @returns {{from: string|null, to: string|null}}
  */
+function shiftCalendarMonths(date, months) {
+  const shifted = new Date(date);
+  const day = shifted.getDate();
+  shifted.setDate(1);
+  shifted.setMonth(shifted.getMonth() + months);
+  const lastDay = new Date(shifted.getFullYear(), shifted.getMonth() + 1, 0).getDate();
+  shifted.setDate(Math.min(day, lastDay));
+  return shifted;
+}
+
 function getRangeBounds(rangeValue, now = new Date(), customFrom = '', customTo = '') {
   const pad = (n) => String(n).padStart(2, '0');
   const isoOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -2231,13 +2632,11 @@ function getRangeBounds(rangeValue, now = new Date(), customFrom = '', customTo 
 
   switch (rangeValue) {
     case 'last3': {
-      const from = new Date(now);
-      from.setMonth(from.getMonth() - 3);
+      const from = shiftCalendarMonths(now, -3);
       return { from: isoOf(from), to: today };
     }
     case 'last6': {
-      const from = new Date(now);
-      from.setMonth(from.getMonth() - 6);
+      const from = shiftCalendarMonths(now, -6);
       return { from: isoOf(from), to: today };
     }
     case 'thisYear':

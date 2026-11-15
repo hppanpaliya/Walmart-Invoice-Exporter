@@ -56,29 +56,48 @@
 
       return data.items.some((item) => {
         const productName = String(item?.productName || "").trim();
-        const quantity = String(item?.quantity || "").trim();
-        const price = String(item?.price || "").trim();
+        const quantity = String(item?.quantity ?? "").trim();
+        const price = String(item?.price ?? "").trim();
         return Boolean(productName) && (Boolean(quantity) || Boolean(price));
       });
     };
 
-    // Valid under any schema version — used to decide whether stale cached
-    // data is still worth returning when a forced re-fetch fails.
-    const isUsableInvoiceData = (data) => {
+    // A truthy scrape can still be an unhydrated page or a different order.
+    // Use the same minimum requirements for live, cached and stale invoices
+    // so an incomplete result cannot be persisted or exported as a success.
+    const invoiceProblems = (data, orderNumber) => {
       if (!data || typeof data !== "object") {
-        return false;
+        return ["no invoice data"];
       }
-
+      const problems = [];
       const normalizedOrderNumber = String(data.orderNumber || "").replace(/[^\d]/g, "");
-      const orderTotal = String(data.orderTotal || "").trim();
-
-      return hasUsableOrderItems(data) && (Boolean(normalizedOrderNumber) || Boolean(orderTotal));
+      const expectedOrderNumber = String(orderNumber).replace(/[^\d]/g, "");
+      if (!normalizedOrderNumber || normalizedOrderNumber !== expectedOrderNumber) {
+        problems.push("missing or mismatched order number");
+      }
+      // A fully canceled order legitimately has no charged lines.
+      const nothingCharged = data.noChargedItems === true && Array.isArray(data.items) && data.items.length === 0;
+      if (!nothingCharged && !hasUsableOrderItems(data)) problems.push("no usable items");
+      const orderTotal = String(data.orderTotal ?? "").trim();
+      const numericTotal = orderTotal.replace(/[^0-9.-]/g, "");
+      if (!/\d/.test(numericTotal) || !Number.isFinite(Number(numericTotal))) {
+        problems.push("missing or invalid order total");
+      }
+      return problems;
     };
 
-    const isValidInvoiceData = (data) => {
+    const isUsableInvoiceData = (data, orderNumber) => invoiceProblems(data, orderNumber).length === 0;
+
+    const isValidInvoiceData = (data, orderNumber, providerId) => {
       const schemaVersion = Number(data?.schemaVersion || 0);
-      return schemaVersion >= MIN_ORDER_SCHEMA_VERSION && isUsableInvoiceData(data);
+      const extractionVersionCurrent = Number(data?.walmartExtractionVersion || 0) >= requiredExtractionVersion(providerId);
+      return schemaVersion >= MIN_ORDER_SCHEMA_VERSION && extractionVersionCurrent &&
+        isUsableInvoiceData(data, orderNumber);
     };
+
+    const requiredExtractionVersion = (providerId) => providerId === 'WALMART_US'
+      ? Number(CONSTANTS.WALMART_US_EXTRACTION_VERSION || 1)
+      : providerId === 'WALMART_CA' ? Number(CONSTANTS.WALMART_CA_EXTRACTION_VERSION || 1) : 0;
 
     /** The adapter driving the current export (defaults to WALMART_US). */
     const activeAdapter = () => {
@@ -331,7 +350,7 @@
         return null; // fall back to the order page
       }
 
-      if (!response || response.fallback || !response.data) {
+      if (!response || response.fallback || !isUsableInvoiceData(response.data, orderNumber)) {
         return null; // adapter couldn't fast-fetch this one — fall back
       }
 
@@ -344,9 +363,44 @@
       return response.data;
     };
 
+    // Walmart answers a burst of page loads with its "Robot or human?" page
+    // (/blocked). That is a pause, not a site change or a broken order (#43):
+    // surface it as its own error so the run stops instead of failing every
+    // remaining order against the challenge page.
+    const isChallengeUrl = (value) => {
+      try {
+        const parsed = new URL(value);
+        return /(^|\.)walmart\.(com|ca)$/i.test(parsed.hostname) && /^\/blocked(\/|$)/.test(parsed.pathname);
+      } catch (error) {
+        return false;
+      }
+    };
+
+    const challengeError = (orderNumber) => {
+      const error = new Error(`Walmart asked for a human check while loading order #${orderNumber}`);
+      error.walmartChallenge = true;
+      return error;
+    };
+
+    const tabShowsChallenge = async (tabId) => {
+      try {
+        const live = await ChromeApi.tabsGet(tabId);
+        return isChallengeUrl((live && (live.pendingUrl || live.url)) || "");
+      } catch (error) {
+        return false;
+      }
+    };
+
     const fetchFromUrl = async (orderNumber, url, options = {}, providerId = null) => {
       const { timeoutMs = app.orderTimeoutMs, stabilizeDelayMs = app.orderSettleMs } = options;
-      const tab = await ensureTab(url, timeoutMs);
+      let tab;
+      try {
+        tab = await ensureTab(url, timeoutMs);
+      } catch (error) {
+        if (downloadTab && (await tabShowsChallenge(downloadTab.id))) throw challengeError(orderNumber);
+        throw error;
+      }
+      if (await tabShowsChallenge(tab.id)) throw challengeError(orderNumber);
 
       try {
         await ChromeApi.tabsSendMessage(tab.id, { action: CONSTANTS.MESSAGES.BLOCK_IMAGES });
@@ -356,14 +410,32 @@
 
       await delay(stabilizeDelayMs);
 
-      const response = await promiseWithTimeout(
-        ChromeApi.tabsSendMessage(tab.id, { method: CONSTANTS.MESSAGES.GET_ORDER_DATA }),
-        timeoutMs,
-        `Timeout getting data for order #${orderNumber}`
-      );
-
-      if (!response || !response.data) {
-        throw new Error(`No data received for order #${orderNumber}`);
+      let response;
+      try {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          response = await promiseWithTimeout(
+            ChromeApi.tabsSendMessage(tab.id, { method: CONSTANTS.MESSAGES.GET_ORDER_DATA }),
+            timeoutMs,
+            `Timeout getting data for order #${orderNumber}`
+          );
+          if (response?.challenge) throw challengeError(orderNumber);
+          const problems = invoiceProblems(response?.data, orderNumber);
+          if (problems.length === 0) break;
+          if (attempt === 1) {
+            if (!response?.data) throw new Error(`No data received for order #${orderNumber}`);
+            throw new Error(`Incomplete invoice for order #${orderNumber}: ${problems.join(", ")}`);
+          }
+          // Re-read the same page once: load-complete does not guarantee that
+          // Walmart has populated the invoice. A second miss tries the next URL.
+          await delay(Math.max(stabilizeDelayMs, CONSTANTS.TIMING.RETRY_DELAY));
+        }
+      } catch (error) {
+        // The challenge page has no content script, so it first shows up as a
+        // messaging failure or an empty read.
+        if (!error?.walmartChallenge && (await tabShowsChallenge(tab.id))) {
+          throw challengeError(orderNumber);
+        }
+        throw error;
       }
 
       // IndexedDB is the only durable store for invoices now (spec §4.1) —
@@ -398,7 +470,7 @@
         console.warn(`Order DB unavailable for fast-path lookup of #${orderNumber}:`, error);
       }
 
-      if (storedInvoice && isValidInvoiceData(storedInvoice)) {
+      if (storedInvoice && isValidInvoiceData(storedInvoice, orderNumber, providerId)) {
         view.updateOrderCacheStatus(orderNumber);
         return storedInvoice;
       }
@@ -424,16 +496,29 @@
       try {
         return await fetchFromUrl(orderNumber, primaryUrl, options, providerId);
       } catch (error) {
+        // A second URL would hit the same challenge and deepen the block.
+        if (error?.walmartChallenge) throw error;
         console.error(`Primary fetch failed for order #${orderNumber}:`, error);
         try {
+          if (!fallbackUrl || fallbackUrl === primaryUrl) throw error;
           return await fetchFromUrl(orderNumber, fallbackUrl, options, providerId);
         } catch (fallbackError) {
-          if (isUsableInvoiceData(storedInvoice)) {
+          if (fallbackError?.walmartChallenge) throw fallbackError;
+          if (isUsableInvoiceData(storedInvoice, orderNumber)) {
             console.warn(
               `Both fetches failed for order #${orderNumber}; falling back to stale stored data`
             );
             view.updateOrderCacheStatus(orderNumber);
-            return storedInvoice;
+            const needsWalmartRefresh = Number(storedInvoice?.walmartExtractionVersion || 0) < requiredExtractionVersion(providerId);
+            return needsWalmartRefresh
+              ? {
+                  ...storedInvoice,
+                  extractionWarnings: [
+                    ...(Array.isArray(storedInvoice.extractionWarnings) ? storedInvoice.extractionWarnings : []),
+                    'Walmart could not refresh this saved invoice, so older saved data was exported',
+                  ],
+                }
+              : storedInvoice;
           }
           throw fallbackError;
         }
@@ -468,10 +553,10 @@
   function checkExtractionWarnings(orderNumber, data) {
     const warnings = Array.isArray(data?.extractionWarnings) ? data.extractionWarnings : [];
     if (warnings.length === 0) {
-      return false;
+      return null;
     }
     console.warn(`Extraction warnings for order #${orderNumber}:`, warnings);
-    return true;
+    return { orderNumber, warnings };
   }
 
   /**
@@ -492,6 +577,11 @@
    * @param {Function} [params.onProgress] - (current, total, orderNumber, actionText) => void
    * @returns {Promise<{failedOrders: string[], cancelled: boolean}>}
    */
+  // Doubles after each human check Walmart raises in this panel session, so a
+  // retried run does not repeat the pace that triggered it.
+  let challengePaceMultiplier = 1;
+  const MAX_CHALLENGE_PACE_MULTIPLIER = 8;
+
   async function runDownloadQueue({ selectedOrders, actionText, options, onOrder, errorPrefix, onProgress }) {
     const failedOrders = [];
 
@@ -508,14 +598,43 @@
       try {
         await onOrder(orderNumber, options);
       } catch (error) {
+        if (error?.walmartChallenge) {
+          console.warn(`${errorPrefix} #${orderNumber}: Walmart asked for a human check; stopping the run.`);
+          challengePaceMultiplier = Math.min(challengePaceMultiplier * 2, MAX_CHALLENGE_PACE_MULTIPLIER);
+          return {
+            failedOrders: failedOrders.concat(selectedOrders.slice(i)),
+            cancelled: false,
+            challenged: true,
+          };
+        }
         console.error(`${errorPrefix} #${orderNumber}:`, error);
         failedOrders.push(orderNumber);
       }
 
-      await delay(CONSTANTS.TIMING.RETRY_DELAY);
+      await delay(CONSTANTS.TIMING.RETRY_DELAY * challengePaceMultiplier);
     }
 
-    return { failedOrders, cancelled: false };
+    return { failedOrders, cancelled: false, challenged: false };
+  }
+
+  /**
+   * Result text for a run Walmart interrupted with its human check. The
+   * unfinished orders are not broken, so this explains what to do instead of
+   * listing them as failures.
+   * @param {number} done - orders finished before the check
+   * @param {number} total - orders in the run
+   * @param {string} verb - "exported" or "saved"
+   * @returns {string} safe HTML
+   */
+  function challengeResultMessage(done, total, verb) {
+    const adapter =
+      typeof ProviderRegistry !== "undefined" && app && app.provider ? ProviderRegistry.getById(app.provider) : null;
+    const ordersUrl = (adapter && adapter.ordersListUrl) || CONSTANTS.URLS.WALMART_ORDERS;
+    return (
+      `Walmart paused this run to check that you are human — ${done} of ${total} ${verb}. ` +
+      `<a href="${escapeHtml(ordersUrl)}" target="_blank" rel="noopener noreferrer">Open Walmart</a>, ` +
+      `complete the check, then press Retry failed. Your orders are fine; the rest will run more slowly.`
+    );
   }
 
   /** Currently selected export format (XLSX default). */
@@ -655,7 +774,7 @@
    * @param {string} params.message - Pre-escaped/safe HTML.
    * @param {string[]} [params.retryOrders] - When non-empty, adds "Retry failed".
    */
-  function showDownloadResultBanner({ variant, message, retryOrders }) {
+  function showDownloadResultBanner({ variant, message, retryOrders, onRetry }) {
     const hasRetry = Array.isArray(retryOrders) && retryOrders.length > 0;
     const banner = view.renderStatusBanner("downloadResultBanner", {
       variant,
@@ -670,7 +789,11 @@
       if (retryButton) {
         retryButton.addEventListener("click", () => {
           view.clearStatusBanner("downloadResultBanner");
-          downloadSelectedOrders(app && app.exportMode, retryOrders);
+          if (typeof onRetry === "function") {
+            onRetry(retryOrders);
+          } else {
+            downloadSelectedOrders(app && app.exportMode, retryOrders);
+          }
         });
       }
     }
@@ -738,7 +861,8 @@
         },
       });
 
-      let extractionWarningsDetected = false;
+      view.clearStatusBanner("extractionWarning");
+      const extractionDiagnostics = [];
       // One snapshot governs the whole run — mid-run option changes apply
       // to the NEXT run, never to files already queued in this one.
       const exportOptions = snapshotExportOptions();
@@ -750,16 +874,15 @@
       try {
         if (activeMode === CONSTANTS.EXPORT_MODES.SINGLE) {
           const collectedOrdersData = [];
-          const { failedOrders, cancelled } = await runDownloadQueue({
+          const { failedOrders, cancelled, challenged } = await runDownloadQueue({
             selectedOrders,
             actionText: CONSTANTS.TEXT.COLLECTING,
             options: { timeoutMs: app.orderTimeoutMs, stabilizeDelayMs: app.orderSettleMs },
             errorPrefix: "Failed to collect data for order",
             onOrder: async (orderNumber, options) => {
               const data = await OrderDataFetcher.fetchOrderData(orderNumber, options);
-              if (checkExtractionWarnings(orderNumber, data)) {
-                extractionWarningsDetected = true;
-              }
+              const diagnostic = checkExtractionWarnings(orderNumber, data);
+              if (diagnostic) extractionDiagnostics.push(diagnostic);
               collectedOrdersData.push(data);
             },
             onProgress,
@@ -770,22 +893,24 @@
             return;
           }
 
-          // Warn once (not per order) when any order came back with blank fields.
-          if (extractionWarningsDetected) {
-            view.showExtractionWarning();
+          // Show one actionable summary covering every affected order.
+          if (extractionDiagnostics.length > 0) {
+            view.showExtractionWarning(extractionDiagnostics);
           }
 
-          try {
-            // Filename carries the active "Showing" filter (spec v7.1 §D)
-            // — '' (no suffix) when the filter is All time, matching the
-            // pre-redesign filename exactly and keeping the golden export
-            // tests (which never touch the filter) byte-stable.
-            const baseName = "Walmart_Orders" + (view.getActiveRangeLabelSuffix ? view.getActiveRangeLabelSuffix() : "");
-            await exportCombinedOrders(collectedOrdersData, baseName, exportOptions);
-          } catch (e) {
-            console.error("Failed to export to XLSX:", e);
-            showDownloadResultBanner({ variant: "danger", message: `Export failed: ${escapeHtml(e.message)}` });
-            return;
+          if (collectedOrdersData.length > 0) {
+            try {
+              // Filename carries the active "Showing" filter (spec v7.1 §D)
+              // — '' (no suffix) when the filter is All time, matching the
+              // pre-redesign filename exactly and keeping the golden export
+              // tests (which never touch the filter) byte-stable.
+              const baseName = "Walmart_Orders" + (view.getActiveRangeLabelSuffix ? view.getActiveRangeLabelSuffix() : "");
+              await exportCombinedOrders(collectedOrdersData, baseName, exportOptions);
+            } catch (e) {
+              console.error("Failed to export to XLSX:", e);
+              showDownloadResultBanner({ variant: "danger", message: `Export failed: ${escapeHtml(e.message)}` });
+              return;
+            }
           }
 
           if (failedOrders.length === 0) {
@@ -796,22 +921,23 @@
             });
           } else {
             showDownloadResultBanner({
-              variant: "danger",
-              message: `${collectedOrdersData.length} of ${selectedOrders.length} exported — ${failedOrders.length} failed (${escapeHtml(formatFailedOrders(failedOrders))})`,
+              variant: challenged ? "warning" : "danger",
+              message: challenged
+                ? challengeResultMessage(collectedOrdersData.length, selectedOrders.length, "exported")
+                : `${collectedOrdersData.length} of ${selectedOrders.length} exported — ${failedOrders.length} failed (${escapeHtml(formatFailedOrders(failedOrders))})`,
               retryOrders: failedOrders,
             });
           }
         } else {
-          const { failedOrders, cancelled } = await runDownloadQueue({
+          const { failedOrders, cancelled, challenged } = await runDownloadQueue({
             selectedOrders,
             actionText: CONSTANTS.TEXT.DOWNLOADING,
             options: { timeoutMs: app.orderTimeoutMs, stabilizeDelayMs: app.orderSettleMs },
             errorPrefix: "Error downloading order",
             onOrder: async (orderNumber, options) => {
               const data = await OrderDataFetcher.fetchOrderData(orderNumber, options);
-              if (checkExtractionWarnings(orderNumber, data)) {
-                extractionWarningsDetected = true;
-              }
+              const diagnostic = checkExtractionWarnings(orderNumber, data);
+              if (diagnostic) extractionDiagnostics.push(diagnostic);
               await exportOneOrder(data, exportOptions);
             },
             onProgress,
@@ -822,9 +948,9 @@
             return;
           }
 
-          // Warn once (not per order) when any order came back with blank fields.
-          if (extractionWarningsDetected) {
-            view.showExtractionWarning();
+          // Show one actionable summary covering every affected order.
+          if (extractionDiagnostics.length > 0) {
+            view.showExtractionWarning(extractionDiagnostics);
           }
 
           const succeeded = selectedOrders.length - failedOrders.length;
@@ -835,8 +961,10 @@
             });
           } else {
             showDownloadResultBanner({
-              variant: "danger",
-              message: `${succeeded} of ${selectedOrders.length} exported — ${failedOrders.length} failed (${escapeHtml(formatFailedOrders(failedOrders))})`,
+              variant: challenged ? "warning" : "danger",
+              message: challenged
+                ? challengeResultMessage(succeeded, selectedOrders.length, "exported")
+                : `${succeeded} of ${selectedOrders.length} exported — ${failedOrders.length} failed (${escapeHtml(formatFailedOrders(failedOrders))})`,
               retryOrders: failedOrders,
             });
           }
@@ -906,26 +1034,23 @@
         },
       });
 
-      let extractionWarningsDetected = false;
+      view.clearStatusBanner("extractionWarning");
+      const extractionDiagnostics = [];
       const onProgress = (current, total, orderNumber, actionText) => {
         view.updateDownloadProgress(current, total, `${actionText} ${current} / ${total} (#${orderNumber})`);
       };
 
       try {
-        const { failedOrders, cancelled } = await runDownloadQueue({
+        const { failedOrders, cancelled, challenged } = await runDownloadQueue({
           selectedOrders,
           actionText: CONSTANTS.TEXT.COLLECTING,
-          options: {
-            timeoutMs: CONSTANTS.TIMING.COLLECTION_TIMEOUT,
-            stabilizeDelayMs: CONSTANTS.TIMING.PAGE_LOAD_WAIT,
-          },
+          options: { timeoutMs: app.orderTimeoutMs, stabilizeDelayMs: app.orderSettleMs },
           errorPrefix: "Failed to load data for order",
           onOrder: async (orderNumber, options) => {
             // fetchOrderData stores the invoice in IndexedDB as a side effect.
             const data = await OrderDataFetcher.fetchOrderData(orderNumber, options);
-            if (checkExtractionWarnings(orderNumber, data)) {
-              extractionWarningsDetected = true;
-            }
+            const diagnostic = checkExtractionWarnings(orderNumber, data);
+            if (diagnostic) extractionDiagnostics.push(diagnostic);
           },
           onProgress,
         });
@@ -934,8 +1059,8 @@
           showDownloadResultBanner({ variant: "warning", message: "Saving cancelled." });
           return;
         }
-        if (extractionWarningsDetected) {
-          view.showExtractionWarning();
+        if (extractionDiagnostics.length > 0) {
+          view.showExtractionWarning(extractionDiagnostics);
         }
 
         const succeeded = selectedOrders.length - failedOrders.length;
@@ -946,9 +1071,12 @@
           });
         } else {
           showDownloadResultBanner({
-            variant: "danger",
-            message: `${succeeded} of ${selectedOrders.length} saved — ${failedOrders.length} failed (${escapeHtml(formatFailedOrders(failedOrders))})`,
+            variant: challenged ? "warning" : "danger",
+            message: challenged
+              ? challengeResultMessage(succeeded, selectedOrders.length, "saved")
+              : `${succeeded} of ${selectedOrders.length} saved — ${failedOrders.length} failed (${escapeHtml(formatFailedOrders(failedOrders))})`,
             retryOrders: failedOrders,
+            onRetry: (orders) => loadSelectedOrdersToDb(orders),
           });
         }
       } catch (error) {

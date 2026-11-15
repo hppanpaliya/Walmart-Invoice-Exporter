@@ -48,15 +48,49 @@ test('describeActiveFilters reports filters but ignores tracking params', () => 
   assert.deepEqual(toPlain(sandbox.describeActiveFilters('not a url')), []);
 });
 
-test('formatPaymentMethodDetails renders per-card amounts', () => {
+test('Payment Method lists tenders while Payment Split lists their amounts', () => {
   const sandbox = loadUtils();
-  const text = sandbox.formatPaymentMethodDetails({
+  const order = {
     paymentMethodDetails: [
       { brand: 'VISA', ending: 'ending in 1234', amount: '$20.00' },
       { brand: 'GIFTCARD', ending: '', amount: '$6.84' },
     ],
-  });
-  assert.equal(text, 'VISA - ending in 1234 | Amount: $20.00 || GIFTCARD | Amount: $6.84');
+  };
+  assert.equal(sandbox.formatPaymentMethodDetails(order), 'VISA - ending in 1234 || GIFTCARD');
+  assert.equal(sandbox.formatPaymentSplit(order), 'VISA ending in 1234: $20.00; GIFTCARD: $6.84');
+  assert.equal(sandbox.formatPaymentMethodDetails({ paymentMethodDetails: [
+    { brand: 'Walmart Cash', ending: 'Walmart Cash' },
+    { brand: 'WMTRC', ending: 'Walmart Cash' },
+  ] }), 'Walmart Cash');
+  assert.equal(sandbox.formatPaymentMethodDetails({ paymentMethodDetails: [
+    { brand: 'Walmart Cash', ending: 'Walmart Cash' },
+    { brand: 'Walmart Cash', ending: 'Walmart Cash' },
+  ] }), 'Walmart Cash');
+  assert.equal(sandbox.formatPaymentSplit({
+    paymentSplit: 'Walmart Cash: $1.00; WMTRC Walmart Cash: $1.00; Discover Ending in 6011: $64.33',
+  }), 'Walmart Cash: $1.00; Discover Ending in 6011: $64.33');
+  assert.equal(sandbox.formatPaymentSplit({ paymentMethodDetails: [
+    { brand: 'Walmart Cash', ending: 'Walmart Cash', amount: '$1.00' },
+    { brand: 'WMTRC', ending: 'Walmart Cash', amount: '$1.00' },
+  ] }), 'Walmart Cash: $1.00');
+  const giftCardAlias = {
+    paymentMethodDetails: [
+      { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$14.64' },
+      { brand: 'OTHER', ending: 'Ending in 2468', amount: '$14.64' },
+      { brand: 'PayPal', ending: 'buyer@example.com', amount: '$50.34' },
+    ],
+  };
+  assert.equal(sandbox.formatPaymentMethodDetails(giftCardAlias),
+    'Gift Card - Ending in 2468 || PayPal - buyer@example.com');
+  assert.equal(sandbox.formatPaymentSplit(giftCardAlias),
+    'Gift Card Ending in 2468: $14.64; PayPal buyer@example.com: $50.34');
+  assert.equal(sandbox.formatPaymentSplit({ paymentSplit:
+    'Gift Card Ending in 2468: $14.64; OTHER Ending in 2468: $14.64; PayPal: $50.34',
+  }), 'Gift Card Ending in 2468: $14.64; PayPal: $50.34');
+  assert.equal(sandbox.formatPaymentMethodDetails({
+    paymentMethods: 'Discover - ending in 5555',
+    paymentMethodDetails: [{ amount: '$5.00' }],
+  }), 'Discover - ending in 5555');
 });
 
 test('escapeHtml neutralizes markup', () => {
@@ -130,4 +164,12 @@ test('CONSTANTS exposes the export formats used by the panel', () => {
   const sandbox = loadUtils();
   const formats = toPlain(evalIn(sandbox, 'CONSTANTS.EXPORT_FORMATS'));
   assert.deepEqual(formats, { XLSX: 'xlsx', CSV: 'csv', JSON: 'json', RECEIPT: 'receipt', PDF: 'pdf' });
+});
+
+test('orderDataLabel tells a fully canceled order apart from a full invoice', () => {
+  const sandbox = loadUtils();
+  assert.equal(sandbox.orderDataLabel({ orderNumber: '1', items: [], orderTotal: '$0.00', noChargedItems: true }), 'Canceled — nothing was charged');
+  assert.equal(sandbox.orderDataLabel({ orderNumber: '2', items: [{ productName: 'Item' }], orderTotal: '$5.00' }), 'Full invoice');
+  assert.match(sandbox.orderDataLabel({ orderNumber: '3', dataSource: 'summary', noChargedItems: true }), /^Summary only/);
+  assert.match(sandbox.buildReceiptArticle({ orderNumber: '1', items: [], orderTotal: '$0.00', noChargedItems: true }), /Canceled: no items were charged/);
 });

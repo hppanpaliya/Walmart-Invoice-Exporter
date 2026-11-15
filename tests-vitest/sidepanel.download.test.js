@@ -24,6 +24,7 @@ const ORDER_NUMBER = '200010000000042';
 function sampleInvoice(overrides = {}) {
   return {
     schemaVersion: 3,
+    walmartExtractionVersion: 6,
     orderNumber: ORDER_NUMBER,
     orderTotal: '$28.11',
     orderDate: '2026-06-01T00:00:00.000Z',
@@ -35,6 +36,25 @@ function sampleInvoice(overrides = {}) {
 function fetchOrderData(sandbox, orderNumber, options) {
   return sandbox.window.Sidepanel.download.OrderDataFetcher.fetchOrderData(orderNumber, options);
 }
+
+test('extraction report link prefills actionable, privacy-safe diagnostics', () => {
+  const sandbox = loadDownloadSandbox();
+  const url = new URL(sandbox.window.Sidepanel.view.buildExtractionReportUrl([
+    {
+      orderNumber: '200010000000042',
+      warnings: [
+        'Order total came back empty',
+        'Split tender across 2 payment methods, but no per-tender amounts were extracted',
+      ],
+    },
+  ]));
+
+  assert.equal(url.origin + url.pathname, 'https://github.com/hppanpaliya/Walmart-Invoice-Exporter/issues/new');
+  assert.match(url.searchParams.get('title'), /2 detected problems/);
+  assert.match(url.searchParams.get('body'), /order ending 0042: Order total was missing/);
+  assert.match(url.searchParams.get('body'), /amount charged to each was unavailable/);
+  assert.doesNotMatch(url.searchParams.get('body'), /200010000000042/, 'a public issue must not expose the full order number');
+});
 
 test('fetchOrderData: a current-schema invoice already in IndexedDB is returned with NO tab opened (spec §4.2 fast path)', async () => {
   const sandbox = loadDownloadSandbox();
@@ -242,4 +262,319 @@ test('legacy toggle routing: legacyExcel=true is ignored for non-Excel formats (
   downloads.forEach((download) => {
     assert.match(download.filename, /\.csv$/, 'CSV format must ignore the Excel-only legacy toggle');
   });
+});
+
+// Regression coverage for incomplete invoices (#36). Exercise the real fetch,
+// persistence and queue paths; only the browser/content-script boundary is mocked.
+function mockInvoiceResponses(sandbox, respond) {
+  sandbox.delay = async () => {};
+  const calls = [];
+  sandbox.chrome.tabs.sendMessage = (tabId, message, callback) => {
+    const action = message.method || message.action;
+    const isInvoice = action === 'getOrderData' || action === 'getOrderDataFast';
+    if (isInvoice) calls.push({ action, url: sandbox.chrome.tabs._tabsById.get(tabId).url });
+    const response = isInvoice ? { data: respond(calls.length, action) } : {};
+    if (callback) queueMicrotask(() => callback(response));
+  };
+  return calls;
+}
+
+const FETCH_OPTIONS = { timeoutMs: 2000, stabilizeDelayMs: 0 };
+
+test('incomplete invoice: re-reads the same page before saving delayed invoice content', async () => {
+  const sandbox = loadDownloadSandbox();
+  const OrderDb = evalIn(sandbox, 'OrderDb');
+  const writes = [];
+  const putInvoice = OrderDb.putInvoice;
+  OrderDb.putInvoice = async (...args) => { writes.push(args[1]); return putInvoice(...args); };
+  const calls = mockInvoiceResponses(sandbox, (n) => sampleInvoice(n === 1 ? { items: [], orderTotal: '' } : {}));
+
+  const data = await fetchOrderData(sandbox, ORDER_NUMBER, FETCH_OPTIONS);
+
+  assert.equal(data.items.length, 1);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, calls[1].url, 'wait for hydration before navigating away');
+  assert.equal(sandbox.chrome.tabs._calls.update.length, 0);
+  assert.equal(writes.length, 1, 'never persist the incomplete first response');
+  assert.equal(writes[0].items.length, 1);
+});
+
+test('incomplete invoice: tries the alternate URL after two incomplete responses', async () => {
+  const sandbox = loadDownloadSandbox();
+  const calls = mockInvoiceResponses(sandbox, (n) => sampleInvoice(n <= 2 ? { items: [] } : {}));
+
+  const data = await fetchOrderData(sandbox, ORDER_NUMBER, FETCH_OPTIONS);
+
+  assert.equal(data.items.length, 1);
+  assert.equal(calls.length, 3);
+  assert.match(calls[2].url, /storePurchase=true/);
+});
+
+for (const [reason, overrides] of [
+  ['no usable items', { items: [] }],
+  ['missing or invalid order total', { orderTotal: '' }],
+  ['missing or invalid order total', { orderTotal: 'Unknown' }],
+  ['missing or mismatched order number', { orderNumber: '200010000000099' }],
+]) {
+  test(`incomplete invoice: rejects ${JSON.stringify(overrides)} without caching it`, async () => {
+    const sandbox = loadDownloadSandbox();
+    const calls = mockInvoiceResponses(sandbox, () => sampleInvoice(overrides));
+
+    await assert.rejects(() => fetchOrderData(sandbox, ORDER_NUMBER, FETCH_OPTIONS), new RegExp(reason));
+
+    assert.equal(calls.length, 4, 'at most two reads per URL');
+    const record = await evalIn(sandbox, 'OrderDb').getOrder(ORDER_NUMBER);
+    assert.ok(!record?.invoice, 'failed extraction must not create an invoice');
+  });
+}
+
+test('incomplete invoice: a cached missing total is refetched, never returned as a stale fallback', async () => {
+  const sandbox = loadDownloadSandbox();
+  const OrderDb = evalIn(sandbox, 'OrderDb');
+  await OrderDb.putInvoice(ORDER_NUMBER, sampleInvoice({ orderTotal: '' }));
+  mockInvoiceResponses(sandbox, () => sampleInvoice({ items: [] }));
+
+  await assert.rejects(() => fetchOrderData(sandbox, ORDER_NUMBER, FETCH_OPTIONS), /Incomplete invoice/);
+
+  const stored = await OrderDb.getOrder(ORDER_NUMBER);
+  assert.equal(stored.invoice.items.length, 1, 'failed live fetch leaves the old record intact');
+  assert.equal(stored.invoice.orderTotal, '');
+});
+
+test('incomplete invoice: a bad fast-fetch response falls back to the page without being stored', async () => {
+  const sandbox = loadDownloadSandbox();
+  sandbox.ProviderRegistry = { getById: () => ({ supportsFastInvoice: true, ordersListUrl: 'https://www.walmart.com/orders' }) };
+  sandbox.window.Sidepanel.state.app.fastFetch = true;
+  const writes = [];
+  const OrderDb = evalIn(sandbox, 'OrderDb');
+  const putInvoice = OrderDb.putInvoice;
+  OrderDb.putInvoice = async (...args) => { writes.push(args[1]); return putInvoice(...args); };
+  const calls = mockInvoiceResponses(sandbox, (_n, action) => sampleInvoice(action === 'getOrderDataFast' ? { items: [] } : {}));
+
+  const data = await fetchOrderData(sandbox, ORDER_NUMBER, FETCH_OPTIONS);
+
+  assert.equal(calls[0].action, 'getOrderDataFast');
+  assert.equal(calls[1].action, 'getOrderData');
+  assert.equal(data.items.length, 1);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].items.length, 1);
+});
+
+test('incomplete invoice: accepts matching long in-store IDs and a real numeric zero total', async () => {
+  const sandbox = loadDownloadSandbox();
+  const inStoreId = '999999999999999999999';
+  mockInvoiceResponses(sandbox, () => sampleInvoice({ orderNumber: inStoreId, orderTotal: 0, items: [{ productName: 'Free sample', quantity: 1, price: 0 }] }));
+
+  const data = await fetchOrderData(sandbox, inStoreId, FETCH_OPTIONS);
+
+  assert.equal(data.orderNumber, inStoreId);
+  assert.equal(data.orderTotal, 0);
+});
+
+for (const mode of ['multiple', 'single']) {
+  test(`incomplete invoice: ${mode} export reports the failed order with Retry failed and produces no empty files`, async () => {
+    const sandbox = loadDownloadSandbox();
+    const downloads = captureDownloads(sandbox);
+    const banners = [];
+    const view = sandbox.window.Sidepanel.view;
+    for (const name of ['clearStatusBanner', 'showDownloadProgress', 'updateDownloadProgress', 'hideDownloadProgress', 'setButtonLoading', 'updateDownloadButtonsState']) view[name] = () => {};
+    view.renderStatusBanner = (id, options) => { banners.push({ id, ...options }); return null; };
+    sandbox.window.Sidepanel.state.app.exportFormat = 'csv';
+    sandbox.window.Sidepanel.state.app.orderSettleMs = 0;
+    mockInvoiceResponses(sandbox, () => sampleInvoice({ items: [] }));
+
+    await sandbox.window.Sidepanel.download.downloadSelectedOrders(mode, [ORDER_NUMBER]);
+
+    assert.equal(downloads.length, 0);
+    const result = banners.find((banner) => banner.id === 'downloadResultBanner');
+    assert.equal(result.variant, 'danger');
+    assert.match(result.message, /0 of 1 exported/);
+    assert.ok(result.message.includes(ORDER_NUMBER));
+    assert.match(result.actionHtml, /Retry failed/);
+    assert.equal(sandbox.window.Sidepanel.state.app.downloadInProgress, false);
+  });
+}
+
+test('empty response: retries the same order page once before changing its URL', async () => {
+  const sandbox = loadDownloadSandbox();
+  const calls = mockInvoiceResponses(sandbox, (n) => n === 1 ? null : sampleInvoice());
+  const data = await fetchOrderData(sandbox, ORDER_NUMBER, FETCH_OPTIONS);
+  assert.equal(data.orderNumber, ORDER_NUMBER);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, calls[1].url);
+  assert.equal(sandbox.chrome.tabs._calls.update.length, 0);
+});
+
+test('Canada refreshes invoices saved before the charged-category fix using the Canada URL', async () => {
+  const s = loadDownloadSandbox();
+  s.window.Sidepanel.state.app.provider = 'WALMART_CA';
+  s.ProviderRegistry = { getById: () => ({ ordersListUrl: 'https://www.walmart.ca/orders' }) };
+  const db = evalIn(s, 'OrderDb');
+  await db.putInvoice(ORDER_NUMBER, sampleInvoice({ walmartExtractionVersion: undefined }), 'WALMART_CA');
+  const calls = mockInvoiceResponses(s, () => sampleInvoice({ walmartExtractionVersion: 1 }));
+  const data = await fetchOrderData(s, ORDER_NUMBER, FETCH_OPTIONS);
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].url.startsWith('https://www.walmart.ca/orders/'));
+  assert.equal(data.walmartExtractionVersion, 1);
+});
+
+// Walmart's human check (#43). It is a pause, not a broken order: the run must
+// stop instead of failing every remaining order against the challenge page.
+const SECOND_ORDER = '200010000000043';
+const THIRD_ORDER = '200010000000044';
+
+function captureBanners(sandbox) {
+  const banners = [];
+  const view = sandbox.window.Sidepanel.view;
+  for (const name of ['clearStatusBanner', 'showDownloadProgress', 'updateDownloadProgress', 'hideDownloadProgress', 'setButtonLoading', 'updateDownloadButtonsState']) view[name] = () => {};
+  view.renderStatusBanner = (id, options) => { banners.push({ id, ...options }); return null; };
+  return banners;
+}
+
+/** Answers each order page with its own invoice until `challengeFrom` loads have happened. */
+function mockChallengeAfter(sandbox, challengeFrom) {
+  sandbox.delay = async () => {};
+  const loads = [];
+  sandbox.chrome.tabs.sendMessage = (tabId, message, callback) => {
+    const action = message.method || message.action;
+    let response = {};
+    if (action === 'getOrderData') {
+      const url = sandbox.chrome.tabs._tabsById.get(tabId).url;
+      loads.push(url);
+      response = loads.length >= challengeFrom
+        ? { data: null, challenge: true }
+        : { data: sampleInvoice({ orderNumber: url.match(/orders\/(\d+)/)[1] }) };
+    }
+    if (callback) queueMicrotask(() => callback(response));
+  };
+  return loads;
+}
+
+test('human check: a /blocked redirect is reported as a challenge and the alternate URL is not tried', async () => {
+  const sandbox = loadDownloadSandbox();
+  sandbox.delay = async () => {};
+  const tabs = sandbox.chrome.tabs;
+  const originalCreate = tabs.create.bind(tabs);
+  tabs.create = (properties, callback) => originalCreate(properties, (tab) => {
+    tab.url = 'https://www.walmart.com/blocked?url=L29yZGVycw==&g=b';
+    callback(tab);
+  });
+
+  await assert.rejects(
+    () => fetchOrderData(sandbox, ORDER_NUMBER, { timeoutMs: 40, stabilizeDelayMs: 0 }),
+    (error) => error.walmartChallenge === true
+  );
+
+  assert.equal(tabs._calls.create.length, 1);
+  assert.equal(tabs._calls.update.length, 0, 'a second URL would only deepen the block');
+});
+
+for (const mode of ['multiple', 'single']) {
+  test(`human check: ${mode} export stops at the challenge, keeps finished orders and offers Retry without a failure report`, async () => {
+    const sandbox = loadDownloadSandbox();
+    const downloads = captureDownloads(sandbox);
+    const banners = captureBanners(sandbox);
+    sandbox.window.Sidepanel.state.app.exportFormat = 'csv';
+    sandbox.window.Sidepanel.state.app.orderSettleMs = 0;
+    const loads = mockChallengeAfter(sandbox, 2);
+
+    await sandbox.window.Sidepanel.download.downloadSelectedOrders(mode, [ORDER_NUMBER, SECOND_ORDER, THIRD_ORDER]);
+
+    assert.equal(loads.length, 2, 'the third order must not be requested once Walmart raised the check');
+    assert.ok(downloads.length > 0, 'the order finished before the check is still exported');
+    const result = banners.find((banner) => banner.id === 'downloadResultBanner');
+    assert.equal(result.variant, 'warning');
+    assert.match(result.message, /check that you are human/);
+    assert.match(result.message, /1 of 3 exported/);
+    assert.doesNotMatch(result.message, /\d+ failed/);
+    assert.match(result.actionHtml, /Retry failed/);
+    assert.equal(banners.some((banner) => banner.id === 'extractionWarning'), false, 'a challenge must never ask the user to file a report');
+    assert.equal(sandbox.window.Sidepanel.state.app.downloadInProgress, false);
+  });
+}
+
+test('human check: saving to the library stops at the challenge and stores only finished orders', async () => {
+  const sandbox = loadDownloadSandbox();
+  const banners = captureBanners(sandbox);
+  const OrderDb = evalIn(sandbox, 'OrderDb');
+  mockChallengeAfter(sandbox, 2);
+
+  await sandbox.window.Sidepanel.download.loadSelectedOrdersToDb([ORDER_NUMBER, SECOND_ORDER, THIRD_ORDER]);
+
+  const result = banners.find((banner) => banner.id === 'downloadResultBanner');
+  assert.equal(result.variant, 'warning');
+  assert.match(result.message, /1 of 3 saved/);
+  assert.ok((await OrderDb.getOrder(ORDER_NUMBER)).invoice);
+  assert.equal((await OrderDb.getOrder(SECOND_ORDER))?.invoice || null, null);
+});
+
+// A fully canceled order has no charged lines. That is a real, complete
+// invoice — not a failed read to retry forever or report as a site change.
+test('canceled order: an invoice with no charged items is saved and exported instead of failing', async () => {
+  const sandbox = loadDownloadSandbox();
+  const downloads = captureDownloads(sandbox);
+  const banners = captureBanners(sandbox);
+  sandbox.window.Sidepanel.state.app.exportFormat = 'csv';
+  sandbox.window.Sidepanel.state.app.orderSettleMs = 0;
+  const calls = mockInvoiceResponses(sandbox, () => sampleInvoice({ items: [], orderTotal: '$0.00', noChargedItems: true }));
+
+  await sandbox.window.Sidepanel.download.downloadSelectedOrders('single', [ORDER_NUMBER]);
+
+  assert.equal(calls.length, 1, 'no re-read and no alternate URL for a complete canceled order');
+  assert.ok(downloads.length > 0);
+  const result = banners.find((banner) => banner.id === 'downloadResultBanner');
+  assert.equal(result.variant, 'success');
+  assert.equal(banners.some((banner) => banner.id === 'extractionWarning'), false);
+});
+
+test('canceled order: an empty invoice WITHOUT the no-charged-items marker is still rejected', async () => {
+  const sandbox = loadDownloadSandbox();
+  mockInvoiceResponses(sandbox, () => sampleInvoice({ items: [] }));
+
+  await assert.rejects(() => fetchOrderData(sandbox, ORDER_NUMBER, FETCH_OPTIONS), /Incomplete invoice/);
+});
+
+// Only unexpected problems should send users to GitHub. Limits on Walmart's
+// side are worth a notice, never a bug report.
+test('extraction notice: information Walmart did not provide is shown without a report request', () => {
+  const sandbox = loadDownloadSandbox();
+  const banner = sandbox.window.Sidepanel.view.buildExtractionWarningBanner([
+    { orderNumber: ORDER_NUMBER, warnings: ['Split tender across 2 payment methods, but 2 per-tender amounts were unavailable after checking the order page and charge history'] },
+    { orderNumber: '200010000000043', warnings: ['Walmart could not refresh this saved invoice, so older saved data was exported'] },
+  ]);
+
+  assert.equal(banner.variant, 'info');
+  assert.match(banner.message, /order ending 0042/);
+  assert.match(banner.message, /nothing to report/);
+  assert.doesNotMatch(banner.message, /github\.com/);
+});
+
+test('extraction notice: an unexpected problem still asks for the pre-filled report', () => {
+  const sandbox = loadDownloadSandbox();
+  const banner = sandbox.window.Sidepanel.view.buildExtractionWarningBanner([
+    { orderNumber: ORDER_NUMBER, warnings: ['Split tender across 2 payment methods, but 1 per-tender amount was unavailable after checking the order page and charge history'] },
+    { orderNumber: '200010000000043', warnings: ['All extracted items have a blank product name'] },
+  ]);
+
+  assert.equal(banner.variant, 'warning');
+  assert.match(banner.message, /github\.com\/hppanpaliya\/Walmart-Invoice-Exporter\/issues\/new/);
+  assert.doesNotMatch(banner.message, /200010000000042/, 'order numbers stay masked');
+});
+
+test('extraction notice: no warnings means no banner', () => {
+  const sandbox = loadDownloadSandbox();
+  assert.equal(sandbox.window.Sidepanel.view.buildExtractionWarningBanner([]), null);
+});
+
+test('collection stopped early: the notice says what happened, what was kept, and what to do', () => {
+  const sandbox = loadDownloadSandbox();
+  const view = sandbox.window.Sidepanel.view;
+  const check = view.collectionInterruptedMessage({ reason: 'challenge', page: 4 }, 37);
+  assert.match(check, /check that you are human/);
+  assert.match(check, /37 orders were collected and kept/);
+  assert.match(check, /load your orders again/);
+  const incomplete = view.collectionInterruptedMessage({ reason: 'incomplete', page: 2 }, 1);
+  assert.match(incomplete, /stopped early on page 2/);
+  assert.match(incomplete, /1 order was collected and kept/);
+  assert.doesNotMatch(incomplete, /human/);
 });

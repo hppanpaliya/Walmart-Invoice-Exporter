@@ -734,7 +734,7 @@ const PurchaseHistoryDataSource = (() => {
       return snapshot.nextPageCursor || null; // null => no further page
     };
 
-    const finalize = () => {
+    const finalize = (incomplete = false) => {
       console.log(
         `[WIE] Fast Collect: ${merged.orderNumbers.length} order(s) across ${merged.pages} page(s) — 1 real request + ${Math.max(0, merged.pages - 2)} replayed.`
       );
@@ -743,8 +743,9 @@ const PurchaseHistoryDataSource = (() => {
         additionalFields: merged.additionalFields,
         orderSummaries: merged.orderSummaries,
         pages: merged.pages,
-        hasNextPage: false,
+        hasNextPage: incomplete,
         fast: true,
+        ...(incomplete ? { fallbackToClassic: true } : {}),
       };
     };
 
@@ -771,6 +772,7 @@ const PurchaseHistoryDataSource = (() => {
       console.log("[WIE] Fast Collect (incremental): page 1 is all known orders — done.");
       return finalize();
     }
+    if (pageLimit > 0 && merged.pages >= pageLimit) return finalize();
 
     // SEED (real runtime): trigger ONE genuine "Next" so the page makes its own
     // PurchaseHistoryV3 request. The main-world bridge captures BOTH page 2's
@@ -806,9 +808,15 @@ const PurchaseHistoryDataSource = (() => {
     // under the test harness it fetches directly (stubbed).
     const hash = capturedHash || (await readCachedHash()) || DEFAULT_HASH;
     let guard = 0;
+    let incomplete = false;
+    const visitedCursors = new Set();
     while (cursor) {
       if (pageLimit > 0 && merged.pages >= pageLimit) break;
-      if (guard++ > FAST_FETCH_MAX_PAGES) break;
+      if (guard++ >= FAST_FETCH_MAX_PAGES || visitedCursors.has(cursor)) {
+        incomplete = true;
+        break;
+      }
+      visitedCursors.add(cursor);
       if (!isTest) await delay(humanPacingDelay());
       let purchaseHistory;
       try {
@@ -818,9 +826,14 @@ const PurchaseHistoryDataSource = (() => {
           `[WIE] Fast Collect stopped after ${merged.pages} page(s):`,
           error && error.message
         );
-        break; // keep everything collected so far
+        incomplete = true;
+        break; // keep everything collected so far and request classic rescue
       }
       const snapshot = buildSnapshot(purchaseHistory, "fetch");
+      if (!snapshot) {
+        incomplete = true;
+        break;
+      }
       cursor = absorb(snapshot);
       if (pageAllKnown(snapshot)) {
         console.log("[WIE] Fast Collect (incremental): page of all-known orders — stopping.");
@@ -831,7 +844,7 @@ const PurchaseHistoryDataSource = (() => {
     if (merged.orderNumbers.length === 0) {
       return { fallbackToClassic: true };
     }
-    return finalize();
+    return finalize(incomplete);
   }
 
   /**
@@ -1019,7 +1032,7 @@ function getOrderNodeFromNextDataPayload(payload) {
     return null;
   }
 
-  return (
+  const detail = (
     payload?.props?.pageProps?.initialData?.data?.order ||
     payload?.pageProps?.initialData?.data?.order ||
     payload?.props?.pageProps?.order ||
@@ -1027,6 +1040,71 @@ function getOrderNodeFromNextDataPayload(payload) {
     payload?.order ||
     null
   );
+  if (detail) return detail;
+
+  // The redesigned detail page embeds purchase-history summaries rather than
+  // initialData.data.order. Use only the summary for the requested order; its
+  // items may have no prices, so the rendered invoice remains the line source.
+  const orderNumber = normalizeOrderNumberValue(window.location.pathname?.match(/\/orders\/([\d-]+)/)?.[1]);
+  if (!orderNumber) return null;
+  const pageProps = payload?.props?.pageProps || payload?.pageProps;
+  const orders = pageProps?.phRedesignInitialData?.data?.purchaseHistory?.orders;
+  return (Array.isArray(orders) && orders.find((order) =>
+    normalizeOrderNumberValue(order?.id || order?.displayId) === orderNumber
+  )) || null;
+}
+
+function extractRedesignedInvoiceItems() {
+  return Array.from(document.querySelectorAll('[data-testid="itemtile-stack"]')).flatMap((tile) => {
+    if (!tile.querySelector('.print-item-title')) return [];
+    // Unavailable items still have prices and quantities. Their accordion's
+    // preceding heading, not the price, identifies them as uncharged.
+    for (let node = tile; node && !node.classList.contains('print-bill-group'); node = node.parentElement) {
+      const heading = cleanText(node.previousElementSibling?.textContent || '');
+      if (/^(?:\d+\s+)?(?:unavailable|cancel(?:ed|led))(?:\s|$)/i.test(heading)) return [];
+    }
+    const productName = cleanText(tile.querySelector('[data-testid="productName"]')?.textContent || '');
+    const quantity = cleanText(tile.querySelector('.bill-item-quantity')?.textContent || '').match(/\d+(?:\.\d+)?/)?.[0] || '';
+    const price = getLastCurrencyValue(tile.querySelector('[data-testid="line-price"]')?.textContent || '');
+    if (!productName || !quantity || !price) return [];
+    const href = tile.querySelector('a[link-identifier="itemClick"]')?.getAttribute('href');
+    return [{
+      productName, quantity, price,
+      productLink: href ? new URL(href, window.location.origin).href : 'N/A',
+      deliveryStatus: cleanText(tile.closest('[data-testid="orderInfoCard"]')?.querySelector('h2')?.textContent || ''),
+    }];
+  });
+}
+
+function extractRedesignedInvoiceTotals() {
+  const values = {};
+  const deliveryFees = new Map();
+  const adjustmentEntries = [];
+  document.querySelectorAll('.print-bill-payment-section .bill-order-payment-spacing .justify-between').forEach((row) => {
+    const visibleLabel = cleanText(row.firstElementChild?.textContent || '');
+    const label = normalizeLookupText(visibleLabel);
+    // Ignore repeated accessibility descriptions; use the last amount in the
+    // actual value columns (delivery can show a crossed-out fee before $0).
+    const columns = Array.from(row.children).slice(1).filter((child) => !child.classList.contains('ld_Ec'));
+    const amount = getLastCurrencyValue(columns.map((child) => child.textContent).join(' '));
+    if (!amount) return;
+    adjustmentEntries.push({ label: visibleLabel, amount });
+    if (/^items\s*\(/.test(label)) values.subtotalBeforeSavings = amount;
+    else if (label === 'savings') values.savings = amount.startsWith('-') ? amount : `-${amount}`;
+    else if (label === 'subtotal') values.orderSubtotal = amount;
+    else if (label === 'total' || label === 'order total') values.orderTotal = amount;
+    else if (/^(?:free )?(?:delivery|express)(?:\s|$)/.test(label)) deliveryFees.set(label, amount);
+    else if (label === 'bag fee') values.bagFee = amount;
+    else if (label === 'tax' || label === 'taxes') values.tax = amount;
+    else if (label === 'driver tip' || label === 'tip') values.tip = amount;
+  });
+  if (deliveryFees.size === 1) values.deliveryCharges = deliveryFees.values().next().value;
+  else if (deliveryFees.size > 1) {
+    const cents = Array.from(deliveryFees.values()).reduce((sum, amount) =>
+      sum + Math.round(Number(amount.replace(/[^0-9.-]/g, '')) * 100), 0);
+    values.deliveryCharges = `$${(cents / 100).toFixed(2)}`;
+  }
+  return { ...values, ...collectFinancialAdjustments(adjustmentEntries) };
 }
 
 function extractTextFromNextData(value) {
@@ -1136,24 +1214,22 @@ function extractNextDataAddressDetails(orderNode) {
 function extractNextDataPaymentMethods(orderNode) {
   const paymentMethods = Array.isArray(orderNode?.paymentMethods) ? orderNode.paymentMethods : [];
 
-  return paymentMethods
+  const details = paymentMethods
     .map((paymentMethod, index) => {
       const brand = cleanText(paymentMethod?.cardType || paymentMethod?.paymentType || '');
       const ending = cleanText(paymentMethod?.description || paymentMethod?.title || '');
-      const displayValues = Array.isArray(paymentMethod?.displayValues)
-        ? paymentMethod.displayValues
-        : [];
+      const displayValues = [
+        ...(Array.isArray(paymentMethod?.displayValues) ? paymentMethod.displayValues : []),
+        ...(Array.isArray(paymentMethod?.detailedDisplayValues) ? paymentMethod.detailedDisplayValues : []),
+      ];
       // Keep only amount-shaped entries ("$25.00", "-12.50") — Walmart mixes
-      // descriptive strings into this array on some orders.
+      // descriptive strings into these arrays on some orders.
       const amountValues = displayValues
-        .map((value) => cleanText(typeof value === 'string' ? value : value?.displayValue || ''))
-        .filter((value) => /-?\$\s*\d|\d+\.\d{2}/.test(value));
-      const amount = amountValues.length > 0
-        ? amountValues.join(' + ')
-        : cleanText(
-            displayValues[0]?.displayValue ||
-              (typeof displayValues[0] === 'string' ? displayValues[0] : '')
-          );
+        .map((value) => cleanText(typeof value === 'string'
+          ? value
+          : value?.displayValue || value?.amount?.displayValue || value?.amount || ''))
+        .filter((value) => /^-?\$?\s*[\d,]+(?:\.\d{2})?$/.test(value));
+      const amount = amountValues.length > 0 ? amountValues.join(' + ') : '';
       const message = extractTextFromNextData(paymentMethod?.message);
 
       return {
@@ -1165,6 +1241,7 @@ function extractNextDataPaymentMethods(orderNode) {
       };
     })
     .filter((entry) => entry.brand || entry.ending || entry.amount || entry.message);
+  return dedupePaymentMethodDetails(details);
 }
 
 function extractNextDataFeeBreakdown(orderNode) {
@@ -1184,6 +1261,99 @@ function extractNextDataFeeBreakdown(orderNode) {
       };
     })
     .filter((entry) => entry.label || entry.amount || entry.originalAmount);
+}
+
+function classifyFinancialAdjustmentLabel(label) {
+  const normalized = normalizeLookupText(label).replace(/[‐‑‒–—]/g, '-');
+  const isThreeHoursOrLess = /(?:3|three)[\s-]*(?:hours?|hrs?)[\s-]*or[\s-]*(?:less|fewer|under)/i.test(normalized);
+  if (isThreeHoursOrLess && /return/i.test(normalized)) return 'returnedThreeHoursOrLessFee';
+  if (isThreeHoursOrLess) return 'threeHoursOrLessFee';
+  if (/\b(?:promo|promotional|coupon)\b/i.test(normalized)) return 'promoCodeAmount';
+  if (/\bdonations?\b/i.test(normalized)) return 'donations';
+  if (/\brefund(?:ed)?\b/i.test(normalized)) return 'refund';
+  return '';
+}
+
+function collectFinancialAdjustments(entries) {
+  const result = {
+    promoCodeAmount: '',
+    threeHoursOrLessFee: '',
+    returnedThreeHoursOrLessFee: '',
+    donations: '',
+    refund: '',
+    financialAdjustments: [],
+  };
+  const standardLabel = /^(?:items?(?:\s*\(\s*\d+\s*\)|\s+\d+\s+items?)?|subtotal(?:\s+\(\s*\d+\s+items?\s*\))?(?:\s+after\s+savings)?|savings|delivery(?:\s+from\s+store|\s+charges?|\s+fee)?|express(?:\s+delivery|\s+fee)?|free\s+(?:delivery|shipping)(?:\s+from\s+store)?(?:\s*,?\s*no\s+order\s+minimum)?|no\s+order\s+minimum|bag\s+fee|tax(?:es)?|driver\s+tip|tip|donations?|total|order\s+total|temporary\s+adjusted\s+total|estimated\s+total)$/i;
+  const seen = new Set();
+
+  (Array.isArray(entries) ? entries : []).forEach((entry) => {
+    const label = cleanText(entry?.label || '');
+    const amount = cleanText(entry?.amount || '');
+    if (!label || !amount) return;
+    const numericAmount = Number(amount.replace(/[^\d.-]/g, ''));
+    if (!Number.isFinite(numericAmount) || numericAmount === 0) return;
+
+    const field = classifyFinancialAdjustmentLabel(label);
+    if (field) {
+      if (!result[field]) result[field] = amount;
+      return;
+    }
+    if (standardLabel.test(label)) return;
+
+    const key = `${normalizeLookupText(label)}|${amount}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.financialAdjustments.push({ label, amount });
+  });
+  return result;
+}
+
+function extractFinancialAdjustments(feeBreakdown) {
+  return collectFinancialAdjustments(feeBreakdown);
+}
+
+function getDeliveryFeeAmount(feeBreakdown) {
+  const matches = (Array.isArray(feeBreakdown) ? feeBreakdown : []).filter((entry) => {
+    const label = normalizeLookupText(entry?.label || '');
+    return /\b(?:delivery|express)\b/.test(label) &&
+      !/\b(?:discount|savings|coupon|promo|original|normally)\b/.test(label);
+  });
+  if (matches.length === 0) return '';
+  const cents = matches.reduce((sum, entry) => {
+    const value = Number(String(entry.amount || '').replace(/[^\d.-]/g, ''));
+    return sum + (Number.isFinite(value) ? Math.round(value * 100) : 0);
+  }, 0);
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function mergeFinancialAdjustments(...sources) {
+  const merged = {
+    promoCodeAmount: '',
+    threeHoursOrLessFee: '',
+    returnedThreeHoursOrLessFee: '',
+    donations: '',
+    refund: '',
+    financialAdjustments: [],
+  };
+  const seen = new Set();
+  sources.forEach((source) => {
+    if (!source || typeof source !== 'object') return;
+    for (const field of ['promoCodeAmount', 'threeHoursOrLessFee', 'returnedThreeHoursOrLessFee', 'donations', 'refund']) {
+      if (!merged[field] && source[field] !== '' && source[field] !== null && source[field] !== undefined) {
+        merged[field] = cleanText(source[field]);
+      }
+    }
+    (Array.isArray(source.financialAdjustments) ? source.financialAdjustments : []).forEach((entry) => {
+      const label = cleanText(entry?.label || '');
+      const amount = cleanText(entry?.amount || '');
+      if (!label || !amount) return;
+      const key = `${normalizeLookupText(label)}|${amount}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      merged.financialAdjustments.push({ label, amount });
+    });
+  });
+  return merged;
 }
 
 /**
@@ -1263,7 +1433,73 @@ function buildTenderLabel(brand, ending) {
   const e = cleanText(ending || '');
   if (!b) return e;
   if (!e) return b;
-  return e.toLowerCase().includes(b.toLowerCase()) ? e : `${b} ${e}`;
+  const description = e.replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi, '');
+  const escapedBrand = b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const containsBrand = new RegExp(`(^|[^a-z0-9])${escapedBrand}(?=$|[^a-z0-9])`, 'i').test(description);
+  return containsBrand ? e : `${b} ${e}`;
+}
+
+function normalizeTenderBrand(value) {
+  const normalized = normalizeLookupText(value || '').replace(/[^a-z0-9]/g, '');
+  return normalized === 'wmtrc' ? 'walmartcash' : normalized;
+}
+
+function sameMoneyAmount(left, right) {
+  const toCents = (value) => {
+    const text = cleanText(value || '');
+    if (!/^-?\$?\s*[\d,]+(?:\.\d{2})?$/.test(text)) return null;
+    return Math.round(Number(text.replace(/[$,\s]/g, '')) * 100);
+  };
+  const a = toCents(left);
+  const b = toCents(right);
+  return a !== null && a === b;
+}
+
+/**
+ * Walmart sometimes emits the same tender twice under a specific brand and a
+ * generic code (`WMTRC` for Walmart Cash or `OTHER` for a gift card). The
+ * masked tender description is the stable identity shared by those records.
+ */
+function dedupePaymentMethodDetails(details) {
+  const result = [];
+  (Array.isArray(details) ? details : []).forEach((entry) => {
+    const duplicateIndex = result.findIndex((existing) => {
+      const brands = [normalizeTenderBrand(existing.brand), normalizeTenderBrand(entry.brand)];
+      const wmtrcAliasPair = brands.includes('walmartcash') &&
+        [normalizeLookupText(existing.brand), normalizeLookupText(entry.brand)].some((brand) => /\bwmtrc\b/i.test(brand)) &&
+        [normalizeLookupText(existing.brand), normalizeLookupText(entry.brand)].some((brand) => /\bwalmart cash\b/i.test(brand));
+      const otherAliasPair = brands.includes('other') && brands.some((brand) => brand && brand !== 'other');
+      const existingEnding = normalizeLookupText(existing.ending || '');
+      const entryEnding = normalizeLookupText(entry.ending || '');
+      const bothAmountsMissing = !cleanText(existing.amount || '') && !cleanText(entry.amount || '');
+      const sameTender = existingEnding && existingEnding === entryEnding;
+      return sameTender && (
+        (otherAliasPair && (sameMoneyAmount(existing.amount, entry.amount) || bothAmountsMissing ||
+          !cleanText(existing.amount || '') || !cleanText(entry.amount || ''))) ||
+        (wmtrcAliasPair && (sameMoneyAmount(existing.amount, entry.amount) || bothAmountsMissing))
+      );
+    });
+
+    if (duplicateIndex < 0) {
+      result.push(entry);
+      return;
+    }
+
+    const existing = result[duplicateIndex];
+    const preferred = normalizeTenderBrand(entry.brand) === 'other'
+      ? existing
+      : normalizeTenderBrand(existing.brand) === 'other'
+        ? entry
+        : /\bwalmart cash\b/i.test(normalizeLookupText(entry.brand)) ? entry : existing;
+    result[duplicateIndex] = {
+      ...existing,
+      ...entry,
+      ...preferred,
+      amount: preferred.amount || existing.amount || entry.amount || '',
+      message: existing.message || entry.message || '',
+    };
+  });
+  return result;
 }
 
 /**
@@ -1286,7 +1522,54 @@ function buildPaymentSplit(paymentMethodDetails) {
     .join('; ');
 }
 
-function collectItemsFromNextDataGroups(groups, pushItem) {
+/** Merge DOM tenders with payload tenders, filling DOM-missing amounts safely. */
+function mergePaymentMethodDetails(domDetails, payloadDetails) {
+  const dom = Array.isArray(domDetails) ? domDetails : [];
+  const payload = Array.isArray(payloadDetails) ? payloadDetails : [];
+  const normalized = (value) => normalizeLookupText(value || '').replace(/[^a-z0-9]/g, '');
+  const usedPayload = new Set();
+  const merged = dom.map((entry, index) => {
+    const brand = normalized(entry.brand);
+    const ending = normalized(entry.ending);
+    let candidates = payload.map((candidate, payloadIndex) => ({ candidate, payloadIndex }))
+      .filter(({ payloadIndex }) => !usedPayload.has(payloadIndex));
+    let matches = candidates.filter(({ candidate }) => {
+      const candidateBrand = normalized(candidate.brand);
+      const candidateEnding = normalized(candidate.ending);
+      return ending && candidateEnding && (ending === candidateEnding || ending.endsWith(candidateEnding) || candidateEnding.endsWith(ending)) &&
+        (!brand || !candidateBrand || brand === candidateBrand || brand.includes(candidateBrand) || candidateBrand.includes(brand));
+    });
+    if (matches.length !== 1 && dom.length === payload.length) {
+      const indexed = candidates.find(({ payloadIndex }) => payloadIndex === index);
+      if (indexed) {
+        const candidateBrand = normalized(indexed.candidate.brand);
+        const candidateEnding = normalized(indexed.candidate.ending);
+        const endingCompatible = !ending || !candidateEnding || ending === candidateEnding ||
+          ending.endsWith(candidateEnding) || candidateEnding.endsWith(ending);
+        if (endingCompatible && (!brand || !candidateBrand || brand === candidateBrand || brand.includes(candidateBrand) || candidateBrand.includes(brand))) {
+          matches = [indexed];
+        }
+      }
+    }
+    const match = matches.length === 1 ? matches[0] : null;
+    if (match) usedPayload.add(match.payloadIndex);
+    const fallback = match?.candidate || {};
+    return {
+      ...fallback,
+      ...entry,
+      brand: entry.brand || fallback.brand || '',
+      ending: entry.ending || fallback.ending || '',
+      amount: entry.amount || fallback.amount || '',
+      message: entry.message || fallback.message || '',
+    };
+  });
+  payload.forEach((entry, index) => {
+    if (!usedPayload.has(index)) merged.push(entry);
+  });
+  return dedupePaymentMethodDetails(merged);
+}
+
+function collectItemsFromNextDataGroups(groups, pushItem, pushUnfulfilled) {
   if (!Array.isArray(groups)) {
     return false;
   }
@@ -1313,13 +1596,18 @@ function collectItemsFromNextDataGroups(groups, pushItem) {
           Array.isArray(subGroup?.categories) ? subGroup.categories : []
         );
 
-    if (categories.length > 0) {
+    // History summaries may list category types without item arrays. Those
+    // are metadata only; the rendered invoice must still supply its lines.
+    if (categories.some(category => Array.isArray(category?.items))) {
       usedCategories = true;
       categories.forEach((category) => {
         const categoryType = String(category?.type || '').toUpperCase();
         // UNAVAILABLE / CANCELED lines were never charged; RETURNED lines
         // were charged (the refund is its own transaction), so they stay.
         if (categoryType === 'UNAVAILABLE' || categoryType.indexOf('CANCEL') === 0) {
+          if (typeof pushUnfulfilled === 'function') {
+            (Array.isArray(category?.items) ? category.items : []).forEach((item) => pushUnfulfilled(item, categoryType));
+          }
           return;
         }
         const items = Array.isArray(category?.items) ? category.items : [];
@@ -1328,7 +1616,7 @@ function collectItemsFromNextDataGroups(groups, pushItem) {
         // lines), and item ids are NOT unique across an order, so no
         // dedup key can be trusted here. The either/or traversal above is
         // single-pass, so nothing can be visited twice.
-        items.forEach((item) => pushItem(item, groupStatus, { noDedup: true }));
+        items.forEach((item) => pushItem(item, groupStatus, { noDedup: true, categoryType }));
       });
       return;
     }
@@ -1341,9 +1629,123 @@ function collectItemsFromNextDataGroups(groups, pushItem) {
   return usedCategories;
 }
 
+/** How a charged line was fulfilled, when Walmart files it under a special category. */
+const ITEM_FULFILLMENT_LABELS = { SUBSTITUTED: 'Substituted', WEIGHT_ADJUSTED: 'Weight adjusted', RETURNED: 'Returned' };
+
+/**
+ * Optional per-line details from Walmart's payload: the price of one item,
+ * the comparison price (per oz, per lb), the "was" price, savings, the
+ * category path, whether it can still be returned, and how it was fulfilled.
+ * Best effort by design: a field Walmart does not send is left off the line,
+ * and nothing here can fail the line itself.
+ * @param {Object} item - one payload line
+ * @param {string} [categoryType] - the charged category the line sits in
+ * @returns {Object} extra fields for the exported line (possibly empty)
+ */
+function extractItemExtras(item, categoryType) {
+  const extras = {};
+  try {
+    const priceInfo = item?.priceInfo || {};
+    const each = cleanText(priceInfo?.itemPrice?.displayValue || '').replace(/\s*(ea|each)\.?$/i, '');
+    if (each) extras.unitPrice = each;
+    const comparisonPrice = cleanText(priceInfo?.unitPrice?.displayValue || '');
+    if (comparisonPrice) extras.comparisonPrice = comparisonPrice;
+    const wasPrice = cleanText(priceInfo?.strikethroughPrice?.displayValue || '');
+    if (wasPrice) extras.wasPrice = wasPrice;
+    const discounts = (Array.isArray(item?.discounts) ? item.discounts : [])
+      .map((discount) => cleanText(discount?.label || ''))
+      .filter(Boolean);
+    if (discounts.length > 0) extras.discount = discounts.join('; ');
+    const priceNotes = (Array.isArray(priceInfo?.additionalLines) ? priceInfo.additionalLines : [])
+      .map((line) => [cleanText(line?.name || ''), cleanText(line?.value || '')].filter(Boolean).join(': '))
+      .filter(Boolean);
+    if (priceNotes.length > 0) extras.priceNotes = priceNotes.join('; ');
+    const categoryPathId = cleanText(item?.productInfo?.categoryPathId || '');
+    if (/^\d+(:\d+)*$/.test(categoryPathId)) extras.categoryPathId = categoryPathId;
+    if (typeof item?.isReturnable === 'boolean') extras.returnable = item.isReturnable;
+    const fulfillment = ITEM_FULFILLMENT_LABELS[String(categoryType || '').toUpperCase()];
+    if (fulfillment) extras.fulfillment = fulfillment;
+  } catch (error) {
+    console.warn('[WIE] optional item details could not be read:', error && error.message);
+  }
+  return extras;
+}
+
+/**
+ * Optional order-level details: one overall status, late delivery, the store
+ * that filled the order, the return window, and the lines that were ordered
+ * but never charged. Best effort, like extractItemExtras.
+ * @param {Object} orderNode - the payload order
+ * @param {Array} chargedItems - result of extractItemsFromNextData
+ * @returns {Object} extra fields for the exported order (possibly empty)
+ */
+function extractOrderExtras(orderNode, chargedItems) {
+  const extras = {};
+  try {
+    const groups = Array.isArray(orderNode?.groups_2101) && orderNode.groups_2101.length > 0
+      ? orderNode.groups_2101
+      : (Array.isArray(orderNode?.groups) ? orderNode.groups : []);
+    const statusTypes = groups.map((group) => String(group?.status?.statusType || '').toUpperCase()).filter(Boolean);
+    const canceled = statusTypes.filter((type) => type.indexOf('CANCEL') === 0).length;
+    if (statusTypes.length > 0) {
+      if (canceled === statusTypes.length) extras.orderStatus = 'Canceled';
+      else if (canceled > 0) extras.orderStatus = 'Partly canceled';
+      else {
+        const words = statusTypes[0].toLowerCase().replace(/_/g, ' ');
+        extras.orderStatus = words.charAt(0).toUpperCase() + words.slice(1);
+      }
+    }
+    const delayed = groups.some((group) => group?.status?.wasDelayed === true
+      && String(group?.status?.statusType || '').toUpperCase().indexOf('CANCEL') !== 0);
+    if (delayed) extras.wasDelayed = true;
+    const storeName = cleanText(groups.map((group) => group?.store?.name).find(Boolean) || '');
+    if (storeName) extras.storeName = storeName;
+    const returnWindow = cleanText(groups.map((group) => group?.returnEligibilityMessage).find(Boolean) || '');
+    if (returnWindow) extras.returnWindow = returnWindow;
+    if (Array.isArray(chargedItems?.unfulfilledItems) && chargedItems.unfulfilledItems.length > 0) {
+      extras.unfulfilledItems = chargedItems.unfulfilledItems;
+    }
+  } catch (error) {
+    console.warn('[WIE] optional order details could not be read:', error && error.message);
+  }
+  return extras;
+}
+
+/** The optional order-level fields, copied from one order object to another. */
+function pickOrderExtras(order) {
+  const extras = {};
+  ['orderStatus', 'wasDelayed', 'storeName', 'returnWindow'].forEach((key) => {
+    if (order && order[key] !== undefined && order[key] !== '') extras[key] = order[key];
+  });
+  if (Array.isArray(order?.unfulfilledItems) && order.unfulfilledItems.length > 0) {
+    extras.unfulfilledItems = order.unfulfilledItems;
+  }
+  return extras;
+}
+
 function extractItemsFromNextData(orderNode) {
   const items = [];
   const seen = new Set();
+  // Lines Walmart lists but never charged (unavailable or canceled). Kept
+  // apart from `items`, which stays the charged-lines truth for every total.
+  const unfulfilled = [];
+  const pushUnfulfilled = (item, categoryType) => {
+    try {
+      const productName = cleanText(item?.productInfo?.name || item?.name || '');
+      if (!productName) return;
+      const usItemId = cleanText(item?.productInfo?.usItemId || item?.usItemId || '');
+      const price = cleanText(item?.priceInfo?.linePrice?.displayValue || item?.priceInfo?.itemPrice?.displayValue || '');
+      unfulfilled.push({
+        productName,
+        quantity: item?.quantity === 0 || item?.quantity ? String(item.quantity) : '',
+        reason: String(categoryType || '').toUpperCase() === 'UNAVAILABLE' ? 'Unavailable' : 'Canceled',
+        ...(price ? { price } : {}),
+        ...(usItemId ? { productLink: `https://www.walmart.com/ip/${usItemId}`, usItemId } : {}),
+      });
+    } catch (error) {
+      console.warn('[WIE] an unfulfilled line could not be read:', error && error.message);
+    }
+  };
 
   const pushItem = (item, groupStatus = '', opts = null) => {
     const productName = cleanText(item?.productInfo?.name || item?.name || '');
@@ -1395,16 +1797,18 @@ function extractItemsFromNextData(orderNode) {
       price,
       thumbnailUrl,
       usItemId: cleanText(item?.productInfo?.usItemId || item?.usItemId || ''),
+      ...extractItemExtras(item, opts && opts.categoryType),
     });
   };
 
-  let usedCategories = collectItemsFromNextDataGroups(orderNode?.groups_2101, pushItem) === true;
+  let usedCategories = collectItemsFromNextDataGroups(orderNode?.groups_2101, pushItem, pushUnfulfilled) === true;
 
-  if (items.length === 0) {
-    usedCategories = collectItemsFromNextDataGroups(orderNode?.groups, pushItem) === true;
+  if (items.length === 0 && !usedCategories) {
+    unfulfilled.length = 0;
+    usedCategories = collectItemsFromNextDataGroups(orderNode?.groups, pushItem, pushUnfulfilled) === true;
   }
 
-  if (items.length === 0 && Array.isArray(orderNode?.items)) {
+  if (items.length === 0 && !usedCategories && Array.isArray(orderNode?.items)) {
     orderNode.items.forEach((item) => pushItem(item, ''));
     usedCategories = false;
   }
@@ -1412,11 +1816,28 @@ function extractItemsFromNextData(orderNode) {
   // Tag (non-index array property; invisible to JSON/iteration) so
   // mergeOrderItems knows these items are the charged-truth set and must
   // not be "completed" with DOM rows the traversal deliberately excluded.
-  if (usedCategories && items.length > 0) {
+  if (usedCategories) {
     items.fromChargedCategories = true;
+  }
+  // Same non-index tagging: the order builder lifts this onto the order.
+  if (unfulfilled.length > 0) {
+    items.unfulfilledItems = unfulfilled;
   }
 
   return items;
+}
+
+/**
+ * A fully canceled order has a charged-categories tree with no charged lines.
+ * Mark it, so an honest "nothing was charged" is not mistaken for a failed
+ * read (which would be retried forever or reported as a site change).
+ * @param {Array} items - result of extractItemsFromNextData
+ * @returns {{noChargedItems?: true}}
+ */
+function noChargedItemsFlag(items) {
+  return Array.isArray(items) && items.length === 0 && items.fromChargedCategories === true
+    ? { noChargedItems: true }
+    : {};
 }
 
 function mergeOrderItems(domItems, nextDataItems) {
@@ -1433,7 +1854,7 @@ function mergeOrderItems(domItems, nextDataItems) {
     return `${productName}|${quantity}`;
   };
 
-  if (payloadItems.length === 0) {
+  if (payloadItems.length === 0 && !nextDataItems?.fromChargedCategories) {
     return scrapedItems;
   }
 
@@ -1516,6 +1937,7 @@ function extractOrderDataFromNextData(providedOrderNode) {
   ).join('; ');
 
   const priceDetails = orderNode?.priceDetails || {};
+  const financialFields = collectFinancialAdjustments(feeBreakdown);
   const deliveryInstructions = cleanText(
     orderNode?.groups_2101?.find((group) => group?.deliveryInstructions)?.deliveryInstructions?.text ||
       orderNode?.deliveryInstructions?.text ||
@@ -1525,11 +1947,14 @@ function extractOrderDataFromNextData(providedOrderNode) {
   const addressDetails = extractNextDataAddressDetails(orderNode);
   const shipmentDetails = extractNextDataShipmentDetails(orderNode);
 
+  const chargedItems = extractItemsFromNextData(orderNode);
+
   return {
     // Same schema stamp as scrapeOrderData: WITHOUT it, putInvoice stores the
     // fast-fetched invoice but hasInvoice/the dashboard treat it as a pre-v3
     // record and ignore it — "saved but invisible" (bug fixed 2026-07-19).
     schemaVersion: CONSTANTS.ORDER_SCHEMA_VERSION,
+    walmartExtractionVersion: CONSTANTS.WALMART_US_EXTRACTION_VERSION,
     orderNumber: normalizeOrderNumberValue(orderNode?.id || orderNode?.displayId),
     orderDate:
       formatOrderDateFromIsoString(orderNode?.orderDate) ||
@@ -1548,12 +1973,16 @@ function extractOrderDataFromNextData(providedOrderNode) {
         priceDetails?.orderTotal?.displayValue ||
         ''
     ),
-    deliveryCharges: getFeeAmount(feeBreakdown, 'delivery') || '',
+    deliveryCharges: getDeliveryFeeAmount(feeBreakdown),
     bagFee: getFeeAmount(feeBreakdown, 'bag fee') || getFeeAmount(feeBreakdown, 'bag') || '',
     tax: cleanText(priceDetails?.taxTotal?.displayValue || ''),
     tip: cleanText(priceDetails?.driverTip?.displayValue || ''),
-    refund: cleanText(priceDetails?.refund?.displayValue || ''),
-    donations: cleanText(priceDetails?.donations?.displayValue || ''),
+    promoCodeAmount: cleanText(financialFields.promoCodeAmount || priceDetails?.promoCodeAmount?.displayValue || priceDetails?.promoCode?.displayValue || ''),
+    threeHoursOrLessFee: cleanText(financialFields.threeHoursOrLessFee || priceDetails?.threeHoursOrLessFee?.displayValue || ''),
+    returnedThreeHoursOrLessFee: cleanText(financialFields.returnedThreeHoursOrLessFee || priceDetails?.returnedThreeHoursOrLessFee?.displayValue || ''),
+    refund: cleanText(financialFields.refund || priceDetails?.refund?.displayValue || ''),
+    donations: cleanText(financialFields.donations || priceDetails?.donations?.displayValue || ''),
+    financialAdjustments: financialFields.financialAdjustments,
     barcodeImageUrl: cleanText(orderNode?.idBarcodeImageUrl || ''),
     sellers: shipmentDetails.sellers,
     fulfillmentTypes: shipmentDetails.fulfillmentTypes,
@@ -1566,7 +1995,9 @@ function extractOrderDataFromNextData(providedOrderNode) {
     paymentMethods,
     paymentMethodDetails,
     paymentMessages,
-    items: extractItemsFromNextData(orderNode),
+    items: chargedItems,
+    ...noChargedItemsFlag(chargedItems),
+    ...extractOrderExtras(orderNode, chargedItems),
   };
 }
 
@@ -1737,13 +2168,30 @@ function readPaymentRowAmount(row) {
   return '';
 }
 
+function readPaymentBrand(row) {
+  return cleanText(row?.querySelector('img[alt]')?.alt ||
+    row?.querySelector('[data-wie-image-alt]')?.getAttribute('data-wie-image-alt') || '');
+}
+
 function extractPaymentDetailsFromOrderPage() {
   const methods = [];
   const seen = new Set();
 
-  const paymentRows = Array.from(document.querySelectorAll('.bill-order-payment-info .flex.items-center.mb3'));
+  const paymentInfo = document.querySelector('.bill-order-payment-info');
+  const paymentRows = new Set(document.querySelectorAll('.bill-order-payment-info .flex.items-center.mb3'));
+  // Some in-store and receipt layouts keep the accessible card label and
+  // amount but change the row utility classes. Walk up from the stable
+  // aria-labelledby marker so those rows still contribute their visible split.
+  Array.from(document.querySelectorAll(SELECTORS.PAYMENT_METHODS)).forEach((method) => {
+    const row = method.closest('.flex.items-center.mb3') ||
+      method.closest('.flex.items-center') || method.parentElement;
+    if (row && (!paymentInfo || paymentInfo.contains(row))) paymentRows.add(row);
+  });
 
-  paymentRows.forEach((row) => {
+  Array.from(paymentRows).sort((left, right) => {
+    const position = left.compareDocumentPosition?.(right) || 0;
+    return position & 4 ? -1 : position & 2 ? 1 : 0;
+  }).forEach((row) => {
     const endingElement = row.querySelector('[aria-labelledby^="card-description-"]');
     const ending = cleanText(endingElement?.textContent || '');
     const cardId = cleanText(endingElement?.getAttribute('aria-labelledby') || ending);
@@ -1751,7 +2199,7 @@ function extractPaymentDetailsFromOrderPage() {
       return;
     }
 
-    const brand = cleanText(row.querySelector('img[alt]')?.alt || '');
+    const brand = readPaymentBrand(row);
     const amount = readPaymentRowAmount(row);
     const message = cleanText(row.parentElement?.querySelector('.mt3')?.textContent || '');
 
@@ -1764,30 +2212,219 @@ function extractPaymentDetailsFromOrderPage() {
     methods.push({ cardId, brand, ending, amount, message });
   });
 
-  if (methods.length > 0) {
-    return methods;
+  return methods;
+}
+
+function parsePaymentAmountCents(value) {
+  const text = cleanText(value || '');
+  if (!/^-?\$?\s*[\d,]+(?:\.\d{2})?$/.test(text)) return null;
+  const amount = Number(text.replace(/[$,\s]/g, ''));
+  return Number.isFinite(amount) ? Math.round(amount * 100) : null;
+}
+
+function formatPaymentAmountCents(cents) {
+  const sign = cents < 0 ? '-' : '';
+  return `${sign}$${(Math.abs(cents) / 100).toFixed(2)}`;
+}
+
+function paymentHistorySectionAmount(section) {
+  const rows = Array.from(section?.querySelectorAll('li') || []);
+  const groupHeadings = Array.from(section?.querySelectorAll('h4') || []);
+  const finalRows = rows.filter((row) => {
+    if (!groupHeadings.length) return true;
+    const previousGroups = groupHeadings.filter((heading) =>
+      Boolean(heading.compareDocumentPosition(row) & 4)
+    );
+    return cleanText(previousGroups.at(-1)?.textContent || '').toLowerCase() === 'final charges';
+  });
+  const amounts = finalRows.map((row) => ({
+    label: cleanText(row.querySelector('h6')?.textContent || ''),
+    cents: parsePaymentAmountCents(getLastCurrencyValue(row.textContent || '')),
+  })).filter((entry) => entry.cents !== null);
+  // Do not confuse an isolated tip or refund with the tender's complete
+  // allocation. There must be an order charge in Final charges; when it is
+  // present, summing its final transactions also accounts for edits, tips,
+  // and refunds that Walmart posts against that same tender.
+  if (!amounts.some((entry) => /^(?:final\s+)?order charge$/i.test(entry.label))) return null;
+  return amounts.reduce((sum, entry) => sum + entry.cents, 0);
+}
+
+function findPaymentMethodIndexForHistory(label, details, usedIndices, fallbackIndex, sectionCount) {
+  const normalizedLabel = normalizeLookupText(label || '').replace(/[^a-z0-9]/g, '');
+  const candidates = (Array.isArray(details) ? details : []).map((entry, index) => ({ entry, index }))
+    .filter(({ index }) => !usedIndices.has(index))
+    .filter(({ entry }) => {
+      const brand = normalizeTenderBrand(entry.brand);
+      const endingDigits = String(entry.ending || '').match(/\d{4}/)?.[0] || '';
+      const brandMatches = brand && normalizedLabel.includes(brand);
+      const endingMatches = endingDigits && normalizedLabel.includes(endingDigits);
+      return (brandMatches && (!endingDigits || endingMatches)) || endingMatches;
+    });
+  if (candidates.length === 1) return candidates[0].index;
+  return details.length === sectionCount && fallbackIndex < details.length && !usedIndices.has(fallbackIndex)
+    ? fallbackIndex
+    : -1;
+}
+
+/**
+ * Read the final Order charge transaction per tender from Walmart's Charge
+ * history drawer. Current order pages often omit tender amounts from both
+ * payment rows and __NEXT_DATA__, while the drawer still shows them.
+ */
+async function extractPaymentAmountsFromChargeHistory(paymentMethodDetails) {
+  const details = Array.isArray(paymentMethodDetails) ? paymentMethodDetails : [];
+  if (!details.length) return details;
+
+  const trigger = Array.from(document.querySelectorAll('button,[role="button"]')).find((button) => {
+    const label = `${button.getAttribute('aria-label') || ''} ${button.textContent || ''}`;
+    return /charge history/i.test(label) && !/information/i.test(label);
+  });
+  if (!trigger) return details;
+
+  let dialog = null;
+  try {
+    trigger.click();
+    for (let attempt = 0; attempt < 24; attempt++) {
+      dialog = document.querySelector('[role="dialog"]');
+      if (dialog?.querySelector('section h3')) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (!dialog) return details;
+
+    const selectorButtons = Array.from(dialog.querySelectorAll('button[aria-label]'))
+      .filter((button) => !/close panel|information|temporary holds|previous|next|slide/i.test(
+        button.getAttribute('aria-label') || ''
+      ));
+    // Selecting each tender once makes Walmart populate its per-method history
+    // section. The history remains in the drawer DOM after another tender is
+    // selected, so all allocations can then be read without network parsing.
+    for (const button of selectorButtons) {
+      button.click();
+      await new Promise((resolve) => setTimeout(resolve, 90));
+    }
+
+    const usedIndices = new Set();
+    const updated = details.map((entry) => ({ ...entry }));
+    const sections = Array.from(dialog.querySelectorAll('section')).filter((section) =>
+      /^viewing order charge history of\b/i.test(cleanText(section.querySelector('h3')?.textContent || ''))
+    );
+    sections.forEach((section, sectionIndex) => {
+      const title = cleanText(section.querySelector('h3')?.textContent || '')
+        .replace(/^viewing order charge history of\s*/i, '');
+      const cents = paymentHistorySectionAmount(section);
+      if (cents === null) return;
+      const index = findPaymentMethodIndexForHistory(
+        title, updated, usedIndices, sectionIndex, sections.length
+      );
+      if (index < 0) return;
+      usedIndices.add(index);
+      if (!cleanText(updated[index].amount || '')) {
+        updated[index].amount = formatPaymentAmountCents(cents);
+        updated[index].amountSource = 'charge-history';
+      }
+    });
+    return updated;
+  } catch (error) {
+    console.warn('Unable to read Walmart charge history for payment split:', error);
+    return details;
+  } finally {
+    const closeButton = dialog?.querySelector('button[aria-label*="close panel" i]');
+    if (closeButton) closeButton.click();
+  }
+}
+
+function inferSingleTenderAmount(paymentMethodDetails, orderTotal) {
+  const details = dedupePaymentMethodDetails(paymentMethodDetails);
+  if (details.length !== 1) return details;
+  const cents = parsePaymentAmountCents(orderTotal);
+  if (cents === null) return details;
+  // Charge history can include partial authorizations and later adjustments.
+  // The invoice total is the authoritative allocation when only one tender is
+  // listed, regardless of the payment brand.
+  return [{ ...details[0], amount: formatPaymentAmountCents(cents), amountSource: 'order-total' }];
+}
+
+/**
+ * Reconcile mixed PayPal tenders against the displayed invoice total.
+ * Walmart's charge-history drawer reports PayPal transactions across partial
+ * charges, edits, refunds, and sometimes fulfillment groups outside the
+ * currently displayed invoice. For a mixed payment, the non-PayPal tenders
+ * have explicit allocations in their own history; PayPal is the balancing
+ * tender and receives the remaining invoice amount. When several PayPal
+ * instruments are present, only infer a value when exactly one allocation is
+ * missing. Multiple observed PayPal allocations are left intact unless they
+ * already reconcile; transaction-history proportions cannot prove an invoice
+ * split. Never infer an allocation if a non-PayPal amount is missing or the
+ * known amounts already exceed the total.
+ */
+function reconcilePayPalTenderAmounts(paymentMethodDetails, orderTotal) {
+  const details = dedupePaymentMethodDetails(paymentMethodDetails).map((entry) => ({ ...entry }));
+  const totalCents = parsePaymentAmountCents(orderTotal);
+  if (details.length < 2 || totalCents === null) return details;
+
+  const paypalIndices = details.map((entry, index) =>
+    /paypal/i.test(`${entry.brand || ''} ${entry.ending || ''}`) ? index : -1
+  ).filter((index) => index >= 0);
+  if (!paypalIndices.length) return details;
+
+  const nonPaypal = details.map((entry, index) => ({ entry, index }))
+    .filter(({ index }) => !paypalIndices.includes(index));
+  const nonPaypalCents = nonPaypal.map(({ entry }) => parsePaymentAmountCents(entry.amount));
+  if (nonPaypalCents.some((amount) => amount === null)) return details;
+
+  const remainingCents = totalCents - nonPaypalCents.reduce((sum, amount) => sum + amount, 0);
+  if (remainingCents < 0) return details;
+
+  if (paypalIndices.length === 1) {
+    const index = paypalIndices[0];
+    details[index] = {
+      ...details[index],
+      amount: formatPaymentAmountCents(remainingCents),
+      amountSource: 'order-total-remainder',
+    };
+    return details;
   }
 
-  // Legacy fallback
-  const fallbackElements = document.querySelectorAll(SELECTORS.PAYMENT_METHODS);
-  fallbackElements.forEach((el) => {
-    const ending = cleanText(el.textContent || '');
-    if (!ending) {
-      return;
-    }
+  const paypalAmounts = paypalIndices.map((index) => parsePaymentAmountCents(details[index].amount));
+  const missingPaypal = paypalAmounts.map((amount, position) => amount === null ? position : -1)
+    .filter((position) => position >= 0);
+  if (missingPaypal.length === 1) {
+    const knownPaypalCents = paypalAmounts.reduce((sum, amount) => sum + (amount === null ? 0 : amount), 0);
+    const residual = remainingCents - knownPaypalCents;
+    if (residual < 0) return details;
+    const index = paypalIndices[missingPaypal[0]];
+    details[index] = {
+      ...details[index],
+      amount: formatPaymentAmountCents(residual),
+      amountSource: 'order-total-remainder',
+    };
+    return details;
+  }
+  if (paypalAmounts.some((amount) => amount === null || amount < 0)) return details;
+  return details;
+}
 
-    const cardId = cleanText(el.getAttribute('aria-labelledby') || ending);
-    const brand = cleanText(el.closest('.flex.items-center')?.querySelector('img[alt]')?.alt || '');
-    const key = `${cardId}|${brand}|${ending}`;
-    if (seen.has(key)) {
-      return;
-    }
-
-    seen.add(key);
-    methods.push({ cardId, brand, ending, amount: '', message: '' });
-  });
-
-  return methods;
+function inferOneMissingTenderAmount(paymentMethodDetails, orderTotal) {
+  const details = dedupePaymentMethodDetails(paymentMethodDetails);
+  const missingIndices = details.map((entry, index) =>
+    cleanText(entry?.amount || '') ? -1 : index
+  ).filter((index) => index >= 0);
+  if (details.length < 2 || missingIndices.length !== 1 ||
+      !details.some((entry) => entry?.amountSource === 'charge-history')) return details;
+  const totalCents = parsePaymentAmountCents(orderTotal);
+  if (totalCents === null) return details;
+  if (details.some((entry, index) => index !== missingIndices[0] && parsePaymentAmountCents(entry.amount) === null)) {
+    return details;
+  }
+  const knownCents = details.reduce((sum, entry, index) => {
+    if (index === missingIndices[0]) return sum;
+    const cents = parsePaymentAmountCents(entry.amount);
+    return cents === null ? sum : sum + cents;
+  }, 0);
+  if (knownCents > totalCents) return details;
+  return details.map((entry, index) => index === missingIndices[0]
+    ? { ...entry, amount: formatPaymentAmountCents(totalCents - knownCents), amountSource: 'order-total-remainder' }
+    : entry);
 }
 
 function scrapeOrderData() {
@@ -1816,6 +2453,7 @@ function scrapeOrderData() {
       price,
     });
   });
+  if (printItemsList.length === 0) orderItems.push(...extractRedesignedInvoiceItems());
 
   /**
    * Finds order number using fallback selectors.
@@ -1936,7 +2574,7 @@ function scrapeOrderData() {
 
   let feeBreakdown = extractFeeBreakdownFromOrderPage();
 
-  let deliveryCharges = getFeeAmount(feeBreakdown, 'delivery') || '$0.00';
+  let deliveryCharges = getDeliveryFeeAmount(feeBreakdown) || '$0.00';
   let bagFee = getFeeAmount(feeBreakdown, 'bag fee') || getFeeAmount(feeBreakdown, 'bag') || '$0.00';
   let tax = getFeeAmount(feeBreakdown, 'tax') || '$0.00';
 
@@ -1989,13 +2627,22 @@ function scrapeOrderData() {
     tip = cleanText(nextDataOrder.tip);
   }
 
-  let paymentMethodDetails = extractPaymentDetailsFromOrderPage();
-  if (
-    (!Array.isArray(paymentMethodDetails) || paymentMethodDetails.length === 0) &&
-    Array.isArray(nextDataOrder?.paymentMethodDetails)
-  ) {
-    paymentMethodDetails = nextDataOrder.paymentMethodDetails;
-  }
+  // Current Walmart pages removed the old bill-order-total-payment/subtotal
+  // classes and fee aria labels. Prefer their explicitly labelled live rows.
+  const redesignedTotals = extractRedesignedInvoiceTotals();
+  orderSubtotal = redesignedTotals.orderSubtotal || orderSubtotal;
+  subtotalBeforeSavings = redesignedTotals.subtotalBeforeSavings || subtotalBeforeSavings;
+  savings = redesignedTotals.savings || savings;
+  orderTotal = redesignedTotals.orderTotal || orderTotal;
+  deliveryCharges = redesignedTotals.deliveryCharges || deliveryCharges;
+  bagFee = redesignedTotals.bagFee || bagFee;
+  tax = redesignedTotals.tax || tax;
+  tip = redesignedTotals.tip || tip;
+
+  const paymentMethodDetails = mergePaymentMethodDetails(
+    extractPaymentDetailsFromOrderPage(),
+    nextDataOrder?.paymentMethodDetails
+  );
 
   const paymentMethods = paymentMethodDetails
     .map((method) => [method.brand, method.ending].filter(Boolean).join(' - '))
@@ -2031,11 +2678,17 @@ function scrapeOrderData() {
   }
 
   const items = mergeOrderItems(orderItems, nextDataOrder?.items || []);
+  const financialFields = mergeFinancialAdjustments(
+    extractFinancialAdjustments(feeBreakdown),
+    redesignedTotals,
+    nextDataOrder
+  );
   const resolvedOrderNumber = orderNumber || nextDataOrder?.orderNumber || null;
   const resolvedOrderDate = orderDate || cleanText(nextDataOrder?.orderDate || '');
 
   return {
     schemaVersion: CONSTANTS.ORDER_SCHEMA_VERSION,
+    walmartExtractionVersion: CONSTANTS.WALMART_US_EXTRACTION_VERSION,
     orderNumber: resolvedOrderNumber,
     orderDate: resolvedOrderDate,
     orderType: cleanText(nextDataOrder?.orderType || ''),
@@ -2048,8 +2701,12 @@ function scrapeOrderData() {
     bagFee,
     tax,
     tip,
-    refund: cleanText(nextDataOrder?.refund || ''),
-    donations: cleanText(nextDataOrder?.donations || ''),
+    promoCodeAmount: financialFields.promoCodeAmount,
+    threeHoursOrLessFee: financialFields.threeHoursOrLessFee,
+    returnedThreeHoursOrLessFee: financialFields.returnedThreeHoursOrLessFee,
+    refund: financialFields.refund,
+    financialAdjustments: financialFields.financialAdjustments,
+    donations: financialFields.donations,
     barcodeImageUrl: cleanText(nextDataOrder?.barcodeImageUrl || ''),
     sellers: cleanText(nextDataOrder?.sellers || ''),
     fulfillmentTypes: cleanText(nextDataOrder?.fulfillmentTypes || ''),
@@ -2065,6 +2722,8 @@ function scrapeOrderData() {
     paymentMethodDetails,
     paymentMessages: paymentMessages.join('; '),
     items,
+    ...(nextDataOrder?.noChargedItems === true && items.length === 0 ? { noChargedItems: true } : {}),
+    ...pickOrderExtras(nextDataOrder),
   };
 }
 
@@ -2082,7 +2741,9 @@ function computeExtractionWarnings(data) {
   try {
     const items = Array.isArray(data?.items) ? data.items : [];
 
-    if (items.length === 0) {
+    if (items.length === 0 && data?.noChargedItems === true) {
+      // Fully canceled: Walmart charged no lines, so there is nothing to read.
+    } else if (items.length === 0) {
       warnings.push("No items were extracted for this order");
     } else if (items.every((item) => !cleanText(item?.productName || ""))) {
       warnings.push("All extracted items have a blank product name");
@@ -2109,34 +2770,32 @@ function computeExtractionWarnings(data) {
       warnings.push("Order number is missing");
     }
 
-    // Split tender with no per-tender amounts (#20). When part of an order is
-    // paid with Walmart Cash / rewards / a gift card, the card is charged LESS
-    // than the order total — and that smaller figure is the one a bank feed
-    // shows. With no amounts, `paymentSplit` is empty and the export looks
-    // exactly like a single-tender order, so a downstream consumer silently
-    // mis-reconciles instead of knowing to ask.
-    //
-    // On in-store orders the amounts are genuinely absent from every source
-    // this extension can read: the payment box names both tenders without
-    // figures, `.print-bill-payment-section` carries only subtotal/tax/total,
-    // and the order page's __NEXT_DATA__ has no order node at all. The real
-    // split lives solely in the printed receipt, which Walmart serves as an
-    // IMAGE. So this reports the gap rather than pretending to fill it.
-    //
-    // Only for 2+ methods: with a single tender the amount IS the order total,
-    // so nothing is lost and a warning would be noise.
+    // Any missing split allocation is actionable: the live scraper checks
+    // payment rows, Next.js payloads, and Walmart's charge-history drawer
+    // before warning, so a partial split must not be presented as complete.
     const paymentMethods = Array.isArray(data?.paymentMethodDetails)
       ? data.paymentMethodDetails
       : [];
-    if (
-      paymentMethods.length > 1 &&
-      paymentMethods.every((method) => !cleanText(method?.amount || ""))
-    ) {
+    const missingPaymentAmounts = paymentMethods.filter((method) => !cleanText(method?.amount || '')).length;
+    if (paymentMethods.length > 1 && missingPaymentAmounts > 0) {
       warnings.push(
-        `Split tender across ${paymentMethods.length} payment methods, but no ` +
-          "per-tender amounts were extracted — the amount charged to each " +
-          "method is missing"
+        `Split tender across ${paymentMethods.length} payment methods, but ` +
+          `${missingPaymentAmounts} per-tender amount${missingPaymentAmounts === 1 ? ' was' : 's were'} ` +
+          'unavailable after checking the order page and charge history'
       );
+    } else if (paymentMethods.length > 1 && cleanText(data?.orderTotal) &&
+      paymentMethods.some((method) => method?.amountSource === 'charge-history')) {
+      const tenderCents = paymentMethods.map((method) => parsePaymentAmountCents(method?.amount));
+      const orderCents = parsePaymentAmountCents(data?.orderTotal);
+      if (orderCents !== null && tenderCents.every((amount) => amount !== null)) {
+        const splitCents = tenderCents.reduce((sum, amount) => sum + amount, 0);
+        if (splitCents !== orderCents) {
+          warnings.push(
+            `Payment split totals ${formatPaymentAmountCents(splitCents)}, which does not match ` +
+              `the order total ${formatPaymentAmountCents(orderCents)}`
+          );
+        }
+      }
     }
   } catch (error) {
     // Validation is best-effort; never let it interfere with extraction.
@@ -2149,13 +2808,13 @@ function computeExtractionWarnings(data) {
 function extractOrderNumberFromText(text) {
   if (!text) return null;
 
-  const hashMatch = String(text).match(CONSTANTS.ORDER_NUMBER_REGEX);
-  if (hashMatch?.[1]) {
-    return hashMatch[1];
-  }
-
-  const looseMatch = String(text).match(/\b(\d[\d-]{9,})\b/);
-  return looseMatch?.[1] || null;
+  // A card can contain unrelated long identifiers (tracking references,
+  // fulfillment IDs, etc.). Only accept a number tied to an explicit order
+  // label or hash marker; treating the first long digit run as an order ID
+  // corrupts both the CSV's order number and the neighboring date/status
+  // fields on cards whose layout differs from the standard one (#22).
+  const match = String(text).match(/(?:\border(?:\s*(?:number|no\.?))?\s*[:#]?\s*|#\s*)([\d][\d-]{9,})/i);
+  return match?.[1] || null;
 }
 
 function getOrderCardTitle(card) {
@@ -2551,8 +3210,26 @@ async function checkForNextPage() {
    * @param {ProviderContentCtx} ctx
    * @returns {Object} normalized order
    */
-  function scrapeOrder(ctx) {
+  async function scrapeOrder(ctx) {
     const data = scrapeOrderData();
+    if (data.paymentMethodDetails.length > 0) {
+      if (data.paymentMethodDetails.some((method) => !cleanText(method?.amount || ''))) {
+        data.paymentMethodDetails = await extractPaymentAmountsFromChargeHistory(data.paymentMethodDetails);
+        const containsPayPal = data.paymentMethodDetails.some((method) =>
+          /paypal/i.test(`${method.brand || ''} ${method.ending || ''}`)
+        );
+        if (!containsPayPal) {
+          data.paymentMethodDetails = inferOneMissingTenderAmount(data.paymentMethodDetails, data.orderTotal);
+        }
+      }
+      data.paymentMethodDetails = inferSingleTenderAmount(data.paymentMethodDetails, data.orderTotal);
+      data.paymentMethodDetails = reconcilePayPalTenderAmounts(data.paymentMethodDetails, data.orderTotal);
+      data.paymentMethods = data.paymentMethodDetails
+        .map((method) => [method.brand, method.ending].filter(Boolean).join(' - '))
+        .filter(Boolean)
+        .join('; ') || data.paymentMethods;
+      data.paymentSplit = buildPaymentSplit(data.paymentMethodDetails);
+    }
     data.extractionWarnings = computeExtractionWarnings(data);
     return data;
   }
@@ -2573,6 +3250,20 @@ async function checkForNextPage() {
     if (!orderNode) return null;
     const data = extractOrderDataFromNextData(orderNode);
     if (!data) return null;
+    if (data.paymentMethodDetails.length > 1 &&
+      data.paymentMethodDetails.some((method) => !cleanText(method?.amount || ''))) {
+      // The lightweight HTML path has no DOM for Walmart's charge-history
+      // drawer. Fall back to the order page, where per-tender transactions can
+      // be read interactively instead of returning an incomplete split.
+      return null;
+    }
+    data.paymentMethodDetails = inferSingleTenderAmount(data.paymentMethodDetails, data.orderTotal);
+    data.paymentMethodDetails = reconcilePayPalTenderAmounts(data.paymentMethodDetails, data.orderTotal);
+    data.paymentMethods = data.paymentMethodDetails
+      .map((method) => [method.brand, method.ending].filter(Boolean).join(' - '))
+      .filter(Boolean)
+      .join('; ') || data.paymentMethods;
+    data.paymentSplit = buildPaymentSplit(data.paymentMethodDetails);
     data.extractionWarnings = computeExtractionWarnings(data);
     return data;
   }
@@ -2615,9 +3306,16 @@ async function checkForNextPage() {
       readPaymentRowAmount,
       mergeOrderItems,
       extractPrintItem,
+      extractOrderNumberFromText,
+      extractOrderNumberFromButton,
       computeExtractionWarnings,
       formatOrderDateFromIsoString,
       buildPaymentSplit,
+      mergePaymentMethodDetails,
+      inferSingleTenderAmount,
+      inferOneMissingTenderAmount,
+      reconcilePayPalTenderAmounts,
+      extractPaymentAmountsFromChargeHistory,
       buildTenderLabel,
       buildDomOrderSummary,
       PurchaseHistoryDataSource,

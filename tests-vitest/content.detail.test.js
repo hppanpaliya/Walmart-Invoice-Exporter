@@ -97,7 +97,45 @@ test('payment methods keep only amount-shaped displayValues', () => {
   assert.equal(gift.amount, '$6.84');
 });
 
-test('scrapeOrderData (payload-only page) produces schemaVersion 2 with the payment split', () => {
+test('generic OTHER payload alias merges into a matching gift-card tender', () => {
+  const sandbox = loadDetailSandbox();
+  const merged = toPlain(sandbox.mergePaymentMethodDetails([
+    { brand: 'Gift Card', ending: 'Ending in 2468', amount: '' },
+    { brand: 'PayPal', ending: 'customer@example.com', amount: '' },
+  ], [
+    { brand: 'OTHER', ending: 'Ending in 2468', amount: '' },
+    { brand: 'PAYPAL', ending: 'customer@example.com', amount: '' },
+  ]));
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].brand, 'Gift Card');
+  assert.equal(merged[1].brand, 'PayPal');
+});
+
+test('single-tender allocation uses invoice total instead of cumulative charge-history transactions', () => {
+  const sandbox = loadDetailSandbox();
+  const corrected = toPlain(sandbox.inferSingleTenderAmount([
+    { brand: 'PAYPAL', ending: 'buyer@example.com', amount: '$90.56', amountSource: 'charge-history' },
+  ], '$74.26'));
+  assert.equal(corrected[0].amount, '$74.26');
+  assert.equal(corrected[0].amountSource, 'order-total');
+  const card = toPlain(sandbox.inferSingleTenderAmount([
+    { brand: 'DISCOVER', ending: 'Ending in 6011', amount: '$4.17', amountSource: 'charge-history' },
+  ], '$40.89'));
+  assert.equal(card[0].amount, '$40.89');
+});
+
+test('mixed PayPal allocation uses known non-PayPal tenders and reconciles the invoice remainder', () => {
+  const sandbox = loadDetailSandbox();
+  const details = toPlain(sandbox.reconcilePayPalTenderAmounts([
+    { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$19.07', amountSource: 'charge-history' },
+    { brand: 'PayPal', ending: 'buyer@example.com', amount: '$50.34', amountSource: 'charge-history' },
+  ], '$64.98'));
+  assert.deepEqual(details.map((entry) => entry.amount), ['$19.07', '$45.91']);
+  assert.equal(sandbox.buildPaymentSplit(details),
+    'Gift Card Ending in 2468: $19.07; PayPal buyer@example.com: $45.91');
+});
+
+test('scrapeOrderData (payload-only page) produces schemaVersion 3 with the payment split', () => {
   const sandbox = loadDetailSandbox();
   const data = sandbox.scrapeOrderData();
 
@@ -152,15 +190,32 @@ test('computeExtractionWarnings flags split tender with no per-tender amounts', 
     ],
   })), []);
 
-  // Partial extraction is not a silent loss: one known amount plus the order
-  // total gives the other, so this stays quiet too.
-  assert.deepEqual(toPlain(sandbox.computeExtractionWarnings({
+  // A partially extracted split stays visible until the order-page charge
+  // history can provide the missing amount.
+  const partial = toPlain(sandbox.computeExtractionWarnings({
     ...base,
     paymentMethodDetails: [
       { brand: 'VISA', ending: 'ending in 1234', amount: '$200.51' },
       { brand: '', ending: 'Ending in 2043', amount: '' },
     ],
-  })), []);
+  }));
+  assert.equal(partial.length, 1);
+  assert.match(partial[0], /1 per-tender amount was unavailable/);
+});
+
+test('computeExtractionWarnings flags complete tender amounts that do not reconcile to invoice total', () => {
+  const sandbox = loadDetailSandbox();
+  const warnings = toPlain(sandbox.computeExtractionWarnings({
+    orderNumber: '200010000000042',
+    orderTotal: '$64.98',
+    items: [{ productName: 'Synthetic item', price: '$60.63' }],
+    paymentMethodDetails: [
+      { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$19.07', amountSource: 'charge-history' },
+      { brand: 'PayPal', ending: 'buyer@example.com', amount: '$50.34', amountSource: 'charge-history' },
+    ],
+  }));
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /Payment split totals \$69\.41, which does not match the order total \$64\.98/);
 });
 
 test('readPaymentRowAmount reads the 2026 payment row (flex-auto moved off the amount)', () => {
@@ -352,4 +407,36 @@ test('sandbox exposes PurchaseHistoryDataSource without a list payload', () => {
   const sandbox = loadDetailSandbox();
   // Detail payload has no purchaseHistory node — snapshot must be null.
   assert.equal(evalIn(sandbox, 'PurchaseHistoryDataSource.getBestSnapshot({ currentPage: 1 })'), null);
+});
+
+
+test('redesigned detail payload matches only the URL order in embedded purchase history', () => {
+  const original = JSON.parse(JSON.stringify(detailPayload.props.pageProps.initialData.data.order));
+  const nextData = { props: { pageProps: { phRedesignInitialData: { data: { purchaseHistory: { orders: [
+    { id: '200010000000099', priceDetails: { orderTotal: { displayValue: '$999.00' } } },
+    original,
+  ] } } } } } };
+  const sandbox = loadSandbox({ nextData, url: 'https://www.walmart.com/orders/200010000000042?groupId=0' });
+  const data = sandbox.extractOrderDataFromNextData();
+  assert.equal(data.orderNumber, '200010000000042');
+  assert.equal(data.orderTotal, '$28.11');
+});
+
+test('redesigned detail payload never borrows an unrelated order summary', () => {
+  const nextData = { props: { pageProps: { phRedesignInitialData: { data: { purchaseHistory: { orders: [
+    { id: '200010000000099', priceDetails: { orderTotal: { displayValue: '$999.00' } } },
+  ] } } } } } };
+  const sandbox = loadSandbox({ nextData, url: 'https://www.walmart.com/orders/200010000000042' });
+  assert.equal(sandbox.extractOrderDataFromNextData(), null);
+});
+
+test('missing tender remains unknown when known charges exceed the invoice total', () => {
+  const sandbox = loadDetailSandbox();
+  const methods = [
+    { brand: 'Gift Card', ending: 'Ending in 2468', amount: '$70.00', amountSource: 'charge-history' },
+    { brand: 'Visa', ending: 'Ending in 1234', amount: '' },
+  ];
+  const inferred = sandbox.inferOneMissingTenderAmount(methods, '$64.98');
+  assert.equal(inferred[1].amount, '', 'a missing charge must not become a fabricated negative payment');
+  assert.equal(inferred[1].amountSource, undefined);
 });

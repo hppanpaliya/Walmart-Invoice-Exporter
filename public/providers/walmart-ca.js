@@ -778,35 +778,185 @@ function buildPaymentSplit(paymentMethodDetails) {
     .join('; ');
 }
 
-function collectItemsFromNextDataGroups(groups, pushItem) {
+function collectItemsFromNextDataGroups(groups, pushItem, pushUnfulfilled) {
   if (!Array.isArray(groups)) {
-    return;
+    return false;
   }
+
+  // Reported to the caller so the DOM merge knows the payload is charged
+  // truth (see mergeOrderItems): true when any group was read through its
+  // categories tree rather than a flat legacy list.
+  let usedCategories = false;
 
   groups.forEach((group) => {
     const groupStatus = extractTextFromNextData(group?.status?.message) || extractTextFromNextData(group?.status);
 
-    if (Array.isArray(group?.items) && group.items.length > 0) {
-      group.items.forEach((item) => pushItem(item, groupStatus));
+    // Charged-truth traversal. The flat group.items list is the ORDERED view:
+    // it still contains UNAVAILABLE items (listed but never charged), so
+    // summing it overstates what the card was charged. The categories tree is
+    // what Walmart's own printed invoice renders, and its non-UNAVAILABLE
+    // linePrice values sum exactly to priceDetails.subTotal (verified against
+    // real invoices to the penny). Note group.subGroups[].categories is a
+    // DUPLICATE copy of group.categories on multi-fulfillment orders —
+    // traverse exactly one of the two, never both.
+    const categories = Array.isArray(group?.categories) && group.categories.length > 0
+      ? group.categories
+      : (Array.isArray(group?.subGroups) ? group.subGroups : []).flatMap((subGroup) =>
+          Array.isArray(subGroup?.categories) ? subGroup.categories : []
+        );
+
+    // History summaries may list category types without item arrays. Those
+    // are metadata only; the rendered invoice must still supply its lines.
+    if (categories.some(category => Array.isArray(category?.items))) {
+      usedCategories = true;
+      categories.forEach((category) => {
+        const categoryType = String(category?.type || '').toUpperCase();
+        // UNAVAILABLE / CANCELED lines were never charged; RETURNED lines
+        // were charged (the refund is its own transaction), so they stay.
+        if (categoryType === 'UNAVAILABLE' || categoryType.indexOf('CANCEL') === 0) {
+          if (typeof pushUnfulfilled === 'function') {
+            (Array.isArray(category?.items) ? category.items : []).forEach((item) => pushUnfulfilled(item, categoryType));
+          }
+          return;
+        }
+        const items = Array.isArray(category?.items) ? category.items : [];
+        // Each category line is one charged line — real orders legitimately
+        // contain identical duplicate lines (same product, same price, two
+        // lines), and item ids are NOT unique across an order, so no
+        // dedup key can be trusted here. The either/or traversal above is
+        // single-pass, so nothing can be visited twice.
+        items.forEach((item) => pushItem(item, groupStatus, { noDedup: true, categoryType }));
+      });
       return;
     }
 
-    const subGroups = Array.isArray(group?.subGroups) ? group.subGroups : [];
-    subGroups.forEach((subGroup) => {
-      const categories = Array.isArray(subGroup?.categories) ? subGroup.categories : [];
-      categories.forEach((category) => {
-        const items = Array.isArray(category?.items) ? category.items : [];
-        items.forEach((item) => pushItem(item, groupStatus));
-      });
-    });
+    if (Array.isArray(group?.items) && group.items.length > 0) {
+      group.items.forEach((item) => pushItem(item, groupStatus));
+    }
   });
+
+  return usedCategories;
+}
+
+/** How a charged line was fulfilled, when Walmart files it under a special category. */
+const ITEM_FULFILLMENT_LABELS = { SUBSTITUTED: 'Substituted', WEIGHT_ADJUSTED: 'Weight adjusted', RETURNED: 'Returned' };
+
+/**
+ * Optional per-line details from Walmart's payload: the price of one item,
+ * the comparison price (per oz, per lb), the "was" price, savings, the
+ * category path, whether it can still be returned, and how it was fulfilled.
+ * Best effort by design: a field Walmart does not send is left off the line,
+ * and nothing here can fail the line itself.
+ * @param {Object} item - one payload line
+ * @param {string} [categoryType] - the charged category the line sits in
+ * @returns {Object} extra fields for the exported line (possibly empty)
+ */
+function extractItemExtras(item, categoryType) {
+  const extras = {};
+  try {
+    const priceInfo = item?.priceInfo || {};
+    const each = cleanText(priceInfo?.itemPrice?.displayValue || '').replace(/\s*(ea|each)\.?$/i, '');
+    if (each) extras.unitPrice = each;
+    const comparisonPrice = cleanText(priceInfo?.unitPrice?.displayValue || '');
+    if (comparisonPrice) extras.comparisonPrice = comparisonPrice;
+    const wasPrice = cleanText(priceInfo?.strikethroughPrice?.displayValue || '');
+    if (wasPrice) extras.wasPrice = wasPrice;
+    const discounts = (Array.isArray(item?.discounts) ? item.discounts : [])
+      .map((discount) => cleanText(discount?.label || ''))
+      .filter(Boolean);
+    if (discounts.length > 0) extras.discount = discounts.join('; ');
+    const priceNotes = (Array.isArray(priceInfo?.additionalLines) ? priceInfo.additionalLines : [])
+      .map((line) => [cleanText(line?.name || ''), cleanText(line?.value || '')].filter(Boolean).join(': '))
+      .filter(Boolean);
+    if (priceNotes.length > 0) extras.priceNotes = priceNotes.join('; ');
+    const categoryPathId = cleanText(item?.productInfo?.categoryPathId || '');
+    if (/^\d+(:\d+)*$/.test(categoryPathId)) extras.categoryPathId = categoryPathId;
+    if (typeof item?.isReturnable === 'boolean') extras.returnable = item.isReturnable;
+    const fulfillment = ITEM_FULFILLMENT_LABELS[String(categoryType || '').toUpperCase()];
+    if (fulfillment) extras.fulfillment = fulfillment;
+  } catch (error) {
+    console.warn('[WIE] optional item details could not be read:', error && error.message);
+  }
+  return extras;
+}
+
+/**
+ * Optional order-level details: one overall status, late delivery, the store
+ * that filled the order, the return window, and the lines that were ordered
+ * but never charged. Best effort, like extractItemExtras.
+ * @param {Object} orderNode - the payload order
+ * @param {Array} chargedItems - result of extractItemsFromNextData
+ * @returns {Object} extra fields for the exported order (possibly empty)
+ */
+function extractOrderExtras(orderNode, chargedItems) {
+  const extras = {};
+  try {
+    const groups = Array.isArray(orderNode?.groups_2101) && orderNode.groups_2101.length > 0
+      ? orderNode.groups_2101
+      : (Array.isArray(orderNode?.groups) ? orderNode.groups : []);
+    const statusTypes = groups.map((group) => String(group?.status?.statusType || '').toUpperCase()).filter(Boolean);
+    const canceled = statusTypes.filter((type) => type.indexOf('CANCEL') === 0).length;
+    if (statusTypes.length > 0) {
+      if (canceled === statusTypes.length) extras.orderStatus = 'Canceled';
+      else if (canceled > 0) extras.orderStatus = 'Partly canceled';
+      else {
+        const words = statusTypes[0].toLowerCase().replace(/_/g, ' ');
+        extras.orderStatus = words.charAt(0).toUpperCase() + words.slice(1);
+      }
+    }
+    const delayed = groups.some((group) => group?.status?.wasDelayed === true
+      && String(group?.status?.statusType || '').toUpperCase().indexOf('CANCEL') !== 0);
+    if (delayed) extras.wasDelayed = true;
+    const storeName = cleanText(groups.map((group) => group?.store?.name).find(Boolean) || '');
+    if (storeName) extras.storeName = storeName;
+    const returnWindow = cleanText(groups.map((group) => group?.returnEligibilityMessage).find(Boolean) || '');
+    if (returnWindow) extras.returnWindow = returnWindow;
+    if (Array.isArray(chargedItems?.unfulfilledItems) && chargedItems.unfulfilledItems.length > 0) {
+      extras.unfulfilledItems = chargedItems.unfulfilledItems;
+    }
+  } catch (error) {
+    console.warn('[WIE] optional order details could not be read:', error && error.message);
+  }
+  return extras;
+}
+
+/** The optional order-level fields, copied from one order object to another. */
+function pickOrderExtras(order) {
+  const extras = {};
+  ['orderStatus', 'wasDelayed', 'storeName', 'returnWindow'].forEach((key) => {
+    if (order && order[key] !== undefined && order[key] !== '') extras[key] = order[key];
+  });
+  if (Array.isArray(order?.unfulfilledItems) && order.unfulfilledItems.length > 0) {
+    extras.unfulfilledItems = order.unfulfilledItems;
+  }
+  return extras;
 }
 
 function extractItemsFromNextData(orderNode) {
   const items = [];
   const seen = new Set();
+  // Lines Walmart lists but never charged (unavailable or canceled). Kept
+  // apart from `items`, which stays the charged-lines truth for every total.
+  const unfulfilled = [];
+  const pushUnfulfilled = (item, categoryType) => {
+    try {
+      const productName = cleanText(item?.productInfo?.name || item?.name || '');
+      if (!productName) return;
+      const usItemId = cleanText(item?.productInfo?.usItemId || item?.usItemId || '');
+      const price = cleanText(item?.priceInfo?.linePrice?.displayValue || item?.priceInfo?.itemPrice?.displayValue || '');
+      unfulfilled.push({
+        productName,
+        quantity: item?.quantity === 0 || item?.quantity ? String(item.quantity) : '',
+        reason: String(categoryType || '').toUpperCase() === 'UNAVAILABLE' ? 'Unavailable' : 'Canceled',
+        ...(price ? { price } : {}),
+        ...(usItemId ? { productLink: `https://www.walmart.ca/ip/${usItemId}`, usItemId } : {}),
+      });
+    } catch (error) {
+      console.warn('[WIE] an unfulfilled line could not be read:', error && error.message);
+    }
+  };
 
-  const pushItem = (item, groupStatus = '') => {
+  const pushItem = (item, groupStatus = '', opts = null) => {
     const productName = cleanText(item?.productInfo?.name || item?.name || '');
     const quantity = item?.quantity === 0 || item?.quantity
       ? String(item.quantity)
@@ -823,11 +973,16 @@ function extractItemsFromNextData(orderNode) {
       return;
     }
 
-    const key = `${normalizeLookupText(productName)}|${quantity}|${price}`;
-    if (seen.has(key)) {
-      return;
+    // The categories traversal is single-pass and its duplicate lines are
+    // real (see collectItemsFromNextDataGroups); only the legacy flat-list
+    // fallbacks still need the name|quantity|price guard.
+    if (!(opts && opts.noDedup)) {
+      const key = `${normalizeLookupText(productName)}|${quantity}|${price}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
     }
-    seen.add(key);
 
     const canonicalUrl = cleanText(item?.productInfo?.canonicalUrl || item?.canonicalUrl || '');
     // Walmart dropped canonicalUrl from the order payload (live-verified
@@ -851,20 +1006,46 @@ function extractItemsFromNextData(orderNode) {
       price,
       thumbnailUrl,
       usItemId: cleanText(item?.productInfo?.usItemId || item?.usItemId || ''),
+      ...extractItemExtras(item, opts && opts.categoryType),
     });
   };
 
-  collectItemsFromNextDataGroups(orderNode?.groups_2101, pushItem);
+  let usedCategories = collectItemsFromNextDataGroups(orderNode?.groups_2101, pushItem, pushUnfulfilled) === true;
 
-  if (items.length === 0) {
-    collectItemsFromNextDataGroups(orderNode?.groups, pushItem);
+  if (items.length === 0 && !usedCategories) {
+    unfulfilled.length = 0;
+    usedCategories = collectItemsFromNextDataGroups(orderNode?.groups, pushItem, pushUnfulfilled) === true;
   }
 
-  if (items.length === 0 && Array.isArray(orderNode?.items)) {
+  if (items.length === 0 && !usedCategories && Array.isArray(orderNode?.items)) {
     orderNode.items.forEach((item) => pushItem(item, ''));
+    usedCategories = false;
+  }
+
+  // Tag (non-index array property; invisible to JSON/iteration) so
+  // mergeOrderItems knows these items are the charged-truth set and must
+  // not be "completed" with DOM rows the traversal deliberately excluded.
+  if (usedCategories) {
+    items.fromChargedCategories = true;
+  }
+  if (unfulfilled.length > 0) {
+    items.unfulfilledItems = unfulfilled;
   }
 
   return items;
+}
+
+/**
+ * A fully canceled order has a charged-categories tree with no charged lines.
+ * Mark it, so an honest "nothing was charged" is not mistaken for a failed
+ * read (which would be retried forever or reported as a site change).
+ * @param {Array} items - result of extractItemsFromNextData
+ * @returns {{noChargedItems?: true}}
+ */
+function noChargedItemsFlag(items) {
+  return Array.isArray(items) && items.length === 0 && items.fromChargedCategories === true
+    ? { noChargedItems: true }
+    : {};
 }
 
 function mergeOrderItems(domItems, nextDataItems) {
@@ -881,9 +1062,17 @@ function mergeOrderItems(domItems, nextDataItems) {
     return `${productName}|${quantity}`;
   };
 
-  if (payloadItems.length === 0) {
+  if (payloadItems.length === 0 && !nextDataItems?.fromChargedCategories) {
     return scrapedItems;
   }
+
+  // When the payload came from the charged-truth categories traversal it is
+  // COMPLETE: a DOM row with no payload match is a row the traversal
+  // deliberately excluded (an UNAVAILABLE/CANCELED line the print bill still
+  // renders, with a price) or a name-variant duplicate — appending it would
+  // resurrect exactly what was excluded. DOM rows then only backfill fields,
+  // never add lines. Legacy flat-list payloads keep the historic append.
+  const payloadIsChargedTruth = Boolean(nextDataItems && nextDataItems.fromChargedCategories);
 
   // The payload is the primary source (extraction order: payload → DOM).
   // MULTISET semantics: each payload line absorbs at most ONE matching DOM
@@ -905,6 +1094,9 @@ function mergeOrderItems(domItems, nextDataItems) {
       remaining.set(key, available - 1);
       // Remember one DOM copy per key for backfill below.
       if (!scrapedByKey.has(key)) scrapedByKey.set(key, item);
+      return;
+    }
+    if (payloadIsChargedTruth) {
       return;
     }
     mergedItems.push(item);
@@ -956,6 +1148,8 @@ function extractOrderDataFromNextData() {
   const addressDetails = extractNextDataAddressDetails(orderNode);
   const shipmentDetails = extractNextDataShipmentDetails(orderNode);
 
+  const chargedItems = extractItemsFromNextData(orderNode);
+
   return {
     orderNumber: normalizeOrderNumberValue(orderNode?.id || orderNode?.displayId),
     orderDate:
@@ -985,7 +1179,9 @@ function extractOrderDataFromNextData() {
     paymentMethods,
     paymentMethodDetails,
     paymentMessages,
-    items: extractItemsFromNextData(orderNode),
+    items: chargedItems,
+    ...noChargedItemsFlag(chargedItems),
+    ...extractOrderExtras(orderNode, chargedItems),
   };
 }
 
@@ -1413,6 +1609,7 @@ function scrapeOrderData() {
 
   return {
     schemaVersion: CONSTANTS.ORDER_SCHEMA_VERSION,
+    walmartExtractionVersion: CONSTANTS.WALMART_CA_EXTRACTION_VERSION,
     orderNumber: resolvedOrderNumber,
     orderDate: resolvedOrderDate,
     orderType: cleanText(nextDataOrder?.orderType || ''),
@@ -1442,6 +1639,8 @@ function scrapeOrderData() {
     paymentMethodDetails,
     paymentMessages: paymentMessages.join('; '),
     items,
+    ...(nextDataOrder?.noChargedItems === true && items.length === 0 ? { noChargedItems: true } : {}),
+    ...pickOrderExtras(nextDataOrder),
   };
 }
 
@@ -1459,7 +1658,9 @@ function computeExtractionWarnings(data) {
   try {
     const items = Array.isArray(data?.items) ? data.items : [];
 
-    if (items.length === 0) {
+    if (items.length === 0 && data?.noChargedItems === true) {
+      // Fully canceled: Walmart charged no lines, so there is nothing to read.
+    } else if (items.length === 0) {
       warnings.push("No items were extracted for this order");
     } else if (items.every((item) => !cleanText(item?.productName || ""))) {
       warnings.push("All extracted items have a blank product name");

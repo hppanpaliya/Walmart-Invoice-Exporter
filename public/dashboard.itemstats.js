@@ -88,6 +88,7 @@
           ? 1
           : parseNumericValue(rawQty);
         const lineTotal = parseNumericValue(item && item.price);
+        const categoryPathId = String((item && item.categoryPathId) || '').trim();
 
         let line = inOrder.get(key);
         if (!line) {
@@ -95,8 +96,15 @@
           inOrder.set(key, line);
         }
         if (!line.name && name) line.name = name;
+        if (!line.categoryPathId && categoryPathId) line.categoryPathId = categoryPathId;
         line.quantity += quantity;
         line.lineTotal += lineTotal;
+        // A returned line was charged and then refunded: keep it in the
+        // purchase, but say how much of it came back.
+        if (item && item.fulfillment === 'Returned') {
+          line.refundedLineTotal = (line.refundedLineTotal || 0) + lineTotal;
+          line.refundedQuantity = (line.refundedQuantity || 0) + quantity;
+        }
       });
 
       inOrder.forEach((line, key) => {
@@ -106,14 +114,19 @@
           byKey.set(key, entry);
         }
         if (!entry.name && line.name) entry.name = line.name;
+        if (!entry.categoryPathId && line.categoryPathId) entry.categoryPathId = line.categoryPathId;
         const quantity = line.quantity;
         const lineTotal = round2(line.lineTotal);
+        const refunded = round2(line.refundedLineTotal || 0);
         entry.purchases.push({
           date,
           orderNumber,
           quantity,
           unitPrice: quantity > 0 ? round2(lineTotal / quantity) : 0,
           lineTotal,
+          ...(refunded > 0
+            ? { purchasedLineTotal: round2(lineTotal - refunded), refundedLineTotal: refunded, refundedQuantity: line.refundedQuantity || 0 }
+            : {}),
         });
       });
     });
@@ -133,6 +146,7 @@
         const lastPrice = prices.length ? prices[prices.length - 1] : 0;
         return {
           name: entry.name,
+          ...(entry.categoryPathId ? { categoryPathId: entry.categoryPathId } : {}),
           purchases,
           timesBought: purchases.length,
           totalQty,

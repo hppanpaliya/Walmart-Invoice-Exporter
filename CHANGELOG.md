@@ -1,5 +1,74 @@
 # Changelog
 
+## [8.9] - November 14, 2026
+
+### Added
+- A notice when a collection stops before the end of the order history, either because Walmart asked for a human check or because a page did not load. It says how many orders were kept and what to do. The local AI bridge reports the same through `get_collection_progress`.
+- More detail per item when Walmart sends it: the price of one item, the "was" price, savings, the comparison price (per oz, per lb), Walmart's department, whether it can still be returned, and whether it was substituted, weight adjusted or returned.
+- More detail per order: one overall status, late delivery, the store that filled it, the return window, and the items that were ordered but never charged.
+- Walmart.com and Walmart.ca both read these details.
+- Excel and CSV: the new details as columns appended after the existing ones, and a "Not Fulfilled" sheet in Excel when any order has unfulfilled items.
+- Dashboard: a Categories view (spending by category, from Walmart's department where known and from the product name otherwise, with your own overrides) and a Missed items view (unavailable, canceled, substituted and weight-adjusted items, and late deliveries).
+
+### Changed
+- Invoices saved by earlier versions (Walmart.com and Walmart.ca) are fetched again the first time they are exported, so they gain the new details. That first export takes as long as a first-time export.
+- Every new detail is optional. An order without it exports as before, with the new cells left blank.
+
+## [8.8] - November 14, 2026
+
+### Fixed
+- QuickBooks and Xero exports leave out fully canceled orders. They have a $0.00 total, and an empty transaction corrupts a bank import.
+- "Reset settings to defaults" also turns off "Allow AI tools to collect data", so local AI access is read-only again when it is re-enabled.
+- Dashboard headline figures shrink to fit their tiles, so a five-digit total is no longer cut off at laptop widths.
+- Fully canceled orders are labeled in exports: the Excel "Data" column reads "Canceled — nothing was charged" and receipts carry a "Canceled: no items were charged" line, instead of an unexplained empty order.
+- Recognize Walmart's "Robot or human?" check during downloads and saves. The run stops at the first check instead of failing every remaining order, keeps the orders already finished, explains what to do, and slows later runs in the same session. (#43)
+- Fully canceled orders are saved and exported as complete orders with no charged items, instead of failing on every retry or raising a missing-items warning. They are left out of the dashboard's average order.
+- The extraction notice asks for a report only for unexpected problems. Information Walmart did not provide (per-payment amounts, a refused refresh) is shown as a notice with nothing to report.
+- "Retry failed" after "Save to library" now saves again instead of downloading files, and saving uses the timing settings from Settings.
+- Retry empty invoice responses on the same page before trying an alternate URL. Never infer a negative missing payment allocation.
+- Keep fully unavailable/canceled category items excluded in both US and Canada. Treat category labels without item arrays as summaries so redesigned invoices still read their rendered items.
+- Refresh older US and Canada extraction caches after these changes, preserving a visible stale-data warning if refresh fails.
+- Preserve promo, express/returned fees, refunds and other financial adjustments in HTML/PDF receipts and legacy Excel. Keep explicit zero totals and validate receipt barcode hyperlinks.
+- Reject stale dashboard refresh results and invalid inactivity-retention baselines/windows that could delete data prematurely.
+- Preserve partial Fast Collect results and continue through classic collection after API failures or repeated cursors. Limit captured session-header replay to the purchase-history endpoint.
+- Use current invoice totals in the local AI bridge, require pairing before tool calls, reject inherited tool names, and ignore events from replaced sockets.
+
+### Tests
+- Add regression coverage for the above cases and an eighth offline capture scenario for financial adjustments. The audit report records exact validation and remaining limitations.
+
+## Earlier unreleased work
+
+### Added
+- Reusable private HTML capture sanitizer and seven-case offline invoice corpus covering observed and synthetic layouts, missing fields, zero totals, hostile content, and real workbook reconciliation. Temporary captures and generated verification artifacts are ignored by Git; the browser harness cleans up profiles and download listeners.
+- Dedicated Excel and CSV fields for promo code amounts and 3-hours-or-less charges, returned charges, plus a catch-all adjustment column that retains Walmart's original labels and amounts.
+
+### Fixed
+- Update audited development dependencies and pin patched transitive versions, reducing the installed dependency audit from 33 findings to one unresolved upstream `node-forge` advisory. Keep the release-age policy with two exact security-fix exceptions; see `docs/hardening-2026-10-12.md` for scope and limitations.
+- Restrict embedded dashboard commands to the actual parent frame. Spreadsheet exports reject active/local/credential-bearing product links, and CSV exports neutralize formula prefixes hidden behind whitespace or control characters.
+- Dashboard money fallbacks preserve explicit zero amounts, include zero-total orders in averages, and show invoice totals consistently in order rows. Existing-invoice updates refresh the dashboard. Invalid dates fall through to valid stored dates, and rolling date ranges clamp to the last day of shorter months.
+- Support the redesigned Walmart invoice layout observed on the live site: read current item and total rows, exclude unavailable and canceled item sections, and recover matching order metadata from `phRedesignInitialData`. Delivery fees use current amounts rather than crossed-out prices, and temporary authorization totals are excluded.
+- Incomplete invoices are no longer saved or exported as successful downloads. The panel rechecks the page once, then tries the alternate order URL; orders still missing usable items, a valid total, or the requested order number are listed as failed with a retry action. The same checks apply to cached and fast-fetched invoices. (#36)
+- Combined exports no longer download an empty file when every selected order fails.
+- Preserve payment card names carried by image alt text when invoice collection blocks images.
+- Sum charged delivery and express fees across fee rows, excluding discounts and crossed-out original prices. Read payment amounts from accessible tender rows even when Walmart changes their flex row classes.
+- Refresh saved Walmart invoices after extraction updates so re-exports don't silently reuse older records with missing financial details. If live refresh fails, the exported fallback clearly warns that it contains stale data.
+- Read per-tender order charges from Walmart's charge-history drawer when its payment rows and payload omit amounts, infer a single tender from a valid order total, and remove duplicate Walmart Cash/WMTRC aliases.
+- Use the final invoice total for single-tender orders instead of summing PayPal partial charges across fulfillment groups.
+- Merge Walmart's generic OTHER tender alias with a specific tender sharing the same masked card ending, preventing duplicated gift-card rows and restoring charge-history matching.
+- Warn when complete multi-tender allocations do not reconcile with the invoice total.
+
+## [8.5] - October 13, 2026
+
+### Fixed
+- Re-exporting saved Walmart invoices refreshes records created before the latest payment extraction fixes.
+- Single-card exports consistently show the full order amount, and split-tender exports read per-method charges from charge history when Walmart omits them from the invoice payload.
+- Duplicate Walmart Cash/WMTRC entries no longer repeat the tender or its amount in Excel.
+
+## [8.4] - October 13, 2026
+
+### Fixed
+- Refresh old saved Walmart invoice records after extraction changes, and warn when exports must fall back to stale data.
+
 ## [8.3] - September 5, 2026
 
 ### Added

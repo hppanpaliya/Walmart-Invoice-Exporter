@@ -16,21 +16,6 @@
  * exact header + representative rows), since those are already
  * deterministic string builders.
  *
- * Test-harness note: tests/helpers/sandbox.js runs utils.js/content.js in
- * a Node `vm` context (a separate realm). ExcelJS worksheet objects
- * created there are real (host-realm) objects, but plain array literals
- * *constructed by the sandboxed code* are vm-realm arrays — and ExcelJS's
- * `worksheet.addRow(someArray)` silently no-ops on a cross-realm array
- * (confirmed empirically; `Array.isArray` says true, `instanceof Array`
- * says false, and ExcelJS's internal check apparently relies on the
- * latter). This only affects the single-order sheet's *summary block*
- * below the items (addOrderSummary uses `addRow([label, value])`, a bare
- * array) — every other writer here uses object-form `addRow({...})`,
- * which is unaffected and asserted in full. In the real extension all
- * scripts share one window/realm, so this is purely a test-double
- * artifact, not a product bug — hence it is scoped out below rather than
- * "fixed" by touching the (out-of-scope, unmodified) converters.
- *
  * Same root cause shows up once more with plain objects: order A comes
  * from sandboxed extraction (scrapeOrderData()), so it carries the vm
  * realm's Object.prototype. assert.deepEqual (strict mode) treats that as
@@ -133,22 +118,26 @@ test('golden: convertMultipleOrdersToXlsx produces the current Orders+Items work
   const orders = workbook.getWorksheet('Orders');
   assert.deepEqual(orders.getRow(1).values.slice(1), [
     'Order Number', 'Order Date', 'Order Type', 'Data', 'Items',
-    'Subtotal (Before Savings)', 'Savings', 'Subtotal', 'Delivery Charges', 'Bag Fee',
-    'Tax', 'Tip', 'Refund', 'Donations', 'Order Total',
+    'Subtotal (Before Savings)', 'Savings', 'Promo Code Amount', 'Subtotal', 'Delivery Charges',
+    '3 Hours or Less Fee', 'Returned 3 Hours or Less Fee', 'Bag Fee',
+    'Tax', 'Tip', 'Refund', 'Donations', 'Other Adjustments', 'Other Adjustments Amount', 'Order Total',
     'Payment Method', 'Payment Split', 'Payment Messages', 'Seller(s)', 'Fulfillment',
-    'Delivered Date', 'Tracking Numbers', 'Ship To', 'Delivery Instructions', 'Receipt Barcode',
+    'Delivered Date', 'Ship To', 'Delivery Instructions', 'Receipt Barcode',
+    // Appended optional details; blank when Walmart did not send them.
+    'Order Status', 'Late Delivery', 'Store', 'Return Window', 'Items Not Fulfilled',
   ]);
   assert.equal(orders.rowCount, 3, 'header + one row per order');
 
   assert.deepEqual(orders.getRow(2).values.slice(1), [
     '200010000000042', 'Jul 01, 2026', 'GLASS', 'Full invoice', 3,
-    20.53, 2, 18.53, 0, 0.25,
-    1.14, 4, 3.98, 1, 28.11,
-    'VISA - ending in 1234 | Amount: $20.00 || GIFTCARD - Gift Card | Amount: $6.84',
+    20.53, 2, '', 18.53, 0, '', '', 0.25,
+    1.14, 4, 3.98, 1, '', '', 28.11,
+    'VISA - ending in 1234 || GIFTCARD - Gift Card',
     'VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84', 'Charged Jul 2',
     'Walmart.com; Acme Marketplace LLC', 'DELIVERY, SHIPPING', 'Jul 02, 2026',
-    '1Z999AA10123456784; 1Z999AA10123456785', 'Test Customer, 123 Main St, Springfield IL 62704',
+    'Test Customer, 123 Main St, Springfield IL 62704',
     'Leave at door', { text: 'Barcode', hyperlink: 'https://receipts-query.edge.walmart.com/barcode?data=sanitized' },
+    '', '', '', '', '',
   ]);
 
   // Sparse order: missing money fields render BLANK, never a fake $0.00 —
@@ -158,27 +147,31 @@ test('golden: convertMultipleOrdersToXlsx produces the current Orders+Items work
   assert.equal(sparseRow[2], 'In-store', 'isInStore formats the raw type away');
   assert.equal(sparseRow[5], '', 'Subtotal (Before Savings) blank, not 0, when unknown');
   assert.equal(sparseRow[6], '', 'Savings blank, not 0, when unknown');
-  assert.equal(sparseRow[7], 8.88, 'Subtotal is known and numeric');
-  assert.equal(sparseRow[14], 9.42, 'Order Total is known and numeric');
+  assert.equal(sparseRow[8], 8.88, 'Subtotal is known and numeric');
+  assert.equal(sparseRow[19], 9.42, 'Order Total is known and numeric');
 
   const items = workbook.getWorksheet('Items');
   assert.deepEqual(items.getRow(1).values.slice(1), [
     'Order Number', 'Order Date', 'Product Name', 'Qty', 'Price', 'Status', 'Order Type', 'Product Link',
+    'Price Each', 'Was Price', 'Savings', 'Price per Unit', 'Category', 'Note', 'Returnable',
   ]);
   assert.equal(items.rowCount, 5, 'header + 3 items from order A + 1 item from order B');
 
   assert.deepEqual(items.getRow(2).values.slice(1), [
     '200010000000042', 'Jul 01, 2026', 'Great Value Milk 1 Gallon', 2, 7.96, 'Delivered', 'GLASS',
     { text: 'Great Value Milk 1 Gallon', hyperlink: 'https://www.walmart.com/ip/10450114' },
+    '', '', '', '', '', '', '',
   ]);
   // Formula-injection-shaped product name: XLSX keeps it as a literal string
   // (no CSV-style quote-prefixing — that guard is CSV-specific).
   assert.deepEqual(items.getRow(4).values.slice(1), [
     '200010000000042', 'Jul 01, 2026', '=HYPERLINK Product "Deal", 2-pack', 1, 11.12, 'Canceled', 'GLASS',
     { text: '=HYPERLINK Product "Deal", 2-pack', hyperlink: 'https://www.walmart.com/ip/998877' },
+    '', '', '', '', '', '', '',
   ]);
   assert.deepEqual(items.getRow(5).values.slice(1), [
     '77501234567890123456', 'Jun 15, 2026', 'AA Batteries 8-pack', 1, 9.42, 'Purchased in store', 'In-store', '',
+    '', '', '', '', '', '', '',
   ]);
 });
 
@@ -228,41 +221,43 @@ test('golden: convertOrdersToCsv produces the current accounting-friendly CSV pa
   assert.equal(
     ordersLines[0],
     'Order Number,Order Date,Items,Address Recipient,Shipping Address,Delivery Instructions,'
-      + 'Payment Method,Payment Messages,Payment Split,Subtotal (Before Savings),Savings,Subtotal,'
-      + 'Delivery Charges,Bag Fee,Tax,Tip,Refund,Donations,Order Total,Seller(s),Fulfillment,'
-      + 'Delivered Date,Tracking Numbers,Receipt Barcode URL,Order Type'
+      + 'Payment Method,Payment Messages,Payment Split,Subtotal (Before Savings),Savings,Promo Code Amount,Subtotal,'
+      + 'Delivery Charges,3 Hours or Less Fee,Returned 3 Hours or Less Fee,Bag Fee,Tax,Tip,Refund,Donations,Other Adjustments,Order Total,Seller(s),Fulfillment,'
+      + 'Delivered Date,Tracking Numbers,Receipt Barcode URL,Order Type,'
+      + 'Order Status,Late Delivery,Store,Return Window,Items Not Fulfilled'
   );
   assert.equal(
     ordersLines[1],
     '200010000000042,"Jul 01, 2026",3,Test Customer,"Test Customer, 123 Main St, Springfield IL 62704",'
-      + 'Leave at door,VISA - ending in 1234 | Amount: $20.00 || GIFTCARD - Gift Card | Amount: $6.84,'
-      + 'Charged Jul 2,VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84,20.53,2,18.53,0,0.25,1.14,4,'
-      + '3.98,1,28.11,Walmart.com; Acme Marketplace LLC,"DELIVERY, SHIPPING","Jul 02, 2026",'
-      + '1Z999AA10123456784; 1Z999AA10123456785,https://receipts-query.edge.walmart.com/barcode?data=sanitized,GLASS'
+      + 'Leave at door,VISA - ending in 1234 || GIFTCARD - Gift Card,'
+      + 'Charged Jul 2,VISA ending in 1234: $20.00; GIFTCARD Gift Card: $6.84,20.53,2,,18.53,0,,,0.25,1.14,4,'
+      + '3.98,1,,28.11,Walmart.com; Acme Marketplace LLC,"DELIVERY, SHIPPING","Jul 02, 2026",'
+      + '1Z999AA10123456784; 1Z999AA10123456785,https://receipts-query.edge.walmart.com/barcode?data=sanitized,GLASS,,,,,'
   );
   // Order-level money columns here have no blankWhenEmpty guard (unlike the
   // XLSX Orders sheet), so an unknown Subtotal/Savings/etc. reads as 0 — an
   // existing, pinned quirk (Refund/Donations DO stay blank, at the end).
   assert.equal(
     ordersLines[2],
-    '77501234567890123456,"Jun 15, 2026",1,,,,,,,0,0,8.88,0,0,0.54,0,,,9.42,Walmart.com,IN_STORE,,,,In-store'
+    '77501234567890123456,"Jun 15, 2026",1,,,,,,,0,0,,8.88,0,,,0,0.54,0,,,,9.42,Walmart.com,IN_STORE,,,,In-store,,,,,'
   );
 
   const itemLines = csvLines(blobText(downloads[1].blob));
-  assert.equal(itemLines[0], 'Order Number,Order Date,Product Name,Quantity,Price,Delivery Status,Product Link');
+  assert.equal(itemLines[0], 'Order Number,Order Date,Product Name,Quantity,Price,Delivery Status,Product Link,'
+    + 'Price Each,Was Price,Savings,Price per Unit,Category,Note,Returnable');
   assert.equal(
     itemLines[1],
-    '200010000000042,"Jul 01, 2026",Great Value Milk 1 Gallon,2,7.96,Delivered,https://www.walmart.com/ip/10450114'
+    '200010000000042,"Jul 01, 2026",Great Value Milk 1 Gallon,2,7.96,Delivered,https://www.walmart.com/ip/10450114,,,,,,,'
   );
   // Formula-injection guard: a leading quote is prefixed, and the field then
   // needs CSV-quoting because it now contains a comma.
   assert.equal(
     itemLines[3],
-    '200010000000042,"Jul 01, 2026","\'=HYPERLINK Product ""Deal"", 2-pack",1,11.12,Canceled,https://www.walmart.com/ip/998877'
+    '200010000000042,"Jul 01, 2026","\'=HYPERLINK Product ""Deal"", 2-pack",1,11.12,Canceled,https://www.walmart.com/ip/998877,,,,,,,'
   );
   assert.equal(
     itemLines[4],
-    '77501234567890123456,"Jun 15, 2026",AA Batteries 8-pack,1,9.42,Purchased in store,'
+    '77501234567890123456,"Jun 15, 2026",AA Batteries 8-pack,1,9.42,Purchased in store,,,,,,,,'
   );
 });
 

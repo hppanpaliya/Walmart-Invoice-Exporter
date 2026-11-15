@@ -207,8 +207,8 @@
   /* ------------------------------------------------------------------ *
    * View registry + hash router (2026-07-19)
    *
-   * The dashboard is a multi-view app: #/overview, #/items, #/trends,
-   * #/orders, #/review. The Overview and Orders views are rendered by this
+   * The dashboard is a multi-view app: #/overview, #/items, #/categories,
+   * #/trends, #/orders, #/missed, #/review. The Overview and Orders views are rendered by this
    * core file; the others live in their own dashboard.view-*.js modules
    * that call WIEDash.registerView(id, {render}) after this script loads.
    * Elements opt into views with a space-separated data-view attribute —
@@ -225,8 +225,10 @@
   const NAV_VIEWS = [
     { id: 'overview', label: 'Overview', icon: navIcon('<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>') },
     { id: 'items', label: 'Items', icon: navIcon('<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>') },
+    { id: 'categories', label: 'Categories', icon: navIcon('<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>') },
     { id: 'trends', label: 'Trends', icon: navIcon('<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>') },
     { id: 'orders', label: 'Orders', icon: navIcon('<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M14 8H8"/><path d="M16 12H8"/><path d="M13 16H8"/>') },
+    { id: 'missed', label: 'Missed items', icon: navIcon('<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>') },
     { id: 'review', label: 'Year in review', icon: navIcon('<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/>') },
   ];
 
@@ -268,6 +270,7 @@
     });
     applyViewVisibility();
     renderRegisteredView(id);
+    fitStatValues();
   }
 
   /** Render one registered view, but only when active data is newer than its last render. */
@@ -572,7 +575,7 @@
 
   /** Invoice→summary money fallback, both fields optional. */
   function moneyOf(invoiceValue, summaryValue) {
-    return parseNumericValue(invoiceValue) || parseNumericValue(summaryValue);
+    return resolveMoneyValue(invoiceValue, summaryValue);
   }
 
   /** "Jul 12, 2025" for a 'YYYY-MM-DD' date, else ''. */
@@ -628,8 +631,8 @@
       ['Donations', moneyOf(invoice.donations, summary.donations), ''],
       ['Refund', -moneyOf(invoice.refund, summary.refund), 'neg'],
     ].filter(([, value]) => Math.abs(value) >= 0.005);
-    const total = moneyOf(invoice.orderTotal, summary.orderTotal || (record && record.orderTotal));
-    if (total) lines.push(['Total', total, 'total']);
+    const total = resolveMoneyValue(invoice.orderTotal, summary.orderTotal, record && record.orderTotal);
+    if ([invoice.orderTotal, summary.orderTotal, record?.orderTotal].some((value) => parseOptionalNumericValue(value) !== null)) lines.push(['Total', total, 'total']);
     return lines;
   }
 
@@ -770,6 +773,24 @@
    * Sections above the table
    * ------------------------------------------------------------------ */
 
+  /**
+   * Shrink a headline figure until it fits its tile. The tiles keep a fixed
+   * share of the row, so a five-digit total at laptop widths would otherwise
+   * run past the edge and lose its last digits.
+   */
+  function fitStatValues() {
+    if (typeof getComputedStyle !== 'function') return;
+    document.querySelectorAll('#statsSection .stat-value').forEach((el) => {
+      el.style.fontSize = '';
+      if (!el.clientWidth) return; // hidden tile or inactive view
+      let size = parseFloat(getComputedStyle(el).fontSize);
+      while (el.scrollWidth > el.clientWidth && size > 12) {
+        size -= 1;
+        el.style.fontSize = `${size}px`;
+      }
+    });
+  }
+
   /** Fill the stat strip + headline from the scoped stats. */
   function renderStats(model, scopedStats, now) {
     const monthScoped = Boolean(state.selectedMonth);
@@ -816,6 +837,7 @@
     // negative (fees/adjustments exceeding line savings), but the total-savings
     // figure is only meaningful as "money kept", so floor it at zero.
     $('statSaved').textContent = formatMoney(Math.max(0, Number(stats.totalSavings) || 0));
+    fitStatValues();
   }
 
   /** Live Chart.js instance for the by-month chart (null while the CSS fallback renders). */
@@ -1461,6 +1483,7 @@
       ? `All providers — one total per currency, never converted, from ${invoicesLabel}`
       : `All providers, from ${invoicesLabel}`;
     $('statOrders').textContent = String(combined.invoiceCount);
+    fitStatValues();
 
     renderProviderBreakdown(combined);
     notifyViews({ now, combined: true });
@@ -1519,7 +1542,7 @@
    * resolved value differs). Leaves the resolution + maps in state for the
    * data reads (state.account) and the switcher to consume. Safe to re-run.
    */
-  async function resolveAccountState() {
+  async function resolveAccountState(isCurrent = () => true) {
     const KEYS = CONSTANTS.STORAGE_KEYS;
     let summaries = [];
     try {
@@ -1529,6 +1552,7 @@
       summaries = [];
     }
     const stored = await storageGet([KEYS.CURRENT_ACCOUNT, KEYS.ACCOUNT_LABELS, KEYS.ACCOUNT_ORDINALS]);
+    if (!isCurrent()) return;
     const labels = (stored && stored[KEYS.ACCOUNT_LABELS]) || {};
     const existingOrdinals = (stored && stored[KEYS.ACCOUNT_ORDINALS]) || {};
     const storedCurrent = (stored && stored[KEYS.CURRENT_ACCOUNT]) || null;
@@ -1658,7 +1682,7 @@
         const invoice = record && record.invoice;
         const measured = invoice && Number(invoice.schemaVersion || 0) >= CONSTANTS.ORDER_SCHEMA_VERSION ? 1 : 0;
         const summary = record && record.summary;
-        return `${record.orderNumber}:${measured}:${invoice ? 1 : 0}:${summary ? 1 : 0}:${dashboardRecordDate(record)}:${summary ? summary.orderTotal || '' : ''}`;
+        return `${record.updatedAt || 0}:${record.orderNumber}:${measured}:${invoice ? 1 : 0}:${summary ? 1 : 0}:${dashboardRecordDate(record)}:${summary ? summary.orderTotal || '' : ''}`;
       })
       .join('|');
   }
@@ -1669,11 +1693,16 @@
    * and re-render when anything changed.
    * @param {boolean} [force] - render even when the signature is unchanged
    */
+  let refreshGeneration = 0;
   async function refresh(force = false) {
+    const generation = ++refreshGeneration;
+    const isCurrent = () => generation === refreshGeneration;
     // Resolve the shared account selection before any data read so every scope
     // below is filtered to state.account, then reflect it in the switcher.
-    await resolveAccountState();
+    await resolveAccountState(isCurrent);
+    if (!isCurrent()) return;
     renderAccountSwitcher();
+    const account = state.account;
 
     const api = providersApi();
     let provider = 'WALMART_US';
@@ -1687,7 +1716,7 @@
         for (const id of ids) {
           let records = [];
           try {
-            records = await OrderDb.getAllOrders(id, state.account);
+            records = await OrderDb.getAllOrders(id, account);
           } catch (error) {
             console.warn('Dashboard page: order database unavailable:', error);
           }
@@ -1710,16 +1739,17 @@
       provider = 'WALMART_US';
       let records = [];
       try {
-        records = await OrderDb.getAllOrders(provider, state.account);
+        records = await OrderDb.getAllOrders(provider, account);
       } catch (error) {
         console.warn('Dashboard page: order database unavailable:', error);
       }
       scopes = [{ id: provider, label: 'Walmart.com', currency: 'USD', records }];
     }
 
+    if (!isCurrent()) return;
     const combined = Boolean(api) && provider === api.PROVIDER_ALL;
     const signature =
-      `${provider}|${state.account}||` + scopes.map((scope) => `${scope.id}::${signatureOf(scope.records)}`).join('##');
+      `${provider}|${account}||` + scopes.map((scope) => `${scope.id}::${signatureOf(scope.records)}`).join('##');
     if (!force && signature === state.signature) return;
     state.signature = signature;
     state.provider = provider;
@@ -1754,10 +1784,22 @@
   }
   // …plus a refresh whenever the page regains focus…
   window.addEventListener('focus', () => refresh());
+  // Tile widths change with the window, a scrollbar appearing, or the panel
+  // rail loading, so the headline figures are refitted whenever the strip resizes.
+  let fitStatFrame = 0;
+  const scheduleStatFit = () => {
+    cancelAnimationFrame(fitStatFrame);
+    fitStatFrame = requestAnimationFrame(fitStatValues);
+  };
+  if (typeof ResizeObserver === 'function' && $('statsSection')) {
+    new ResizeObserver(scheduleStatFit).observe($('statsSection'));
+  } else {
+    window.addEventListener('resize', scheduleStatFit);
+  }
   // …plus any same-origin postMessage from the embedded panel (future
   // panel→dashboard notifications land here without a contract change).
   window.addEventListener('message', (event) => {
-    if (event.origin !== location.origin) return;
+    if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
     const source = event.data && event.data.source;
     if (typeof source === 'string' && source.startsWith('wie-') && source !== 'wie-dashboard') {
       scheduleRefresh();

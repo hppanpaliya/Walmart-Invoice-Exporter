@@ -31,7 +31,7 @@ as the hero video hurts more than no video.
 
 1. Merge to `main` — the listing refresh describes v8 and must not go live
    before the build does.
-2. Bump the version past 8.0 (currently 8.2 in `wxt.config.ts`), `pnpm run zip`, upload, publish.
+2. Bump the version past 8.0 (currently 8.8 in `wxt.config.ts`), `pnpm run zip`, upload, publish.
 3. Upload `video/tour-4k.mp4` to the project's YouTube account (public or
    unlisted), then set it as the listing video — this replaces the old FAQ
    video.
@@ -70,9 +70,10 @@ make captures realistic without showing anything private:
    click **Select all**, set Export format to **JSON**, click
    **Single file (.json)**.
 2. `node store-assets/scripts/sanitize-seed.js ~/Downloads/Walmart_Orders.json`
-3. Re-run either generate script — both automatically use
-   `store-assets/scripts/seed-data.json` when it exists (delete it to go
-   back to synthetic).
+3. Re-run either generate script with `STORE_SEED_REAL=1`. Without that
+   flag both scripts use the name-brand demo catalog in
+   `store-assets/scripts/demo-seed.js`, even when `seed-data.json` exists,
+   because the sanitized fixture keeps real item names and dates.
 
 The sanitizer is allowlist-based: only dates, status, item name/qty/price,
 and order money fields are copied. Names, addresses, payment methods,

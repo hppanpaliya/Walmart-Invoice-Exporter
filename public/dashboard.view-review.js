@@ -40,7 +40,7 @@
 
   /** Invoice→summary money fallback (mirrors dashboard.page.js's moneyOf). */
   function moneyOf(invoiceValue, summaryValue) {
-    return parseNumericValue(invoiceValue) || parseNumericValue(summaryValue || '');
+    return resolveMoneyValue(invoiceValue, summaryValue);
   }
 
   /**
@@ -51,7 +51,7 @@
   function totalOf(record) {
     const invoice = (record && record.invoice) || {};
     const summary = (record && record.summary) || {};
-    return moneyOf(invoice.orderTotal, summary.orderTotal || record.orderTotal);
+    return resolveMoneyValue(invoice.orderTotal, summary.orderTotal, record.orderTotal);
   }
 
   /** UTC day serial of a 'YYYY-MM-DD' date — timezone-proof day arithmetic. */

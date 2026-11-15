@@ -482,7 +482,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   // validated against existing controls/handlers; nothing from the message
   // is evaluated or reflected into the DOM.
   window.addEventListener("message", (event) => {
-    if (event.origin !== location.origin) return;
+    if (event.origin !== location.origin || window.parent === window || event.source !== window.parent) return;
     const data = event.data;
     if (!data || data.source !== "wie-dashboard") return;
 
@@ -499,7 +499,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           single: CONSTANTS.EXPORT_MODES.SINGLE,
           multiple: CONSTANTS.EXPORT_MODES.MULTIPLE,
         };
-        const exportMode = modeMap[data.mode];
+        const exportMode = Object.hasOwn(modeMap, data.mode) ? modeMap[data.mode] : null;
         const orderNumbers = Array.isArray(data.orderNumbers)
           ? data.orderNumbers.filter((n) => typeof n === "string" && n.length > 0)
           : [];
@@ -547,7 +547,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           thumbnails: thumbnailToggle,
           legacyExcel: legacyExcelToggle,
         };
-        const toggle = optionToggles[data.option];
+        const toggle = Object.hasOwn(optionToggles, data.option) ? optionToggles[data.option] : null;
         if (!toggle) return; // unknown options are ignored
         toggle.checked = data.value;
         toggle.dispatchEvent(new Event("change", { bubbles: true }));

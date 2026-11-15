@@ -135,6 +135,24 @@
     return banner;
   }
 
+  /**
+   * Text for a collection that ended before the end of the order history.
+   * The orders gathered so far are kept either way, so this says what
+   * happened and what to do, not that something is broken.
+   * @param {{reason: string, page: number}} interruption
+   * @param {number} orderCount - orders collected before it stopped
+   * @returns {string}
+   */
+  function collectionInterruptedMessage(interruption, orderCount) {
+    const count = Number(orderCount) || 0;
+    const kept = `${count} order${count === 1 ? "" : "s"} ${count === 1 ? "was" : "were"} collected and kept`;
+    if (interruption && interruption.reason === "challenge") {
+      return `Walmart paused collection to check that you are human — ${kept}. Open Walmart, complete the check, then load your orders again to get the rest.`;
+    }
+    const page = interruption && interruption.page ? ` on page ${interruption.page}` : "";
+    return `Collection stopped early${page} because Walmart's order history did not load — ${kept}. Load your orders again to get the rest.`;
+  }
+
   /** Remove a named status banner if present (no-op otherwise). */
   function clearStatusBanner(id) {
     const existing = document.getElementById(id);
@@ -151,14 +169,122 @@
     clearStatusBanner("offTabWarning");
   }
 
-  function showExtractionWarning() {
-    if (document.getElementById("extractionWarning")) return;
+  const EXTRACTION_REASON_LABELS = {
+    "No items were extracted for this order": "No products were found",
+    "All extracted items have a blank product name": "Product names were blank",
+    "Order total came back empty": "Order total was missing",
+    "Order number is missing": "Order number was missing",
+    "An item price exceeds the order total — price extraction looks wrong":
+      "A product price looked incorrect",
+  };
 
-    renderStatusBanner("extractionWarning", {
-      variant: "warning",
-      message: `Walmart may have changed their website — some exported fields came back empty. Please <a href="${CONSTANTS.URLS.GITHUB_ISSUES}" target="_blank">report this</a> so we can fix it quickly.`,
-      dismissible: true,
+  function maskOrderNumber(orderNumber) {
+    const value = String(orderNumber || "").replace(/[^\d]/g, "");
+    return value ? `order ending ${value.slice(-4).padStart(4, "0")}` : "unknown order";
+  }
+
+  function friendlyExtractionReason(reason) {
+    const value = String(reason || "").trim();
+    if (EXTRACTION_REASON_LABELS[value]) return EXTRACTION_REASON_LABELS[value];
+    if (/^Split tender across \d+ payment methods/.test(value)) {
+      return "Payment methods were found, but the amount charged to each was unavailable";
+    }
+    return value || "Some invoice information was unavailable";
+  }
+
+  /**
+   * Whether a warning points at something we can fix. Per-tender amounts
+   * Walmart never published and a refresh Walmart refused are limits on
+   * Walmart's side: worth telling the user, not worth a bug report.
+   * @param {string} reason - raw extraction warning
+   * @returns {boolean}
+   */
+  function isReportableExtractionReason(reason) {
+    const value = String(reason || "").trim();
+    return !(
+      /^Split tender across \d+ payment methods/.test(value) ||
+      /^Walmart could not refresh this saved invoice/.test(value)
+    );
+  }
+
+  function normalizeExtractionDiagnostics(diagnostics) {
+    const seen = new Set();
+    return (Array.isArray(diagnostics) ? diagnostics : []).flatMap((entry) => {
+      const order = maskOrderNumber(entry?.orderNumber);
+      const warnings = Array.isArray(entry?.warnings) ? entry.warnings : [];
+      return warnings.flatMap((warning) => {
+        const reason = friendlyExtractionReason(warning);
+        const key = `${order}\n${reason}`;
+        if (seen.has(key)) return [];
+        seen.add(key);
+        return [{ order, reason, reportable: isReportableExtractionReason(warning) }];
+      });
     });
+  }
+
+  function buildExtractionReportUrl(diagnostics) {
+    const details = normalizeExtractionDiagnostics(diagnostics);
+    const manifest = globalThis.chrome?.runtime?.getManifest?.() || {};
+    const version = manifest.version || "unknown";
+    const browser = globalThis.navigator?.userAgent || "unknown";
+    const shown = details.slice(0, 20);
+    const omitted = details.length - shown.length;
+    const body = [
+      "The extension detected incomplete or suspicious invoice data.",
+      "",
+      "Detected problems:",
+      ...shown.map(({ order, reason }) => `- ${order}: ${reason}`),
+      ...(omitted > 0 ? [`- Plus ${omitted} additional detected problem(s)`] : []),
+      "",
+      `Extension version: ${version}`,
+      `Browser: ${browser}`,
+      "",
+      "What I was doing:",
+      "<!-- Please describe whether you were exporting one file, multiple files, or saving new data. -->",
+    ].join("\n");
+    const params = new URLSearchParams({
+      title: `Invoice extraction warning (${details.length} detected problem${details.length === 1 ? "" : "s"})`,
+      body,
+    });
+    return `${CONSTANTS.URLS.GITHUB_ISSUES}?${params.toString()}`;
+  }
+
+  /**
+   * Banner content for a run's extraction warnings, or null when there are
+   * none. Separate from rendering so the wording rules can be tested.
+   * @param {Array} diagnostics
+   * @returns {{variant: string, message: string, dismissible: boolean}|null}
+   */
+  function buildExtractionWarningBanner(diagnostics = []) {
+    const details = normalizeExtractionDiagnostics(diagnostics);
+    if (details.length === 0) return null;
+
+    const visible = details.slice(0, 5);
+    const remaining = details.length - visible.length;
+    const detailList = visible
+      .map(({ order, reason }) => `<li><strong>${escapeHtml(order)}:</strong> ${escapeHtml(reason)}</li>`)
+      .join("");
+    const more = remaining > 0 ? `<li>And ${remaining} more detected problem${remaining === 1 ? "" : "s"}</li>` : "";
+    // Ask for a report only when something unexpected happened.
+    const reportable = details.some((detail) => detail.reportable);
+    const reportUrl = buildExtractionReportUrl(diagnostics);
+    const guidance = reportable
+      ? `Your files may still be usable. Please <a href="${escapeHtml(reportUrl)}" target="_blank" rel="noopener noreferrer">send this pre-filled report</a> so we can investigate. Order numbers are masked for privacy.`
+      : `Your files are still usable. Walmart did not provide this information, so there is nothing to report.`;
+
+    return {
+      variant: reportable ? "warning" : "info",
+      message:
+        `<strong>${reportable ? "Some invoice information needs attention." : "Some invoice information was not available from Walmart."}</strong>` +
+        `<ul>${detailList}${more}</ul>` +
+        guidance,
+      dismissible: true,
+    };
+  }
+
+  function showExtractionWarning(diagnostics = []) {
+    const banner = buildExtractionWarningBanner(diagnostics);
+    if (banner) renderStatusBanner("extractionWarning", banner);
   }
 
   /**
@@ -269,7 +395,7 @@
    *   response — surfaced live in the loading text (spec v7.1 §A "Loading
    *   state").
    */
-  function updateProgressUI(currentPage, pageLimit, inProgress, orderCount = 0) {
+  function updateProgressUI(currentPage, pageLimit, inProgress, orderCount = 0, interruption = null) {
     const progressElement = document.getElementById("progress") || createProgressElement();
     progressElement.style.display = "block";
 
@@ -284,6 +410,8 @@
         <span class="loading-spinner" style="border-color: var(--primary); border-top-color: transparent;"></span>
         Loading page ${currentPage}… · ${count} order${count === 1 ? "" : "s"} found
       `;
+    } else if (interruption) {
+      progressElement.textContent = `Collection stopped early on page ${interruption.page || currentPage}.`;
     } else {
       progressElement.textContent = `Collection ${pageLimit > 0 && currentPage >= pageLimit ? "reached limit" : "completed"}. Total pages: ${currentPage}`;
     }
@@ -1433,7 +1561,10 @@
     getStatusRegion,
     renderStatusBanner,
     clearStatusBanner,
+    collectionInterruptedMessage,
     clearOffTabWarning,
+    buildExtractionReportUrl,
+    buildExtractionWarningBanner,
     showExtractionWarning,
     updateFilterNotice,
     setUIEnabled,

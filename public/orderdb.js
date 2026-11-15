@@ -362,14 +362,17 @@ const OrderDb = (() => {
     // No baseline yet (fresh install / first run) — nothing to wipe; the first
     // markUsed() sets the clock.
     const lastUsed = settings[LAST_USED_KEY];
-    if (typeof lastUsed !== 'number') return 0;
+    if (typeof lastUsed !== 'number' || !Number.isFinite(lastUsed) || lastUsed <= 0) return 0;
 
     const spec = (typeof CONSTANTS !== 'undefined' && CONSTANTS.DATA_RETENTION) || {
       defaultDays: 180,
       minDays: 1,
       maxDays: 3650,
     };
-    const raw = Number(settings.dataRetentionDays);
+    const storedDays = settings.dataRetentionDays;
+    const raw = typeof storedDays === 'number' ||
+      (typeof storedDays === 'string' && storedDays.trim() !== '')
+      ? Number(storedDays) : NaN;
     const days = Number.isFinite(raw)
       ? Math.min(spec.maxDays, Math.max(spec.minDays, Math.round(raw)))
       : spec.defaultDays;

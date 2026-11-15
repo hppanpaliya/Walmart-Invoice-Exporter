@@ -80,3 +80,25 @@ test('markUsed then enforce: a fresh "use" saves data that would otherwise be wi
   assert.equal(await OrderDb.enforceInactivityRetention(), 0, 'clock reset → nothing wiped');
   assert.equal((await OrderDb.getAllOrders()).length, 1);
 });
+
+test('invalid inactivity baselines never authorize deletion', async () => {
+  for (const lastUsedAt of [NaN, Infinity, -Infinity, 0, -1, 'invalid']) {
+    const sandbox = loadDb();
+    const db = evalIn(sandbox, 'OrderDb');
+    await db.putSummaries({ '1': { orderTotal: '$10' } }, {});
+    await setLocal(sandbox, { dataRetentionDays: 30, lastUsedAt });
+    assert.equal(await db.enforceInactivityRetention(), 0, `invalid baseline ${lastUsedAt}`);
+    assert.equal((await db.getAllOrders()).length, 1);
+  }
+});
+
+test('blank retention windows use the default instead of shortening it to one day', async () => {
+  for (const dataRetentionDays of [null, '', ' ', false]) {
+    const sandbox = loadDb();
+    const db = evalIn(sandbox, 'OrderDb');
+    await db.putSummaries({ '1': { orderTotal: '$10' } }, {});
+    await setLocal(sandbox, { dataRetentionDays, lastUsedAt: Date.now() - 5 * DAY });
+    assert.equal(await db.enforceInactivityRetention(), 0, `blank window ${dataRetentionDays}`);
+    assert.equal((await db.getAllOrders()).length, 1);
+  }
+});

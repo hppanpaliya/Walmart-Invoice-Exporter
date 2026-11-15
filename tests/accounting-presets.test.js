@@ -17,6 +17,22 @@ __t('accounting CSV skips orders with unknown totals instead of writing $0 rows'
   __assert.equal(skipped, 1);
   __assert.equal(rows[0][2], -10);
 });
+__t('accounting CSV leaves out fully canceled orders with a $0.00 total', () => {
+  const sandbox = __load({ scripts: ['utils.js'] });
+  for (const preset of ['quickbooks', 'xero']) {
+    const { rows, skipped } = sandbox.buildAccountingCsvRows(
+      [
+        { orderNumber: '1', orderDate: '2026-06-14T00:00:00Z', orderTotal: '$10.00', items: [] },
+        { orderNumber: '2', orderDate: '2026-06-15T00:00:00Z', orderTotal: '$0.00', items: [], noChargedItems: true },
+        { orderNumber: '3', orderDate: '2026-06-16T00:00:00Z', orderTotal: 0, items: [], noChargedItems: true },
+      ],
+      preset
+    );
+    __assert.equal(rows.length, 1, 'no zero-amount transaction may reach a bank import');
+    __assert.equal(skipped, 2);
+    __assert.ok(rows.every((row) => row.includes(-10)));
+  }
+});
 
 
 const { test } = require('node:test');

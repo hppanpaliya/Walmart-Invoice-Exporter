@@ -57,8 +57,7 @@
     const invoice = isMeasured(record) ? record.invoice : {};
     const summary = (record && record.summary) || {};
     return (
-      parseNumericValue(invoice.orderTotal) ||
-      parseNumericValue(summary.orderTotal || (record && record.orderTotal) || '')
+      resolveMoneyValue(invoice.orderTotal, summary.orderTotal, record && record.orderTotal)
     );
   }
 
@@ -128,7 +127,7 @@
       const invoice = (record && record.invoice) || {};
       const summary = (record && record.summary) || {};
       const refund =
-        parseNumericValue(invoice.refund || '') || parseNumericValue(summary.refund || '');
+        resolveMoneyValue(invoice.refund, summary.refund);
       if (!(refund > 0)) return;
       total += refund;
       orders.push({

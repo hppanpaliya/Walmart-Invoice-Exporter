@@ -35,14 +35,14 @@
 
   /** Invoice→summary money fallback, both fields optional (moneyOf pairing). */
   function money(invoiceValue, summaryValue) {
-    return parseNumericValue(invoiceValue) || parseNumericValue(summaryValue);
+    return resolveMoneyValue(invoiceValue, summaryValue);
   }
 
   /** A measured record's best grand total (invoice→summary→record fallback). */
   function orderTotalOf(record) {
     const invoice = (record && record.invoice) || {};
     const summary = (record && record.summary) || {};
-    return money(invoice.orderTotal, summary.orderTotal || (record && record.orderTotal));
+    return resolveMoneyValue(invoice.orderTotal, summary.orderTotal, record && record.orderTotal);
   }
 
   /** 'YYYY-MM-DD' for a Date in LOCAL time (heatmap days are local days). */

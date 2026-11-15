@@ -7,6 +7,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const { launch, seedOrderHistory } = require(path.join(__dirname, '..', '..', 'tests', 'e2e', 'helpers', 'harness'));
+const { buildDemoRecords } = require('./demo-seed');
 
 const OUT = path.join(__dirname, 'store-raw');  // gitignored scratch output
 fs.mkdirSync(OUT, { recursive: true });
@@ -15,13 +16,16 @@ const raw = (name) => path.join(OUT, name);
 (async () => {
   const { context, extensionId, panel, close } = await launch();
   try {
-    // Prefer the sanitized real-history fixture (sanitize-seed.js) when it
-    // exists — richer, realistic, still PII-free. Falls back to synthetic.
+    // Store media shows the name-brand demo catalog (demo-seed.js): generated
+    // orders, nothing from a real account. The sanitized real-history fixture
+    // (sanitize-seed.js) keeps real item names and dates, so it is used only
+    // when asked for explicitly with STORE_SEED_REAL=1.
     const fixturePath = path.join(__dirname, 'seed-data.json');
-    const records = fs.existsSync(fixturePath)
+    const useFixture = process.env.STORE_SEED_REAL === '1' && fs.existsSync(fixturePath);
+    const records = useFixture
       ? JSON.parse(fs.readFileSync(fixturePath, 'utf8'))
-      : null;
-    console.log(records ? `seeding sanitized fixture (${records.length} orders)` : 'seeding synthetic data');
+      : buildDemoRecords({ months: 14 });
+    console.log(useFixture ? `seeding sanitized fixture (${records.length} orders)` : `seeding demo catalog (${records.length} orders)`);
     await seedOrderHistory(panel, { months: 14, records });
 
     const dash = await context.newPage();

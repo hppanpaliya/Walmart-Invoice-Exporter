@@ -127,6 +127,68 @@ test('full-page dashboard', async (t) => {
       await download.path();
     });
 
+    await t.test('a category chosen by hand is saved and survives a reload', async () => {
+      await page.locator('[data-nav="categories"]').click();
+      await page.locator('#scopeSelect').selectOption('all');
+      await page.waitForSelector('#viewCategories .cat-category', { timeout: 10000 });
+      const card = page.locator('#viewCategories details.cat-category').filter({ hasNot: page.locator('.cat-refund-label') }).first();
+      await card.evaluate((element) => { element.open = true; });
+      const select = card.locator('select.cat-select').first();
+      const product = await select.getAttribute('data-category-key');
+      await select.selectOption('pets');
+      await page.waitForFunction((key) => {
+        const select = document.querySelector('#viewCategories select[data-category-key="' + CSS.escape(key) + '"]');
+        return select && select.value === 'pets';
+      }, product, { timeout: 5000 });
+      const stored = await page.evaluate(() => chrome.storage.local.get('wieCategoryAssignmentsV1'));
+      const scopes = Object.values(stored.wieCategoryAssignmentsV1 || {});
+      assert.ok(scopes.some((scope) => scope[product] === 'pets'), 'the choice is stored for the product');
+
+      await page.reload();
+      // The view is kept in the URL hash, so the page comes back on Categories.
+      await page.waitForSelector('[data-nav="categories"]', { timeout: 10000 });
+      await page.locator('[data-nav="categories"]').click();
+      await page.locator('#scopeSelect').selectOption('all');
+      const pets = page.locator('#viewCategories details.cat-category').filter({ has: page.locator('.cat-category-title', { hasText: 'Pets' }) });
+      await pets.waitFor({ timeout: 10000 });
+      await pets.evaluate((element) => { element.open = true; });
+      assert.ok(await pets.locator('.cat-you-set').count() >= 1, 'the product shows "You set this" under Pets after a reload');
+
+      await pets.locator('select[data-category-key="' + product.replace(/"/g, '\\"') + '"]').selectOption('automatic');
+      await page.waitForFunction(async (key) => {
+        const stored = await chrome.storage.local.get('wieCategoryAssignmentsV1');
+        return !Object.values(stored.wieCategoryAssignmentsV1 || {}).some((scope) => scope[key]);
+      }, product, { timeout: 5000 });
+      await page.locator('[data-nav="orders"]').click();
+    });
+
+    await t.test('headline figures stay inside their tiles for a five-digit total', async () => {
+      // A long-time customer: one large invoice pushes the year into five digits.
+      await panel.evaluate(async () => {
+        const now = new Date();
+        const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        const orderNumber = '200099000009001';
+        await OrderDb.putSummaries({ [orderNumber]: { orderDate: iso, orderTotal: 24680.13, subTotal: 22800, itemCount: 1, status: 'Delivered', items: [{ name: 'Home appliance bundle', quantity: 1 }] } }, {});
+        await OrderDb.putInvoice(orderNumber, {
+          schemaVersion: 3, orderDate: iso, orderNumber, orderSubtotal: 22800, tax: 1880.13, tip: 0, orderTotal: 24680.13, savings: 1500,
+          items: [{ productName: 'Home appliance bundle', quantity: 1, price: 22800 }],
+        });
+      });
+      for (const width of [1280, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.reload();
+        await page.locator('[data-nav="overview"]').click();
+        await page.waitForSelector('#statTotal', { state: 'visible', timeout: 10000 });
+        await page.waitForFunction(() => /\d{2},\d{3}/.test(document.getElementById('statTotal').textContent));
+        // Two frames: the fit runs on the frame after the strip settles.
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const overflowing = await page.evaluate(() => [...document.querySelectorAll('#statsSection .stat-value')]
+          .filter((el) => el.clientWidth && el.scrollWidth > el.clientWidth)
+          .map((el) => el.textContent.trim()));
+        assert.deepStrictEqual(overflowing, [], `no headline figure is cut off at ${width}px`);
+      }
+    });
+
     assert.deepStrictEqual(pageErrors, [], 'no uncaught page errors');
   } finally {
     await close();

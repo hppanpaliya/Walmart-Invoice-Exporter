@@ -81,13 +81,16 @@ function computeDashboardStats(records) {
     // purchase-history summary carries the same money fields — fall back to it
     // field-by-field so Total/Savings/Tax/Tips aren't stuck at $0.
     const summary = record.summary || {};
-    const money = (invoiceValue, summaryValue) =>
-      parseNumericValue(invoiceValue) || parseNumericValue(summaryValue || '');
+    const money = resolveMoneyValue;
 
-    const total = money(invoice.orderTotal, summary.orderTotal || record.orderTotal);
-    if (total) {
+    const total = money(invoice.orderTotal, summary.orderTotal, record.orderTotal);
+    const hasTotal = [invoice.orderTotal, summary.orderTotal, record.orderTotal]
+      .some((value) => parseOptionalNumericValue(value) !== null);
+    if (hasTotal) {
       totalSpend += total;
-      totaledOrders += 1;
+      // A fully canceled order was never a purchase; its $0 total must not
+      // pull the average order down.
+      if (invoice.noChargedItems !== true) totaledOrders += 1;
     }
 
     totalTips += money(invoice.tip, summary.driverTip);
@@ -101,7 +104,7 @@ function computeDashboardStats(records) {
     // Month from any date format we may have stored (ISO or human).
     const normalized = dashboardRecordDate(record);
     const month = normalized.slice(0, 7);
-    if (month && total) {
+    if (month && hasTotal) {
       const bucket = monthlyTotals.get(month) || { total: 0, orders: 0 };
       bucket.total += total;
       bucket.orders += 1;
@@ -174,9 +177,8 @@ function dashboardRecordDate(record) {
     record?.summary?.deliveredDate || record?.invoice?.deliveredDate || ''
   ).split(';')[0].trim();
   return (
-    normalizeDashboardDate(
-      record?.orderDate || record?.summary?.orderDate || record?.invoice?.orderDate || ''
-    ) ||
+    [record?.orderDate, record?.summary?.orderDate, record?.invoice?.orderDate]
+      .map(normalizeDashboardDate).find(Boolean) ||
     normalizeDashboardDate(deliveredRaw) ||
     parseWalmartTitleDate(record?.title || record?.summary?.title || '')
   );
@@ -222,10 +224,8 @@ function getPreviousRangeBounds(rangeValue, now = new Date()) {
     case 'last3':
     case 'last6': {
       const monthsBack = rangeValue === 'last3' ? 3 : 6;
-      const from = new Date(now);
-      from.setMonth(from.getMonth() - monthsBack * 2);
-      const to = new Date(now);
-      to.setMonth(to.getMonth() - monthsBack);
+      const from = shiftCalendarMonths(now, -monthsBack * 2);
+      const to = shiftCalendarMonths(now, -monthsBack);
       to.setDate(to.getDate() - 1);
       return { from: isoOf(from), to: isoOf(to) };
     }

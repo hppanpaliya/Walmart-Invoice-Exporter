@@ -44,40 +44,51 @@ async function launch(contextOptions = {}) {
 
   // Browser-level mock: tabs the EXTENSION opens bypass Playwright's route
   // API, so interception must happen at the network layer via a proxy.
-  const mock = await startMockWalmart();
+  const { mockOptions = {}, ...browserContextOptions } = contextOptions;
+  const mock = await startMockWalmart(mockOptions);
 
-  const { args: extraArgs = [], ...extraOptions } = contextOptions;
+  const { args: extraArgs = [], ...extraOptions } = browserContextOptions;
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wie-e2e-'));
-  const context = await chromium.launchPersistentContext(userDataDir, {
-    channel: 'chromium', // new headless mode — supports extensions
-    headless: true,
-    acceptDownloads: true,
-    proxy: { server: `http://127.0.0.1:${mock.proxyPort}` },
-    args: [
-      `--disable-extensions-except=${EXTENSION_DIR}`,
-      `--load-extension=${EXTENSION_DIR}`,
-      '--ignore-certificate-errors', // self-signed walmart cert from the mock
-      ...extraArgs,
-    ],
-    ...extraOptions,
-  });
-
-  let [worker] = context.serviceWorkers();
-  if (!worker) {
-    worker = await context.waitForEvent('serviceworker', { timeout: 15000 });
-  }
-  const extensionId = new URL(worker.url()).host;
-
-  const panel = await context.newPage();
-  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
-  await panel.waitForFunction(() => window.Sidepanel && window.Sidepanel.download);
-
+  let context;
   const close = async () => {
-    await context.close();
-    await mock.close();
+    try { if (context) await context.close(); }
+    finally {
+      try { await mock.close(); }
+      finally { fs.rmSync(userDataDir, { recursive: true, force: true }); }
+    }
   };
+  try {
+    context = await chromium.launchPersistentContext(userDataDir, {
+      channel: 'chromium', // new headless mode — supports extensions
+      headless: true,
+      acceptDownloads: true,
+      args: [
+        `--disable-extensions-except=${EXTENSION_DIR}`,
+        `--load-extension=${EXTENSION_DIR}`,
+        '--ignore-certificate-errors', // self-signed walmart cert from the mock
+        '--disable-quic',
+        '--disable-background-networking',
+        ...extraArgs,
+      ],
+      ...extraOptions,
+      proxy: { server: `http://127.0.0.1:${mock.proxyPort}` },
+    });
 
-  return { context, extensionId, panel, userDataDir, close };
+    let [worker] = context.serviceWorkers();
+    if (!worker) {
+      worker = await context.waitForEvent('serviceworker', { timeout: 15000 });
+    }
+    const extensionId = new URL(worker.url()).host;
+
+    const panel = await context.newPage();
+    await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+    await panel.waitForFunction(() => window.Sidepanel && window.Sidepanel.download);
+
+    return { context, extensionId, panel, userDataDir, close };
+  } catch (error) {
+    await close();
+    throw error;
+  }
 }
 
 /**
@@ -221,22 +232,28 @@ async function seedOrderHistory(panel, { months = 14, records: fixture } = {}) {
 /** Click a button and capture the next N downloads it triggers. */
 async function clickAndCollectDownloads(panel, selector, expectedCount, timeoutMs = 30000) {
   const downloads = [];
+  let timer;
+  let onDownload;
   const done = new Promise((resolve, reject) => {
-    const timer = setTimeout(
+    timer = setTimeout(
       () => reject(new Error(`Timed out: got ${downloads.length}/${expectedCount} downloads`)),
       timeoutMs
     );
-    panel.on('download', async (download) => {
-      downloads.push({ name: download.suggestedFilename(), path: await download.path() });
-      if (downloads.length >= expectedCount) {
-        clearTimeout(timer);
-        resolve();
-      }
-    });
+    onDownload = async (download) => {
+      try {
+        downloads.push({ name: download.suggestedFilename(), path: await download.path() });
+        if (downloads.length >= expectedCount) resolve();
+      } catch (error) { reject(error); }
+    };
+    panel.on('download', onDownload);
   });
-  await panel.click(selector);
-  await done;
-  return downloads;
+  try {
+    await Promise.all([panel.click(selector), done]);
+    return downloads;
+  } finally {
+    clearTimeout(timer);
+    panel.off('download', onDownload);
+  }
 }
 
 module.exports = {

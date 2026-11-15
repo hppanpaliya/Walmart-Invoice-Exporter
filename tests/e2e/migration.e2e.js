@@ -8,8 +8,9 @@
  *   2. malformed legacy entries are skipped (nothing fabricated),
  *   3. both retired chrome.storage keys are removed,
  *   4. old per-key settings survive untouched,
- *   5. the migrated invoice powers an instant single-file export with NO
- *      order tab opened (the IndexedDB fast path).
+ *   5. migrated Walmart invoices predate current extraction and therefore
+ *      must attempt a live refresh before export (even when it later falls
+ *      back to the migrated copy).
  */
 'use strict';
 
@@ -29,7 +30,7 @@ const LEGACY_INVOICE = {
   items: [{ productName: 'Migrated Widget', quantity: '1', price: '$12.34' }],
 };
 
-test('upgrade from v6.25 storage: data migrates, keys are removed, export needs no tab', async (t) => {
+test('upgrade from v6.25 storage: data migrates, keys are removed, export refreshes legacy Walmart data', async (t) => {
   const { context, panel, close } = await launch();
   t.after(close);
 
@@ -94,7 +95,7 @@ test('upgrade from v6.25 storage: data migrates, keys are removed, export needs 
   );
   assert.equal(settings.exportFormat, 'xlsx', 'settings keys must survive migration');
 
-  // --- 5: migrated data powers an instant, tab-free export ----------------
+  // --- 5: migrated data is not silently trusted after extraction changes --
   await renderOrderList(panel, {
     orderNumbers: [MIGRATED_ORDER],
     additionalFields: { [MIGRATED_ORDER]: 'Delivered Jul 2' },
@@ -106,5 +107,5 @@ test('upgrade from v6.25 storage: data migrates, keys are removed, export needs 
 
   const [download] = await clickAndCollectDownloads(panel, '#singleFileDownload', 1, 30000);
   assert.ok(download.name.endsWith('.xlsx'), `expected an xlsx download, got ${download.name}`);
-  assert.equal(openedTabs, 0, 'export of a migrated order must not open any tab');
+  assert.equal(openedTabs, 1, 'export of a legacy Walmart invoice must attempt one live refresh');
 });

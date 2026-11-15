@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "observed redesign, free delivery and split tender",
+      "file": "redesigned-live.html",
+      "provenance": "anonymized live DOM",
+      "items": 20,
+      "total": "$53.48",
+      "delivery": "$0",
+      "subtotal": "$47.44",
+      "paymentSplit": "Walmart Cash: $2.50; Visa Ending in 0000: $50.98"
+    },
+    {
+      "name": "paid delivery, unavailable and canceled lines",
+      "file": "redesigned-paid.html",
+      "provenance": "synthetic layout",
+      "items": 2,
+      "total": "$27.02",
+      "delivery": "$2.95",
+      "subtotal": "$18.53",
+      "paymentSplit": "Walmart Cash: $8.00; Visa Ending in 0000: $19.02"
+    },
+    {
+      "name": "legacy print receipt with discounted line price",
+      "file": "legacy-synthetic.html",
+      "provenance": "synthetic layout",
+      "items": 2,
+      "total": "$7.50",
+      "subtotal": "$7.00"
+    },
+    {
+      "name": "missing final total with temporary authorization present",
+      "file": "redesigned-live.html",
+      "provenance": "synthetic fault derived from live DOM",
+      "variant": "missing-total",
+      "items": 20,
+      "total": "",
+      "warning": "Order total came back empty"
+    },
+    {
+      "name": "unhydrated item list",
+      "file": "redesigned-live.html",
+      "provenance": "synthetic fault derived from live DOM",
+      "variant": "missing-items",
+      "items": 0,
+      "total": "$53.48",
+      "warning": "No items were extracted for this order"
+    },
+    {
+      "name": "free order with explicit zero amounts",
+      "file": "redesigned-paid.html",
+      "provenance": "synthetic edge case",
+      "variant": "zero",
+      "items": 2,
+      "total": "$0.00",
+      "subtotal": "$0.00",
+      "delivery": "$0.00"
+    },
+    {
+      "name": "seller controlled product text and unsafe link",
+      "file": "redesigned-paid.html",
+      "provenance": "synthetic adversarial case",
+      "variant": "hostile",
+      "items": 2,
+      "total": "$27.02",
+      "subtotal": "$18.53",
+      "delivery": "$2.95"
+    },
+    {
+      "name": "promo, express and returned fees, refund, donation and extra adjustment",
+      "file": "financial-adjustments.html",
+      "provenance": "synthetic financial variant of sanitized layout",
+      "items": 2,
+      "total": "$24.77",
+      "subtotal": "$18.53",
+      "delivery": "$2.95",
+      "paymentSplit": "Walmart Cash: $8.00; Visa Ending in 0000: $16.77",
+      "amounts": {
+        "promoCodeAmount": "-$2.00",
+        "threeHoursOrLessFee": "$2.95",
+        "returnedThreeHoursOrLessFee": "-$2.95",
+        "refund": "-$1.00",
+        "donations": "$0.25"
+      },
+      "financialAdjustments": [
+        {
+          "label": "Eco handling adjustment",
+          "amount": "$0.50"
+        }
+      ]
+    }
+  ]
+}

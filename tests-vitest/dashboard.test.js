@@ -752,3 +752,15 @@ test('Sidepanel.dashboard.render entry point exists and is a safe no-op until a 
   evalIn(sandbox, 'window.Sidepanel.dashboard._renderImpl = () => "re-rendered"');
   assert.equal(evalIn(sandbox, 'window.Sidepanel.dashboard.render()'), 're-rendered');
 });
+
+test('computeDashboardStats keeps fully canceled orders out of the average order', () => {
+  const sandbox = loadDashboardSandbox();
+  const invoice = (orderTotal, extra = {}) => ({ schemaVersion: 3, orderTotal, items: [], ...extra });
+  const stats = sandbox.computeDashboardStats([
+    { orderNumber: '1', orderDate: '2026-05-03', invoice: invoice('$20.00', { items: [{ productName: 'A', quantity: '1', price: '$20.00' }] }) },
+    { orderNumber: '2', orderDate: '2026-05-04', invoice: invoice('$0.00', { noChargedItems: true }) },
+  ]);
+  assert.equal(stats.totalSpend, 20);
+  assert.equal(stats.avgOrder, 20);
+  assert.equal(stats.invoiceCount, 2);
+});
