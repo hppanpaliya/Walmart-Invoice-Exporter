@@ -83,6 +83,7 @@ test('department and status helpers never guess', () => {
   const s = loadSandbox({ scripts: ['utils.js'] });
   assert.equal(s.walmartDepartmentName('0:976759:976794:7433209'), 'Food');
   assert.equal(s.walmartDepartmentName('1115193:1025739'), 'Household Essentials');
+  assert.equal(s.walmartDepartmentName('0:6163033:2795380'), 'Services');
   for (const value of ['', null, undefined, '0', '0:424242', 'not-a-path', {}]) assert.equal(s.walmartDepartmentName(value), '');
   assert.equal(s.orderStatusLabel({ orderStatus: 'Delivered' }), 'Delivered');
   assert.equal(s.orderStatusLabel({ noChargedItems: true }), 'Canceled');

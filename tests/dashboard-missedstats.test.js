@@ -68,4 +68,7 @@ test('missed summary: empty, malformed and detail-less input never throws or inv
   assert.equal(MissedStats.hasDetail({ walmartExtractionVersion: 6 }), true);
   assert.equal(MissedStats.hasDetail({ walmartExtractionVersion: 5 }), false);
   assert.equal(MissedStats.hasDetail(null), false);
+  assert.equal(MissedStats.hasDetail({ walmartExtractionVersion: 2 }, 'WALMART_CA'), true, 'Canada records the details from its version 2');
+  assert.equal(MissedStats.hasDetail({ walmartExtractionVersion: 1 }, 'WALMART_CA'), false);
+  assert.equal(MissedStats.hasDetail({ walmartExtractionVersion: 2 }, 'WALMART_US'), false);
 });

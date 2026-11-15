@@ -703,6 +703,7 @@ const WALMART_DEPARTMENTS = {
   '91083': 'Auto & Tires',
   '1229749': 'Office Supplies',
   '1334134': 'Arts, Crafts & Sewing',
+  '6163033': 'Services',
 };
 
 /** The department id from a category path such as "0:976759:976794" (or ''). */
@@ -2355,7 +2356,8 @@ const CONSTANTS = {
   // re-fetched once instead of being exported forever through the DB fast path.
   // 6: per-line price, category and fulfillment details; order status and unfulfilled lines.
   WALMART_US_EXTRACTION_VERSION: 6,
-  WALMART_CA_EXTRACTION_VERSION: 1,
+  // Canada 2: the same optional details as Walmart US 6.
+  WALMART_CA_EXTRACTION_VERSION: 2,
 
   // Export file formats
   EXPORT_FORMATS: {

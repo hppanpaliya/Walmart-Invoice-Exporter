@@ -9,8 +9,9 @@
 (() => {
   'use strict';
 
-  /** The Walmart US extraction version that started recording these details. */
+  /** The extraction version that started recording these details, per site. */
   const DETAIL_VERSION = 6;
+  const DETAIL_VERSION_BY_PROVIDER = { WALMART_CA: 2 };
   const KINDS = ['unavailable', 'canceled', 'substituted', 'weightAdjusted'];
 
   const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
@@ -32,8 +33,9 @@
   }
 
   /** True when the invoice was read by an extraction that records these details. */
-  function hasDetail(invoice) {
-    return Number((invoice && invoice.walmartExtractionVersion) || 0) >= DETAIL_VERSION;
+  function hasDetail(invoice, provider) {
+    const required = DETAIL_VERSION_BY_PROVIDER[provider] || DETAIL_VERSION;
+    return Number((invoice && invoice.walmartExtractionVersion) || 0) >= required;
   }
 
   function recordDate(record) {
@@ -69,7 +71,7 @@
       if (!measured(record)) return;
       ordersMeasured += 1;
       const invoice = record.invoice;
-      if (!hasDetail(invoice)) return;
+      if (!hasDetail(invoice, record && record.provider)) return;
       ordersWithDetail += 1;
       if (invoice.wasDelayed === true) lateDeliveries += 1;
       const date = recordDate(record);

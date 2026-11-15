@@ -380,3 +380,47 @@ test('malformed optional data never fails the order or its lines', () => {
   assert.equal('unfulfilledItems' in data, false, 'unreadable unfulfilled lines are skipped, not invented');
   assert.equal('orderStatus' in data, false);
 });
+
+test('Canada reads the same optional details and keeps unfulfilled lines apart', () => {
+  const nextData = orderNodeWith([{
+    status: { statusType: 'DELIVERED', wasDelayed: true }, store: { name: 'Toronto Supercentre' },
+    returnEligibilityMessage: 'Return eligible until Sun, Jan 10',
+    categories: [
+      { type: 'REGULAR', items: [{ ...item(1, 'Maple Syrup, 500 mL', 2, 15.96), isReturnable: false,
+        productInfo: { name: 'Maple Syrup, 500 mL', usItemId: '91', categoryPathId: '0:976759:1' },
+        priceInfo: { linePrice: money(15.96), itemPrice: { displayValue: '$7.98 ea' }, unitPrice: { displayValue: '$1.60/100mL' } } }] },
+      { type: 'SUBSTITUTED', items: [item(2, 'Oat Milk', 1, 4.5)] },
+      { type: 'UNAVAILABLE', items: [item(3, 'String Cheese', 1, 6)] },
+    ],
+  }]);
+  const sandbox = loadSandbox({ nextData, url: 'https://www.walmart.ca/orders/200010000000077',
+    scripts: ['utils.js', 'providers/base.js', 'providers/registry.js', 'providers/walmart-ca.js'] });
+  const data = evalIn(sandbox, 'WalmartCaProvider').scrapeOrder({});
+  assert.equal(data.walmartExtractionVersion, 2);
+  assert.deepEqual(Array.from(data.items, (entry) => entry.productName), ['Maple Syrup, 500 mL', 'Oat Milk']);
+  const syrup = data.items[0];
+  assert.equal(syrup.price, '$15.96');
+  assert.equal(syrup.unitPrice, '$7.98');
+  assert.equal(syrup.comparisonPrice, '$1.60/100mL');
+  assert.equal(syrup.categoryPathId, '0:976759:1');
+  assert.equal(syrup.returnable, false);
+  assert.equal(data.items[1].fulfillment, 'Substituted');
+  assert.equal(data.orderStatus, 'Delivered');
+  assert.equal(data.wasDelayed, true);
+  assert.equal(data.storeName, 'Toronto Supercentre');
+  assert.equal(data.returnWindow, 'Return eligible until Sun, Jan 10');
+  assert.deepEqual(JSON.parse(JSON.stringify(data.unfulfilledItems)), [
+    { productName: 'String Cheese', quantity: '1', reason: 'Unavailable', price: '$6.00', productLink: 'https://www.walmart.ca/ip/93', usItemId: '93' },
+  ]);
+});
+
+test('Canada lines without optional data keep exactly the historic fields', () => {
+  const nextData = orderNodeWith([{ categories: [{ type: 'REGULAR', items: [item(1, 'Paper Towels', 1, 5)] }] }]);
+  const sandbox = loadSandbox({ nextData, url: 'https://www.walmart.ca/orders/200010000000077',
+    scripts: ['utils.js', 'providers/base.js', 'providers/registry.js', 'providers/walmart-ca.js'] });
+  const data = evalIn(sandbox, 'WalmartCaProvider').scrapeOrder({});
+  assert.deepEqual(Object.keys(data.items[0]).sort(),
+    ['deliveryStatus', 'price', 'productLink', 'productName', 'quantity', 'thumbnailUrl', 'usItemId']);
+  assert.equal('unfulfilledItems' in data, false);
+  assert.equal('orderStatus' in data, false);
+});

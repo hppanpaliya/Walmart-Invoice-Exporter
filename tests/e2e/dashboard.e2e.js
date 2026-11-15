@@ -127,6 +127,40 @@ test('full-page dashboard', async (t) => {
       await download.path();
     });
 
+    await t.test('a category chosen by hand is saved and survives a reload', async () => {
+      await page.locator('[data-nav="categories"]').click();
+      await page.locator('#scopeSelect').selectOption('all');
+      await page.waitForSelector('#viewCategories .cat-category', { timeout: 10000 });
+      const card = page.locator('#viewCategories details.cat-category').filter({ hasNot: page.locator('.cat-refund-label') }).first();
+      await card.evaluate((element) => { element.open = true; });
+      const select = card.locator('select.cat-select').first();
+      const product = await select.getAttribute('data-category-key');
+      await select.selectOption('pets');
+      await page.waitForFunction((key) => {
+        const select = document.querySelector('#viewCategories select[data-category-key="' + CSS.escape(key) + '"]');
+        return select && select.value === 'pets';
+      }, product, { timeout: 5000 });
+      const stored = await page.evaluate(() => chrome.storage.local.get('wieCategoryAssignmentsV1'));
+      const scopes = Object.values(stored.wieCategoryAssignmentsV1 || {});
+      assert.ok(scopes.some((scope) => scope[product] === 'pets'), 'the choice is stored for the product');
+
+      await page.reload();
+      await page.waitForSelector('.cbar', { timeout: 10000 });
+      await page.locator('[data-nav="categories"]').click();
+      await page.locator('#scopeSelect').selectOption('all');
+      const pets = page.locator('#viewCategories details.cat-category').filter({ has: page.locator('.cat-category-title', { hasText: 'Pets' }) });
+      await pets.waitFor({ timeout: 10000 });
+      await pets.evaluate((element) => { element.open = true; });
+      assert.ok(await pets.locator('.cat-you-set').count() >= 1, 'the product shows "You set this" under Pets after a reload');
+
+      await pets.locator('select[data-category-key="' + product.replace(/"/g, '\\"') + '"]').selectOption('automatic');
+      await page.waitForFunction(async (key) => {
+        const stored = await chrome.storage.local.get('wieCategoryAssignmentsV1');
+        return !Object.values(stored.wieCategoryAssignmentsV1 || {}).some((scope) => scope[key]);
+      }, product, { timeout: 5000 });
+      await page.locator('[data-nav="orders"]').click();
+    });
+
     await t.test('headline figures stay inside their tiles for a five-digit total', async () => {
       // A long-time customer: one large invoice pushes the year into five digits.
       await panel.evaluate(async () => {
