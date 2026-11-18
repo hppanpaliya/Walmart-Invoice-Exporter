@@ -30,8 +30,8 @@
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   margin-top: 12px;
 }
-#viewItems .items-toolbar .search { flex: 1; min-width: 220px; }
-#viewItems .items-count { color: var(--text-muted); font-size: 12.5px; white-space: nowrap; }
+#viewItems .items-toolbar .scope-select { max-width: 100%; min-width: 0; }
+#viewItems .items-count { color: var(--text-muted); font-size: 12.5px; overflow-wrap: anywhere; }
 
 #viewItems .table-wrap { margin-top: 10px; }
 #viewItems .items-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }

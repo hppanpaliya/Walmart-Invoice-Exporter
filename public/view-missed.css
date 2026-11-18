@@ -1,5 +1,5 @@
 /* Missed items — the same quiet surfaces as the other views. */
-.mis-page { max-width: 1040px; margin: 0 auto; padding: 4px 2px 30px; }
+.mis-page { width: 100%; max-width: 1040px; margin: 0 auto; padding: 4px 2px 30px; }
 .mis-intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin: 4px 0 20px; }
 .mis-kicker { color: var(--text-secondary); font-size: 10px; font-weight: 750; letter-spacing: .14em; }
 .mis-intro h1 { margin: 6px 0 7px; font-size: clamp(27px, 3vw, 36px); line-height: 1.1; letter-spacing: -.035em; }
@@ -7,11 +7,12 @@
 .mis-period { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; padding: 9px 13px; border: 1px solid var(--border); border-radius: 99px; background: var(--surface); color: var(--text-secondary); font-size: 12px; }
 .mis-period-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 
-.mis-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+.mis-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); gap: 14px; }
 .mis-tile { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 16px 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
 .mis-tile-title { color: var(--text-secondary); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .mis-tile-value { font-size: 28px; font-weight: 680; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .mis-tile-note { color: var(--text-secondary); font-size: 12px; }
+.mis-tile > * { overflow-wrap: anywhere; }
 .mis-tile-zero .mis-tile-value { color: var(--text-secondary); }
 .mis-coverage { margin: 14px 2px 18px; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
 
@@ -31,4 +32,4 @@
 .mis-empty-icon { display: block; margin-bottom: 10px; color: var(--text-secondary); font-size: 30px; }
 .mis-empty h2 { margin: 0 0 8px; font-size: 20px; }
 .mis-empty p { margin: 0; color: var(--text-secondary); font-size: 14px; line-height: 1.55; }
-@media (max-width: 720px) { .mis-intro { flex-direction: column; align-items: flex-start; } }
+@container dashboard (max-width: 620px) { .mis-intro { flex-direction: column; align-items: flex-start; } }

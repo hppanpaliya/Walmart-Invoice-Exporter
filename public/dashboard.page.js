@@ -243,6 +243,18 @@
       <button type="button" class="appnav-btn" data-nav="${view.id}" aria-current="${view.id === activeView ? 'page' : 'false'}" title="${escapeHtml(view.label)}">
         ${view.icon}<span class="appnav-label">${escapeHtml(view.label)}</span>
       </button>`).join('');
+    revealActiveNav();
+  }
+
+  /** On narrow screens, reveal the active tab without scrolling the page. */
+  function revealActiveNav() {
+    const nav = $('appNav');
+    const current = nav.querySelector('[aria-current="page"]');
+    if (!current || nav.scrollWidth <= nav.clientWidth) return;
+    const rail = nav.getBoundingClientRect();
+    const tab = current.getBoundingClientRect();
+    if (tab.left < rail.left + 4) nav.scrollLeft += tab.left - rail.left - 4;
+    else if (tab.right > rail.right - 4) nav.scrollLeft += tab.right - rail.right + 4;
   }
 
   $('appNav').addEventListener('click', (event) => {
@@ -268,6 +280,7 @@
     $('appNav').querySelectorAll('[data-nav]').forEach((btn) => {
       btn.setAttribute('aria-current', btn.dataset.nav === id ? 'page' : 'false');
     });
+    revealActiveNav();
     applyViewVisibility();
     renderRegisteredView(id);
     fitStatValues();
@@ -303,6 +316,7 @@
       scopedRecords: [],
       scopedStats: null,
       formatMoney,
+      fitStatValues,
       monthLabel,
       rangeLabel,
       scopeEchoLabel,
@@ -773,21 +787,22 @@
    * Sections above the table
    * ------------------------------------------------------------------ */
 
-  /**
-   * Shrink a headline figure until it fits its tile. The tiles keep a fixed
-   * share of the row, so a five-digit total at laptop widths would otherwise
-   * run past the edge and lose its last digits.
-   */
+  /** Keep the exact figure on one line when it can fit at a readable size. */
   function fitStatValues() {
     if (typeof getComputedStyle !== 'function') return;
-    document.querySelectorAll('#statsSection .stat-value').forEach((el) => {
+    document.querySelectorAll('#statsSection .stat-value, #viewReview .rv-hero-amount').forEach((el) => {
       el.style.fontSize = '';
       if (!el.clientWidth) return; // hidden tile or inactive view
+      el.style.overflowWrap = 'normal';
+      el.style.whiteSpace = 'nowrap';
       let size = parseFloat(getComputedStyle(el).fontSize);
-      while (el.scrollWidth > el.clientWidth && size > 12) {
-        size -= 1;
+      while (el.scrollWidth > el.clientWidth && size > 16) {
+        size = Math.max(16, size - 1);
         el.style.fontSize = `${size}px`;
       }
+      const needsWrap = el.scrollWidth > el.clientWidth;
+      el.style.whiteSpace = needsWrap ? '' : 'nowrap';
+      el.style.overflowWrap = needsWrap ? 'anywhere' : '';
     });
   }
 
@@ -1784,18 +1799,33 @@
   }
   // …plus a refresh whenever the page regains focus…
   window.addEventListener('focus', () => refresh());
-  // Tile widths change with the window, a scrollbar appearing, or the panel
-  // rail loading, so the headline figures are refitted whenever the strip resizes.
+  // Account controls and text zoom can change the sticky header's height.
+  // Reserve its actual space, and the horizontal nav's, when scrolling.
   let fitStatFrame = 0;
-  const scheduleStatFit = () => {
+  const topbar = document.querySelector('.topbar');
+  const nav = $('appNav');
+  const scheduleLayout = () => {
     cancelAnimationFrame(fitStatFrame);
-    fitStatFrame = requestAnimationFrame(fitStatValues);
+    fitStatFrame = requestAnimationFrame(() => {
+      const root = document.documentElement;
+      if (topbar) root.style.setProperty('--topbar-h', `${topbar.offsetHeight}px`);
+      if (nav) {
+        const height = getComputedStyle(nav).flexDirection === 'row' ? nav.offsetHeight : 0;
+        root.style.setProperty('--nav-h', `${height}px`);
+        revealActiveNav();
+      }
+      fitStatValues();
+    });
   };
-  if (typeof ResizeObserver === 'function' && $('statsSection')) {
-    new ResizeObserver(scheduleStatFit).observe($('statsSection'));
+  if (typeof ResizeObserver === 'function') {
+    const observer = new ResizeObserver(scheduleLayout);
+    for (const element of [topbar, nav, document.querySelector('.col-main')]) {
+      if (element) observer.observe(element);
+    }
   } else {
-    window.addEventListener('resize', scheduleStatFit);
+    window.addEventListener('resize', scheduleLayout);
   }
+  scheduleLayout();
   // …plus any same-origin postMessage from the embedded panel (future
   // panel→dashboard notifications land here without a contract change).
   window.addEventListener('message', (event) => {

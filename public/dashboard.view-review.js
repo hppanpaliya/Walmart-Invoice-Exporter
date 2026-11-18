@@ -531,7 +531,7 @@
     const hero = `<section class="rv-hero">${heroTiles
       .map((tile) => `<div class="rv-hero-tile${tile.cls || ''}">
         <div class="rv-label">${escapeHtml(tile.label)}</div>
-        <div class="rv-hero-value mono">${escapeHtml(tile.value)}${tile.chip || ''}</div>
+        <div class="rv-hero-value mono"><span class="rv-hero-amount">${escapeHtml(tile.value)}</span>${tile.chip || ''}</div>
         <div class="rv-sub">${escapeHtml(tile.sub)}</div>
       </div>`)
       .join('')}</section>`;
@@ -609,6 +609,7 @@
     </section>`;
 
     slot.innerHTML = header + hero + superlatives + top5 + chartCard;
+    ctx.fitStatValues?.();
 
     slot.querySelectorAll('.rv-year-pill').forEach((pill) => {
       pill.addEventListener('click', () => {

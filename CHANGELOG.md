@@ -1,5 +1,14 @@
 # Changelog
 
+## [8.9.1] - November 18, 2026
+
+### Fixed
+- Dashboard totals and comparisons stay inside their cards as the window narrows. Categories, Missed Items, and other views reflow without page-wide horizontal scrolling; wide tables still scroll inside their cards.
+- Narrow windows keep Settings and the active dashboard tab visible. The Collect & Export panel fits short desktop windows, and expanded invoices wrap long product names.
+
+### Store listing
+- Refreshed the screenshots and narrated tour for this build.
+
 ## [8.9] - November 14, 2026
 
 ### Added

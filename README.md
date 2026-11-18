@@ -159,6 +159,10 @@ See [docs/PORTS.md](./docs/PORTS.md) for the full list of differences.
 
 ## What's New
 
+### Version 8.9.1 (November 18, 2026)
+- **Dashboard layout fixes**: large figures stay inside their cards, wide tables scroll without moving the whole page, and Settings and the active navigation tab stay in view on narrow windows.
+- **Short windows and long product names**: the Collect & Export panel fits the desktop viewport, and expanded invoices wrap product names instead of cutting them off.
+
 ### Version 8.9 (November 14, 2026)
 - **More detail in exports**: price each, "was" price, savings, price per unit, Walmart's department, returnable, and whether an item was substituted, weight adjusted or returned. Per order: status, late delivery, store, return window and items not fulfilled. New columns are added after the existing ones, plus a "Not Fulfilled" sheet in Excel
 - **Dashboard: Categories view**: spending by category, from Walmart's own department where it is known, with your own overrides
@@ -414,7 +418,7 @@ The extension is built with WXT/Vite and a modular design for maintainability:
 
 For a complete list of changes, see [CHANGELOG.md](./CHANGELOG.md)
 
-**Latest (v8.9):** Item and order details in exports, Categories and Missed items dashboard views. **v8.8:** Fewer false alerts, Walmart's redesigned invoice page, complete payment splits. **Since v8.0:** Full-app Spending Dashboard (inline invoice drill-down, interactive click-to-scope charts, insights card, month-group selection), fast request-based collection with automatic classic fallback, Walmart's own order filters as collection options, multi-account support, a complete light/dark redesign, and the new WXT build system.
+**Latest (v8.9.1):** More readable dashboard layouts at narrow widths. **v8.9:** Item and order details in exports, Categories and Missed items dashboard views. **v8.8:** Fewer false alerts, Walmart's redesigned invoice page, complete payment splits. **Since v8.0:** Full-app Spending Dashboard (inline invoice drill-down, interactive click-to-scope charts, insights card, month-group selection), fast request-based collection with automatic classic fallback, Walmart's own order filters as collection options, multi-account support, a complete light/dark redesign, and the new WXT build system.
 
 ## Support
 

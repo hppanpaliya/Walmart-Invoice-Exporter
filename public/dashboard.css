@@ -31,6 +31,7 @@
   --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .06);
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --topbar-h: 53px;
+  --nav-h: 0px;
 }
 
 /* System dark mode — applies unless the user explicitly forced light. */
@@ -116,6 +117,7 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
+html { scroll-padding-top: calc(var(--topbar-h) + var(--nav-h) + 8px); }
 body {
   margin: 0;
   background: var(--bg);
@@ -144,7 +146,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; }
 .brand svg { color: var(--accent); flex: none; }
 .brand .crumb { color: var(--text-muted); font-weight: 400; }
-.topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
 .btn {
   border: 1px solid var(--border-strong); background: var(--surface);
   border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 500;
@@ -172,9 +174,9 @@ button:focus-visible, select:focus-visible, input:focus-visible {
    the UA's [hidden]{display:none}) — without this the empty switcher shell
    shows even for single-account users. */
 .account-switcher[hidden] { display: none; }
-.account-switcher { display: inline-flex; align-items: center; gap: 6px; }
-.account-select { max-width: 220px; }
-.account-rename-input { max-width: 200px; }
+.account-switcher { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.account-select { max-width: 220px; min-width: 0; }
+.account-rename-input { max-width: 200px; min-width: 0; }
 .account-rename { padding: 7px 9px; }
 .account-rename svg { display: block; }
 
@@ -184,7 +186,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   display: grid; grid-template-columns: 176px minmax(0, 1fr) 400px;
   gap: 24px; align-items: start;
 }
-.col-main { min-width: 0; }
+.col-main { min-width: 0; container: dashboard / inline-size; }
 
 /* ---------- app navigation (view registry, dashboard.page.js) ---------- */
 .appnav {
@@ -221,7 +223,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 .rail {
   position: sticky; top: var(--topbar-h);
-  height: calc(100vh - var(--topbar-h));
+  height: calc(100dvh - var(--topbar-h));
   padding: 24px 0; display: flex; flex-direction: column;
 }
 .rail-label {
@@ -230,21 +232,30 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 .rail iframe {
   border: 1px solid var(--border); border-radius: 12px;
-  background: var(--surface); width: 100%; flex: 1;
-  height: calc(100vh - var(--topbar-h) - 76px);
-  min-height: 600px;
+  background: var(--surface); width: 100%; flex: 1; min-height: 0;
 }
 @media (max-width: 1099px) {
-  .shell { grid-template-columns: 1fr; }
+  .shell { grid-template-columns: minmax(0, 1fr); }
   .rail { position: static; height: auto; padding-top: 0; }
-  .rail iframe { height: 700px; }
+  .rail iframe { flex: none; height: clamp(320px, 80dvh, 700px); }
   /* Nav folds into a horizontal pill strip above the page content. */
   .appnav {
     position: sticky; z-index: 9; background: var(--bg);
-    flex-direction: row; overflow-x: auto; padding: 12px 0 0;
+    flex-direction: row; overflow-x: auto; padding: 8px 4px 5px;
   }
-  .appnav-btn { width: auto; justify-content: flex-start; padding: 8px 14px; white-space: nowrap; }
+  .appnav-btn { width: auto; flex: none; justify-content: flex-start; padding: 8px 12px; white-space: nowrap; }
   .appnav-label { display: inline; }
+}
+@media (max-width: 720px) {
+  .topbar-inner { flex-wrap: wrap; gap: 8px; }
+  .topbar-actions { margin-left: 0; }
+}
+@media (max-width: 480px) {
+  .topbar-inner, .shell { padding-inline: 12px; }
+  .brand .crumb { display: none; }
+  .topbar-actions { width: 100%; gap: 6px; }
+  .topbar-actions .btn { padding-inline: 9px; }
+  .account-switcher { order: 1; }
 }
 
 /* ---------- page scaffold ---------- */
@@ -291,17 +302,24 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .stat-value { font-size: 22px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .stat-hero .stat-value { font-size: 34px; letter-spacing: -.01em; }
 .stat-saved { color: var(--success-fg); }
-/* inline-block + nowrap: the delta never breaks internally, but wraps below
-   the big number as one unit when the hero card is too narrow for both. */
 .delta-up {
-  color: var(--warn-fg); font-size: 13px; font-weight: 600; margin-left: 10px;
+  color: var(--warn-fg); font-size: 13px; font-weight: 600;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-variant-numeric: normal; white-space: nowrap; vertical-align: 4px;
-  display: inline-block;
+  font-variant-numeric: normal; overflow-wrap: anywhere; display: block;
 }
 .delta-down { color: var(--success-fg); }
 .stat-note { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
-@media (max-width: 900px) { .stats { grid-template-columns: 1fr 1fr; } .stat-hero { grid-column: 1 / -1; } }
+@container dashboard (max-width: 760px) {
+  .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .stat-hero { grid-column: span 2; }
+}
+@container dashboard (max-width: 560px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat-hero { grid-column: 1 / -1; }
+}
+@container dashboard (max-width: 350px) {
+  .stats { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* ---------- chart ---------- */
 .chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
@@ -337,7 +355,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 
 /* ---------- insight grid ---------- */
 .insights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
-@media (max-width: 900px) { .insights { grid-template-columns: 1fr; } }
+@container dashboard (max-width: 680px) { .insights { grid-template-columns: minmax(0, 1fr); } }
 .ledger { margin-top: 10px; display: grid; grid-template-columns: minmax(0, 1fr); }
 .lrow {
   display: flex; justify-content: space-between; gap: 12px;
@@ -345,6 +363,8 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   font-size: 13.5px;
 }
 .lrow:last-of-type { border-bottom: none; }
+.lrow > * { min-width: 0; overflow-wrap: anywhere; }
+.lrow > :last-child { text-align: right; }
 .lrow .neg { color: var(--success-fg); }
 .lrow-total { border-top: 1px solid var(--border-strong); font-weight: 650; }
 .card .cta { margin-top: 12px; width: 100%; justify-content: center; }
@@ -368,7 +388,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   border-radius: 12px; padding: 14px 20px;
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
 }
-.coverage p { margin: 0; flex: 1; min-width: 260px; }
+.coverage p { margin: 0; flex: 1; min-width: min(260px, 100%); }
 .coverage .btn { border-color: var(--warn-border); background: transparent; color: inherit; font-weight: 600; }
 .coverage-ok { color: var(--text-muted); font-size: 12.5px; padding: 0 4px; }
 
@@ -377,7 +397,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px;
 }
 .search {
-  flex: 1; min-width: 220px; display: flex; align-items: center; gap: 8px;
+  flex: 1; min-width: min(220px, 100%); display: flex; align-items: center; gap: 8px;
   border: 1px solid var(--border-strong); border-radius: 8px;
   padding: 7px 12px; background: var(--surface); color: var(--text-muted); font-size: 13px;
 }
@@ -449,7 +469,8 @@ footer {
    avg/saved tiles (via [hidden] in dashboard.page.js) and re-flows the
    stat strip to hero + Orders. */
 .combined-scoped .stats { grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr); }
-@media (max-width: 900px) { .combined-scoped .stats { grid-template-columns: 1fr; } }
+.combined-scoped .stat-hero { grid-column: auto; }
+@container dashboard (max-width: 560px) { .combined-scoped .stats { grid-template-columns: minmax(0, 1fr); } }
 
 /* Per-currency groups: each currency keeps its own subtotal and its own
    bar scale — bars only ever compare amounts within one currency. */
@@ -544,8 +565,9 @@ tr.detail-row:hover td { background: var(--surface-2); }
 .detail-items tr:hover td, .detail-row:hover .detail-items td { background: none; }
 .detail-item-name {
   width: 100%; max-width: 0; min-width: 160px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow-wrap: anywhere;
 }
+.detail-meta > * { min-width: 0; overflow-wrap: anywhere; }
 .detail-money { font-size: 13px; }
 .detail-money .lrow { padding: 5px 0; }
 .detail-muted { color: var(--text-muted); font-size: 12.5px; }
@@ -573,7 +595,7 @@ tr.detail-row:hover td { background: var(--surface-2); }
 
 /* ---------- "More insights" card (JS-inserted by dashboard.page.js) ---------- */
 .mi-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
   gap: 12px; margin-top: 12px;
 }
 .mi-tile {
@@ -587,6 +609,6 @@ tr.detail-row:hover td { background: var(--surface-2); }
 .mi-value {
   font-size: 17px; font-weight: 650; margin-top: 3px;
   font-variant-numeric: tabular-nums;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .mi-sub { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
