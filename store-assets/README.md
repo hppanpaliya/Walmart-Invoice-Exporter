@@ -10,7 +10,7 @@ no real orders, accounts, or names anywhere.
 
 | File | What it is | Where it goes in the dev dashboard |
 |---|---|---|
-| `video/tour-4k.mp4` | ~65s scripted ad-cut tour (4K upload master, silent) | Upload to YouTube → paste URL in Store listing → Video |
+| `video/tour-4k.mp4` | Narrated tour (4K upload master) | Upload to YouTube → paste URL in Store listing → Video |
 | `video/tour-1080p.mp4` | Same cut, 1080p preview/embed copy | Local preview (`preview.html`) |
 | `screenshots/01-hero-dashboard-1280x800.png` | Dashboard + embedded panel, light | Store listing → Screenshots (slot 1) |
 | `screenshots/02-invoice-drilldown-1280x800.png` | Orders view, expanded inline invoice | Screenshots (slot 2) |
@@ -88,12 +88,20 @@ stays on this machine; only the rendered media is committed.
 
     bash store-assets/scripts/generate-store-video.sh
 
-`scripts/store-video.js` boots the same seeded harness and records a fully
-scripted ~65s ad cut at 1920×1080 — injected animated cursor, caption pills,
-and a CTA outro card, so the capture needs zero post-production. The cut
-opens on a LIVE collection (real progress against the mock walmart.com),
-then reveal → drill-down → Items/Trends montage → inline invoice → export
-formats → settings + dark mode → privacy → Year in review → "Add to Chrome".
+The script generates narration locally using **Ming 3.0 TTS 0.5B on MLX**
+when installed, otherwise **Kokoro-82M on MLX**. It does not use system
+speech. The tour uses a US English female voice: `US_Emma` in Ming or
+`af_heart` in Kokoro. For a non-default Ming install, set `MING_MODEL_DIR`
+and `MING_TTS_BIN`.
+
+Write short, conversational lines and let punctuation set the pace. Use
+documented Ming cues only where they help the delivery; `vo-script.js`
+keeps a cue-free line for Kokoro. Check the generated clips before publishing.
+
+`scripts/store-video.js` records the seeded harness at 1920×1080, with an
+animated cursor, on-screen captions, and an outro card. It opens with a
+collection against mock Walmart pages, then walks through the dashboard,
+including Categories and Missed items, invoices, exports, and privacy.
 ffmpeg then encodes `video/tour-4k.mp4` (lanczos upscale upload master —
 4K uploads get YouTube's higher-bitrate encode ladder) and
 `video/tour-1080p.mp4` (preview copy). Scene order, captions, and pacing all

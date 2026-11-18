@@ -225,6 +225,19 @@ const TOUR_RUNTIME = () => {
       ? JSON.parse(fs.readFileSync(fixturePath, 'utf8'))
       : buildDemoRecords({ months: 14 });
     console.log(useFixture ? `seeding sanitized fixture (${records.length} orders)` : `seeding demo catalog (${records.length} orders)`);
+    if (!useFixture) {
+      const invoices = records.filter((record) => record.invoice).map((record) => record.invoice);
+      invoices.forEach((invoice) => { invoice.walmartExtractionVersion = 6; });
+      const [recent, previous] = invoices;
+      recent.wasDelayed = true;
+      recent.items[0].fulfillment = 'Substituted';
+      recent.items[1].fulfillment = 'Weight adjusted';
+      recent.unfulfilledItems = [
+        { productName: 'Dole Bananas, each', quantity: 2, reason: 'Unavailable' },
+        { productName: 'Chobani Greek Yogurt, 4-pack', quantity: 1, reason: 'Canceled' },
+      ];
+      previous.unfulfilledItems = [{ productName: 'Dole Bananas, each', quantity: 1, reason: 'Unavailable' }];
+    }
     await seedOrderHistory(panel, { months: 14, records });
     await panel.close();
 
@@ -368,6 +381,30 @@ const TOUR_RUNTIME = () => {
     await click(dash.locator('[data-nav="items"]'));
     await hold(2200);
 
+    await scene('categories');
+    await cap('See spending by category — <b>make it yours</b>');
+    await click(dash.locator('[data-nav="categories"]'));
+    const groceries = dash.locator('#viewCategories details.cat-category').filter({
+      has: dash.locator('.cat-category-title', { hasText: 'Groceries' }),
+    });
+    const groceriesHeader = groceries.locator('summary');
+    await groceriesHeader.waitFor();
+    await groceriesHeader.evaluate((element) => element.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    await hold(800);
+    await click(groceriesHeader);
+    await groceries.locator('select.cat-select').first().waitFor({ state: 'visible' });
+    await hold(2400);
+    await scrollTo(0, 700);
+
+    await scene('missed');
+    await cap('See what was <b>missing, swapped, or late</b>');
+    await click(dash.locator('[data-nav="missed"]'));
+    await dash.locator('#viewMissed .mis-card').filter({ hasText: 'Most often unavailable' }).waitFor();
+    await hold(1800);
+    await scrollTo(335, 850);
+    await hold(1800);
+    await scrollTo(0, 700);
+
     await scene('trends');
     await cap('Your habits, <b>charted</b>');
     await click(dash.locator('[data-nav="trends"]'));
@@ -399,7 +436,7 @@ const TOUR_RUNTIME = () => {
 
     /* ---- 7. Take it with you (dark): two clicks. ---- */
     await scene('export');
-    await cap('Tax season? <b>Two clicks.</b>');
+    await cap('Export extra invoice details <b>when available</b>');
     await click(dash.locator('[data-nav="overview"]'));
     await hold(800);
     const boxes = frame.locator('.order-list input[type="checkbox"]');
@@ -416,7 +453,8 @@ const TOUR_RUNTIME = () => {
     await click(frame.locator('#settingsButton'), 700);
     await hold(900);
     await frameScrollToSection('AI access', 1300);
-    // Flip the toggle on camera: the pairing token appears live.
+    // Show where the pairing token appears without recording its value.
+    await frame.addStyleTag({ content: '#settingsMcpToken { -webkit-text-security: disc; }' });
     await click(frame.locator('#settingsMcpEnabled'), 700);
     await hold(1400);
     await curTo(frame.locator('#settingsMcpToken'), 600);

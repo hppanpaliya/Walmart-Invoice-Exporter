@@ -4,9 +4,8 @@
 #   bash store-assets/scripts/generate-store-video.sh
 #
 # Pipeline:
-#   1. generate-voiceover.js — narration via ElevenLabs when a key is present
-#      ($ELEVENLABS_API_KEY or audio-cache/elevenlabs-key.txt, gitignored),
-#      else locally with Kokoro-82M on MLX (Apache-2.0: free, offline).
+#   1. generate-voiceover.js — local Ming 3.0 TTS 0.5B on MLX when installed,
+#      otherwise Kokoro-82M on MLX. Never use system speech.
 #      Clips are cached per line in audio-cache/.
 #   2. store-video.js — builds dist/chrome-mv3, boots it in the e2e harness
 #      (synthetic PII-free seeded data; auto-uses scripts/seed-data.json from
@@ -35,7 +34,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."   # repo root
 
-echo "==> 1/4 narration (ElevenLabs if key present, else local Kokoro; cached per line)"
+echo "==> 1/4 narration (local Ming MLX, otherwise Kokoro MLX; cached per line)"
 node store-assets/scripts/generate-voiceover.js
 
 echo "==> 2/4 recording the tour (real build, seeded data, native capture)"

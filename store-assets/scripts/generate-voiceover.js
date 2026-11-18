@@ -1,14 +1,6 @@
 /**
- * Synthesize the tour narration. Two providers:
- *
- *  - elevenlabs (default whenever a key is present): far more human ad read.
- *    Key comes from $ELEVENLABS_API_KEY or audio-cache/elevenlabs-key.txt
- *    (audio-cache/ is gitignored — never commit the key). Voice + delivery
- *    settings live in vo-script.js (ELEVEN block).
- *  - kokoro: local Kokoro-82M on MLX (Apache-2.0: free, offline, no key).
- *    Bootstraps .venv-kokoro (pip install kokoro-mlx) on first run.
- *
- * Force one with VO_PROVIDER=kokoro|elevenlabs.
+ * Generate local narration with Ming 3.0 TTS 0.5B on MLX when installed,
+ * otherwise with Kokoro-82M on MLX. Never invoke the OS speech synthesizer.
  *
  *   node store-assets/scripts/generate-voiceover.js
  *
@@ -23,56 +15,47 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
-const { VOICE, SPEED, ELEVEN, SCENES } = require(path.join(__dirname, 'vo-script'));
+const { VOICE, SPEED, SCENES } = require(path.join(__dirname, 'vo-script'));
 
 const CACHE = path.join(__dirname, 'audio-cache');
 const META = path.join(CACHE, 'vo-meta.json');
 const VENV = path.join(__dirname, '.venv-kokoro');
 const PY = path.join(VENV, 'bin', 'python');
 
-fs.mkdirSync(CACHE, { recursive: true });
-const keyFile = path.join(CACHE, 'elevenlabs-key.txt');
-const elevenKey = process.env.ELEVENLABS_API_KEY
-  || (fs.existsSync(keyFile) ? fs.readFileSync(keyFile, 'utf8').trim() : '');
-const provider = process.env.VO_PROVIDER || (elevenKey ? 'elevenlabs' : 'kokoro');
-if (provider === 'elevenlabs' && !elevenKey) {
-  throw new Error('VO_PROVIDER=elevenlabs but no key in $ELEVENLABS_API_KEY or audio-cache/elevenlabs-key.txt');
-}
+const mingBin = process.env.MING_TTS_BIN || path.join(os.homedir(), '.local/bin/ming-tts');
+const mingDir = process.env.MING_MODEL_DIR
+  || path.join(os.homedir(), '.local/share/ming-tts-serve/models/Ming-3.0-tts-0.5b');
+const mingVoice = 'US_Emma';
+const useMing = Boolean(process.env.MING_TTS_BIN || process.env.MING_MODEL_DIR
+  || fs.existsSync(path.join(mingDir, 'model.safetensors')));
 
 const probeSeconds = (file) => Number(execFileSync('ffprobe', [
   '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file,
 ], { encoding: 'utf8' }).trim());
 
-// ElevenLabs pronounces initialisms naturally, so it reads each scene's plain
-// `natural` text when present; kokoro always gets the phonetically-spelled
-// `line` (see the note in vo-script.js).
-const textFor = (s) => (provider === 'elevenlabs' ? (s.natural || s.line) : s.line);
+// Ming understands the inline delivery cues. Kokoro receives the cue-free line.
+const textFor = (s) => (useMing ? (s.ming || s.line) : s.line);
 const hashFor = (s) => crypto.createHash('sha256').update(
-  provider === 'elevenlabs'
-    ? `eleven|${ELEVEN.VOICE_ID}|${ELEVEN.MODEL}|${JSON.stringify(ELEVEN.SETTINGS)}|${textFor(s)}`
+  useMing
+    ? `ming-3.0-tts-0.5b-mlx|${mingVoice}|${textFor(s)}`
     : `kokoro|${VOICE}|${SPEED}|${s.line}`
 ).digest('hex');
 
-async function synthElevenLabs(pending, onDone) {
+function synthMing(pending, onDone) {
   for (const item of pending) {
-    const res = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN.VOICE_ID}?output_format=mp3_44100_128`,
-      {
-        method: 'POST',
-        headers: { 'xi-api-key': elevenKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: item.text, model_id: ELEVEN.MODEL, voice_settings: ELEVEN.SETTINGS }),
-      }
-    );
-    if (!res.ok) throw new Error(`elevenlabs ${res.status} on '${item.id}': ${await res.text()}`);
-    const mp3 = item.out.replace(/\.wav$/, '.tmp.mp3');
-    fs.writeFileSync(mp3, Buffer.from(await res.arrayBuffer()));
-    // Downstream (build-audio.js, scene floors) expects mono 44.1 kHz WAVs.
-    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', mp3, '-ar', '44100', '-ac', '1', item.out]);
-    fs.rmSync(mp3);
+    const raw = item.out.replace(/\.wav$/, '.ming.wav');
+    try {
+      execFileSync(mingBin, ['say', '--model', mingDir, '--out', raw, '--json',
+        JSON.stringify({ task: 'IP', voice: mingVoice, text: item.text })], { stdio: 'inherit' });
+      execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', raw, '-ar', '44100', '-ac', '1', item.out]);
+    } finally {
+      fs.rmSync(raw, { force: true });
+    }
     console.log(`synthesized ${item.id} (${probeSeconds(item.out).toFixed(2)}s)`);
-    onDone(item); // checkpoint the cache per clip — paid API calls must never re-bill after a mid-batch failure
+    onDone(item);
   }
 }
 
@@ -98,7 +81,12 @@ function synthKokoro(pending) {
   execFileSync(PY, [path.join(__dirname, 'kokoro-tts.py'), manifest], { stdio: 'inherit' });
 }
 
-(async () => {
+Promise.resolve().then(() => {
+  fs.mkdirSync(CACHE, { recursive: true });
+  if (useMing) {
+    fs.accessSync(path.join(mingDir, 'model.safetensors'), fs.constants.R_OK);
+    if (path.isAbsolute(mingBin)) fs.accessSync(mingBin, fs.constants.X_OK);
+  }
   const meta = fs.existsSync(META) ? JSON.parse(fs.readFileSync(META, 'utf8')) : {};
   const durations = {};
 
@@ -118,13 +106,13 @@ function synthKokoro(pending) {
       meta[id] = hash;
       fs.writeFileSync(META, JSON.stringify(meta, null, 2));
     };
-    if (provider === 'elevenlabs') await synthElevenLabs(pending, checkpoint);
+    if (useMing) synthMing(pending, checkpoint);
     else { synthKokoro(pending); pending.forEach(checkpoint); }
   }
 
   for (const { id } of SCENES) durations[id] = probeSeconds(path.join(CACHE, `vo-${id}.wav`));
   fs.writeFileSync(path.join(CACHE, 'vo-durations.json'), JSON.stringify(durations, null, 2));
   const total = Object.values(durations).reduce((a, b) => a + b, 0);
-  const voice = provider === 'elevenlabs' ? `elevenlabs ${ELEVEN.VOICE_NAME}` : `kokoro ${VOICE}`;
+  const voice = useMing ? `Ming 3.0 TTS 0.5B (MLX), ${mingVoice}` : `Kokoro-82M (MLX), ${VOICE}`;
   console.log(`narration total ${total.toFixed(1)}s across ${SCENES.length} scenes (${voice})`);
-})().catch((err) => { console.error(err.message || err); process.exit(1); });
+}).catch((err) => { console.error(err.message || err); process.exit(1); });

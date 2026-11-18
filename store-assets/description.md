@@ -1,6 +1,6 @@
 # Chrome Web Store description (copy–paste)
 
-> Publish this together with v8.9 — it describes the new UI and the MCP
+> Publish this together with v8.9.1 — it describes the updated UI and the MCP
 > feature (including the opt-in AI collection actions). The short "summary"
 > field and the detailed description are below.
 
@@ -66,7 +66,11 @@ Walmart Invoice Exporter collects every order from walmart.com/orders, saves it 
 
 ☆ Need to merge multiple Excel files afterwards? https://hppanpaliya.github.io/excel-merger
 
-★ WHAT'S NEW IN 8.9
+★ WHAT'S NEW IN 8.9.1
+• Dashboard totals stay readable on narrow windows, and Settings and the active dashboard tab stay in view
+• Wide tables scroll within their cards; the export panel fits short desktop windows
+
+★ ALSO IN 8.9
 • More detail in Excel and CSV: price each, "was" price, savings, price per unit, Walmart's department, and whether an item was substituted, weight adjusted, returned or never charged
 • Order status, late deliveries, the store that filled the order and the return window
 • New dashboard views: spending by category (you can change any category) and missed items (unavailable, canceled, substituted)
